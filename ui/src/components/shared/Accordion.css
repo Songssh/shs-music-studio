@@ -3,7 +3,6 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   background: var(--surface-glass);
-  overflow: hidden;
 }
 
 .accordion-header {
