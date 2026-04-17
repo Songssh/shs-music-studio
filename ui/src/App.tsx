@@ -73,10 +73,10 @@ const App: React.FC = () => {
 
       {/* Main content */}
       <div className="app-main">
-        <div className="app-content" style={{ display: 'flex', gap: 'var(--space-6)' }}>
+        <div className="app-content" style={{ display: 'flex', gap: 'var(--space-6)', overflow: 'hidden' }}>
           {/* Left: Create Panel */}
           {activeView === 'create' && (
-            <div style={{ width: '380px', flexShrink: 0, height: '100%' }}>
+            <div style={{ width: '380px', flexShrink: 0, minHeight: 0, height: '100%' }}>
               <CreatePanel
                 onGenerate={handleGenerate}
                 isGenerating={genStore.isGenerating}
@@ -85,7 +85,7 @@ const App: React.FC = () => {
           )}
 
           {/* Right: Queue + Library */}
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
             <JobQueue
               jobs={genStore.jobs}
               onCancel={genStore.cancel}
