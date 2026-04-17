@@ -12,6 +12,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { spawn, ChildProcess } from 'child_process';
+import { execSync } from 'child_process';
 
 import { config } from './config.js';
 import { initDb, closeDb } from './db/database.js';
@@ -150,27 +151,40 @@ const server = app.listen(config.server.port, config.server.host, () => {
 });
 
 // Graceful shutdown
-function shutdown() {
+let isShuttingDown = false;
+export function shutdown() {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
   console.log('\n[Server] Shutting down...');
 
-  // Kill ace-server child process
-  if (aceProcess && !aceProcess.killed) {
+  // Kill ace-server child process — use taskkill on Windows for proper tree kill
+  if (aceProcess && !aceProcess.killed && aceProcess.pid) {
     console.log('[Server] Stopping ace-server...');
-    aceProcess.kill('SIGTERM');
+    try {
+      if (process.platform === 'win32') {
+        execSync(`taskkill /PID ${aceProcess.pid} /T /F`, { stdio: 'ignore' });
+      } else {
+        aceProcess.kill('SIGTERM');
+      }
+    } catch {
+      // Process may already be dead
+    }
   }
 
   // Close HTTP server
   server.close(() => {
     console.log('[Server] HTTP server closed');
-    closeDb();
-    process.exit(0);
   });
 
-  // Force exit after 5 seconds if graceful shutdown hangs
+  // Close DB
+  closeDb();
+  console.log('[Server] Goodbye!');
+
+  // Force exit after a short delay to let response flush
   setTimeout(() => {
-    console.error('[Server] Forced exit after timeout');
-    process.exit(1);
-  }, 5000);
+    process.exit(0);
+  }, 1000);
 }
 
 process.on('SIGINT', shutdown);
@@ -181,3 +195,4 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (err) => {
   console.error('[Server] Unhandled rejection:', err);
 });
+

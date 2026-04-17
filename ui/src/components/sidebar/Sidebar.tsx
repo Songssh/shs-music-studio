@@ -10,9 +10,10 @@ import './Sidebar.css';
 interface SidebarProps {
   activeView: string;
   onViewChange: (view: string) => void;
+  onQuit?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, onQuit }) => {
   const [models, setModels] = useState<AceModels | null>(null);
   const [connected, setConnected] = useState(false);
 
@@ -38,6 +39,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange }) =>
     } catch {
       // Server is shutting down, connection will drop — that's expected
     }
+    onQuit?.();
   };
 
   const navItems = [

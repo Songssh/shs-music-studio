@@ -51,6 +51,7 @@ const App: React.FC = () => {
     setSongs(prev => prev.filter(s => s.id !== songId));
     if (currentSong?.id === songId) setCurrentSong(null);
   }, [token, currentSong]);
+  const [isShutdown, setIsShutdown] = useState(false);
 
   if (isLoading) {
     return (
@@ -66,10 +67,39 @@ const App: React.FC = () => {
     );
   }
 
+  if (isShutdown) {
+    return (
+      <div className="app-layout" style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'var(--bg-primary)', color: 'var(--text-muted)',
+        flexDirection: 'column', gap: '24px',
+      }}>
+        <div style={{ fontSize: '4rem', opacity: 0.3 }}>⚡</div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            fontSize: 'var(--text-2xl)', fontWeight: 700,
+            color: 'var(--text-primary)', marginBottom: '12px',
+          }}>
+            HOT-Step has been shut down
+          </div>
+          <div style={{ fontSize: 'var(--text-base)', color: 'var(--text-muted)' }}>
+            The server and ace-server processes have been stopped.
+          </div>
+          <div style={{
+            fontSize: 'var(--text-lg)', color: 'var(--text-secondary)',
+            marginTop: '24px',
+          }}>
+            You can close this page now.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-layout">
       {/* Sidebar */}
-      <Sidebar activeView={activeView} onViewChange={setActiveView} />
+      <Sidebar activeView={activeView} onViewChange={setActiveView} onQuit={() => setIsShutdown(true)} />
 
       {/* Main content */}
       <div className="app-main">
@@ -110,3 +140,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+

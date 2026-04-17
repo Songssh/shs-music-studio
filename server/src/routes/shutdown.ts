@@ -1,8 +1,10 @@
 // shutdown.ts — Graceful shutdown endpoint
 //
-// POST /api/shutdown — kills ace-server child process and exits Node.js
+// POST /api/shutdown — calls the main shutdown handler which kills
+// ace-server child process, closes DB, and exits Node.js
 
 import { Router } from 'express';
+import { shutdown } from '../index.js';
 
 const router = Router();
 
@@ -11,10 +13,10 @@ router.post('/', (_req, res) => {
   console.log('[Server] Shutdown requested via API');
   res.json({ success: true, message: 'Shutting down...' });
 
-  // Give the response time to send, then exit
+  // Give the response time to flush, then trigger full shutdown
   setTimeout(() => {
-    process.emit('SIGINT');
-  }, 500);
+    shutdown();
+  }, 300);
 });
 
 export default router;
