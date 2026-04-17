@@ -630,9 +630,9 @@ int ace_lm_generate(AceLm *            ctx,
 
     Timer t_total;
 
-    // LM RNG seed: always random (mt19937 uses 32 bits)
+    // LM RNG seed: use request seed when provided, random when -1
     std::random_device rd;
-    uint32_t           seed = rd();
+    uint32_t           seed = (req->seed >= 0) ? (uint32_t) req->seed : rd();
 
     // Resolve DiT seed (pass through to output for synth pipeline)
     long long dit_seed = req->seed;
