@@ -46,6 +46,7 @@ export const GenerationSettings: React.FC<GenerationSettingsProps> = (props) => 
         <select className="input select" value={props.inferMethod}
           onChange={e => props.onInferMethodChange(e.target.value)}>
           <option value="ode">ODE (Euler)</option>
+          <option value="rk4">RK4 (4th Order)</option>
           <option value="sde">SDE (Stochastic)</option>
         </select>
       </div>
