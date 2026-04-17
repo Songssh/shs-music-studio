@@ -4,14 +4,13 @@
 // Uses port-based taskkill on Windows, like HOT-Step 9000.
 
 import { Router } from 'express';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 
 const router = Router();
 
 /** Kill all processes listening on a given port (Windows) */
 function killPort(port: number): void {
   try {
-    // Find PIDs listening on this port
     const output = execSync(
       `netstat -ano | findstr ":${port}" | findstr "LISTENING"`,
       { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
@@ -44,16 +43,30 @@ router.post('/', (_req, res) => {
   console.log('[Server] Shutdown requested via API');
   res.json({ success: true, message: 'Shutting down...' });
 
-  // Give the response time to flush, then kill everything by port
+  // Give the response time to flush, then kill everything
   setTimeout(() => {
     console.log('[Server] Killing all processes...');
 
     if (process.platform === 'win32') {
-      // Kill ace-server and Vite by port, then exit ourselves
+      // Kill ace-server and Vite by port
       killPort(8085);
       killPort(3000);
+
+      // Spawn a detached process to kill US from outside after a brief delay.
+      // We can't reliably kill ourselves — process.exit() doesn't close the
+      // cmd.exe window, and taskkill on yourself deadlocks.
+      // This spawns a background cmd that waits 1 second then kills our PID.
+      const killer = spawn('cmd.exe', [
+        '/c', `ping -n 2 127.0.0.1 > nul & taskkill /PID ${process.pid} /T /F`
+      ], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      killer.unref();
     }
-    // Exit our own process cleanly (can't taskkill yourself)
+
+    // Also try process.exit as a fallback
     process.exit(0);
   }, 300);
 });
