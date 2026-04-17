@@ -67,7 +67,7 @@ const uiDistPath = path.resolve(__dirname, '../../ui/dist');
 if (fs.existsSync(uiDistPath)) {
   app.use(express.static(uiDistPath));
   // SPA fallback: serve index.html for all unmatched routes
-  app.get('*', (_req, res) => {
+  app.get('/{*splat}', (_req, res) => {
     res.sendFile(path.join(uiDistPath, 'index.html'));
   });
   console.log(`[Server] Serving UI from ${uiDistPath}`);
@@ -152,7 +152,7 @@ const server = app.listen(config.server.port, config.server.host, () => {
 
 // Graceful shutdown
 let isShuttingDown = false;
-export function shutdown() {
+function shutdown() {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
