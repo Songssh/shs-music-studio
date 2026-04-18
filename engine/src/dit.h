@@ -308,6 +308,15 @@ static bool dit_ggml_load(DiTGGML *                m,
     m->cond_emb_w = gf_load_tensor(&m->wctx, gf, "decoder.condition_embedder.weight");
     m->cond_emb_b = gf_load_tensor_f32(&m->wctx, gf, "decoder.condition_embedder.bias");
 
+    // Runtime LoRA requires un-fused projections so per-projection deltas
+    // can be applied. In merge mode, deltas are baked into weights BEFORE
+    // fusion, so fused matmuls already include the adapter effect.
+    bool skip_fusion = (adapter_mode && strcmp(adapter_mode, "runtime") == 0
+                        && adapter_path != nullptr);
+    if (skip_fusion) {
+        fprintf(stderr, "[DiT] Skipping QKV/gate_up fusion (runtime LoRA needs individual projections)\n");
+    }
+
     // Layers
     for (int i = 0; i < cfg.n_layers; i++) {
         char prefix[128];
@@ -317,11 +326,15 @@ static bool dit_ggml_load(DiTGGML *                m,
 
         // Self-attention: try full QKV, partial QK, separate
         ly.self_attn_norm = gf_load_tensor_f32(&m->wctx, gf, p + ".self_attn_norm.weight");
-        ly.sa_qkv = gf_load_qkv_fused(&m->wctx, gf, p + ".self_attn.q_proj.weight", p + ".self_attn.k_proj.weight",
-                                      p + ".self_attn.v_proj.weight");
+        if (!skip_fusion) {
+            ly.sa_qkv = gf_load_qkv_fused(&m->wctx, gf, p + ".self_attn.q_proj.weight", p + ".self_attn.k_proj.weight",
+                                          p + ".self_attn.v_proj.weight");
+        }
         if (!ly.sa_qkv) {
-            // Try Q+K fusion (same input, often same type in K-quants)
-            ly.sa_qk = gf_load_pair_fused(&m->wctx, gf, p + ".self_attn.q_proj.weight", p + ".self_attn.k_proj.weight");
+            if (!skip_fusion) {
+                // Try Q+K fusion (same input, often same type in K-quants)
+                ly.sa_qk = gf_load_pair_fused(&m->wctx, gf, p + ".self_attn.q_proj.weight", p + ".self_attn.k_proj.weight");
+            }
             if (ly.sa_qk) {
                 ly.sa_v_proj = gf_load_tensor(&m->wctx, gf, p + ".self_attn.v_proj.weight");
                 if (i == 0) {
@@ -332,7 +345,7 @@ static bool dit_ggml_load(DiTGGML *                m,
                 ly.sa_k_proj = gf_load_tensor(&m->wctx, gf, p + ".self_attn.k_proj.weight");
                 ly.sa_v_proj = gf_load_tensor(&m->wctx, gf, p + ".self_attn.v_proj.weight");
                 if (i == 0) {
-                    fprintf(stderr, "[DiT] Self-attn: all separate (3 types differ)\n");
+                    fprintf(stderr, "[DiT] Self-attn: all separate%s\n", skip_fusion ? " (runtime LoRA)" : " (3 types differ)");
                 }
             }
         } else {
@@ -346,13 +359,17 @@ static bool dit_ggml_load(DiTGGML *                m,
 
         // Cross-attention: try full QKV, K+V fused, separate
         ly.cross_attn_norm = gf_load_tensor_f32(&m->wctx, gf, p + ".cross_attn_norm.weight");
-        ly.ca_qkv = gf_load_qkv_fused(&m->wctx, gf, p + ".cross_attn.q_proj.weight", p + ".cross_attn.k_proj.weight",
-                                      p + ".cross_attn.v_proj.weight");
+        if (!skip_fusion) {
+            ly.ca_qkv = gf_load_qkv_fused(&m->wctx, gf, p + ".cross_attn.q_proj.weight", p + ".cross_attn.k_proj.weight",
+                                          p + ".cross_attn.v_proj.weight");
+        }
         if (!ly.ca_qkv) {
             ly.ca_q_proj = gf_load_tensor(&m->wctx, gf, p + ".cross_attn.q_proj.weight");
-            // Try K+V fusion (same input enc, may share type)
-            ly.ca_kv =
-                gf_load_pair_fused(&m->wctx, gf, p + ".cross_attn.k_proj.weight", p + ".cross_attn.v_proj.weight");
+            if (!skip_fusion) {
+                // Try K+V fusion (same input enc, may share type)
+                ly.ca_kv =
+                    gf_load_pair_fused(&m->wctx, gf, p + ".cross_attn.k_proj.weight", p + ".cross_attn.v_proj.weight");
+            }
             if (ly.ca_kv) {
                 if (i == 0) {
                     fprintf(stderr, "[DiT] Cross-attn: Q separate, K+V fused\n");
@@ -361,7 +378,7 @@ static bool dit_ggml_load(DiTGGML *                m,
                 ly.ca_k_proj = gf_load_tensor(&m->wctx, gf, p + ".cross_attn.k_proj.weight");
                 ly.ca_v_proj = gf_load_tensor(&m->wctx, gf, p + ".cross_attn.v_proj.weight");
                 if (i == 0) {
-                    fprintf(stderr, "[DiT] Cross-attn: all separate\n");
+                    fprintf(stderr, "[DiT] Cross-attn: all separate%s\n", skip_fusion ? " (runtime LoRA)" : "");
                 }
             }
         } else {
@@ -375,7 +392,9 @@ static bool dit_ggml_load(DiTGGML *                m,
 
         // MLP: try gate+up fusion (same input, same pattern as QKV)
         ly.mlp_norm = gf_load_tensor_f32(&m->wctx, gf, p + ".mlp_norm.weight");
-        ly.gate_up  = gf_load_pair_fused(&m->wctx, gf, p + ".mlp.gate_proj.weight", p + ".mlp.up_proj.weight");
+        if (!skip_fusion) {
+            ly.gate_up  = gf_load_pair_fused(&m->wctx, gf, p + ".mlp.gate_proj.weight", p + ".mlp.up_proj.weight");
+        }
         if (ly.gate_up) {
             if (i == 0) {
                 fprintf(stderr, "[DiT] MLP: gate+up fused\n");
@@ -384,7 +403,7 @@ static bool dit_ggml_load(DiTGGML *                m,
             ly.gate_proj = gf_load_tensor(&m->wctx, gf, p + ".mlp.gate_proj.weight");
             ly.up_proj   = gf_load_tensor(&m->wctx, gf, p + ".mlp.up_proj.weight");
             if (i == 0) {
-                fprintf(stderr, "[DiT] MLP: gate+up separate (types differ)\n");
+                fprintf(stderr, "[DiT] MLP: gate+up separate%s\n", skip_fusion ? " (runtime LoRA)" : " (types differ)");
             }
         }
         ly.down_proj = gf_load_tensor(&m->wctx, gf, p + ".mlp.down_proj.weight");

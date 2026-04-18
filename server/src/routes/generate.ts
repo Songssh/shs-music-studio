@@ -249,12 +249,18 @@ async function runGeneration(job: GenerationJob): Promise<void> {
         logGeneration(job.id, 'INFO', `[LM Phase] Complete. ${lmResults.length} result(s), bpm=${lmResults[0]?.bpm}, duration=${lmResults[0]?.duration}`);
       }
 
-      // Re-inject server routing fields that the LM response strips out.
-      // The C++ LM serializes only AceRequest fields — adapter, adapter_scale,
-      // and synth_model are ServerFields parsed separately by ace-server, so
-      // they're absent from the enriched JSON. Without this, /synth never
-      // sees the adapter and runs without it.
+      // Re-inject fields that the user can change between LM cache hits.
+      // The C++ LM serializes full AceRequest — so cached results carry
+      // stale values for DiT params and routing fields. Override them
+      // from the current request so the synth phase uses current settings.
       for (const result of lmResults) {
+        // DiT params (user can change solver, steps, etc. between runs)
+        if (aceReq.inference_steps !== undefined) result.inference_steps = aceReq.inference_steps;
+        if (aceReq.guidance_scale !== undefined) result.guidance_scale = aceReq.guidance_scale;
+        if (aceReq.shift !== undefined) result.shift = aceReq.shift;
+        if (aceReq.infer_method !== undefined) result.infer_method = aceReq.infer_method;
+
+        // Routing fields (adapter, model selection)
         if (aceReq.synth_model) result.synth_model = aceReq.synth_model;
         if (aceReq.adapter) result.adapter = aceReq.adapter;
         if (aceReq.adapter_scale !== undefined) result.adapter_scale = aceReq.adapter_scale;
