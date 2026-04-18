@@ -1,9 +1,7 @@
 // Slider.tsx — Reusable slider with label, value display, and optional number input
-//
-// ~40 lines. Used everywhere: steps, guidance, shift, temperature, etc.
+// Ported to Tailwind styling.
 
 import React from 'react';
-import './Slider.css';
 
 interface SliderProps {
   label: string;
@@ -20,13 +18,13 @@ export const Slider: React.FC<SliderProps> = ({
   label, value, onChange, min, max, step, suffix = '', showInput = false,
 }) => {
   return (
-    <div className="slider-group">
-      <div className="slider-header">
-        <span className="slider-label">{label}</span>
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{label}</label>
         {showInput ? (
           <input
             type="number"
-            className="slider-input"
+            className="w-16 px-2 py-0.5 text-xs text-right text-zinc-300 bg-zinc-800 border border-white/10 rounded-lg outline-none focus:border-pink-500/50"
             value={value}
             onChange={e => onChange(parseFloat(e.target.value) || min)}
             min={min}
@@ -34,7 +32,7 @@ export const Slider: React.FC<SliderProps> = ({
             step={step}
           />
         ) : (
-          <span className="slider-value">{value}{suffix}</span>
+          <span className="text-xs text-zinc-400 font-mono">{value}{suffix}</span>
         )}
       </div>
       <input
@@ -44,6 +42,7 @@ export const Slider: React.FC<SliderProps> = ({
         min={min}
         max={max}
         step={step}
+        className="w-full"
       />
     </div>
   );

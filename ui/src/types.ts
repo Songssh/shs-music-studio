@@ -9,17 +9,28 @@ export interface Song {
   lyrics: string;
   style: string;
   caption: string;
-  audio_url: string;
-  cover_url: string;
-  duration: number;
-  bpm: number;
-  key_scale: string;
-  time_signature: string;
+  // Audio URL — components use audioUrl, DB uses audio_url
+  audioUrl: string;
+  audio_url?: string;
+  // Cover URL
+  coverUrl?: string;
+  cover_url?: string;
+  // Duration — can be number (seconds) or formatted string
+  duration: string | number;
+  bpm?: number;
+  key_scale?: string;
+  time_signature?: string;
   tags: string[];
-  is_public: boolean;
-  dit_model: string;
-  generation_params: Record<string, unknown>;
-  created_at: string;
+  is_public?: boolean;
+  isPublic?: boolean;
+  dit_model?: string;
+  // Generation params — snake_case from DB, camelCase for components
+  generation_params?: Record<string, unknown>;
+  generationParams?: Record<string, any>;
+  created_at?: string;
+  createdAt?: Date | string;
+  // UI state
+  isGenerating?: boolean;
 }
 
 /** Parameters sent to the generation API */

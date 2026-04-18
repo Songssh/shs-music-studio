@@ -1,0 +1,59 @@
+// ConfirmDialog.tsx — Modal confirmation dialog
+// Ported from hot-step-9000.
+
+import React from 'react';
+
+interface ConfirmDialogProps {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
+  isOpen,
+  title,
+  message,
+  confirmLabel = 'Confirm',
+  danger = false,
+  onConfirm,
+  onCancel,
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[150] flex items-center justify-center">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm drawer-backdrop-in"
+        onClick={onCancel}
+      />
+      {/* Dialog */}
+      <div className="relative bg-zinc-900 border border-white/10 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl drawer-slide-in-right">
+        <h3 className="text-lg font-bold text-white mb-2">{title}</h3>
+        <p className="text-sm text-zinc-300 mb-6">{message}</p>
+        <div className="flex items-center justify-end gap-3">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-200 font-semibold hover:bg-zinc-700 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+              danger
+                ? 'bg-red-600 text-white hover:bg-red-500'
+                : 'bg-pink-600 text-white hover:bg-pink-500'
+            }`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

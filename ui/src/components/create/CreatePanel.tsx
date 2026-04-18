@@ -1,23 +1,24 @@
 // CreatePanel.tsx — The composition panel that wires sections together
 //
-// This is NOT a monolith — each section is a separate module.
-// This file just composes them and manages the form state.
+// Ported to Tailwind styling, matching hot-step-9000's panel layout.
+// Each section is a separate module.
 
-import React from 'react';
+import React, { useEffect } from 'react';
+import { Zap, Loader2 } from 'lucide-react';
 import { usePersistedState } from '../../hooks/usePersistedState';
 import { ContentSection } from './ContentSection';
 import { MetadataSection } from './MetadataSection';
 import { GenerationSettings } from './GenerationSettings';
 import { ModelSelector } from './ModelSelector';
-import type { GenerationParams } from '../../types';
-import './CreatePanel.css';
+import type { GenerationParams, Song } from '../../types';
 
 interface CreatePanelProps {
   onGenerate: (params: GenerationParams) => void;
   isGenerating: boolean;
+  reuseData?: { song: Song; timestamp: number } | null;
 }
 
-export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerating }) => {
+export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerating, reuseData }) => {
   // Content
   const [caption, setCaption] = usePersistedState('hs-caption', '');
   const [lyrics, setLyrics] = usePersistedState('hs-lyrics', '');
@@ -59,6 +60,24 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
     self_attn: 1.0, cross_attn: 1.0, mlp: 1.0, cond_embed: 1.0,
   });
 
+  // Reuse data
+  useEffect(() => {
+    if (!reuseData) return;
+    const gp = reuseData.song.generationParams;
+    if (!gp) return;
+
+    if (reuseData.song.caption || gp.caption) setCaption(reuseData.song.caption || gp.caption || '');
+    if (reuseData.song.lyrics || gp.lyrics) setLyrics(reuseData.song.lyrics || gp.lyrics || '');
+    if (reuseData.song.style || gp.style) setCaption(reuseData.song.style || gp.style || '');
+    if (gp.bpm) setBpm(gp.bpm);
+    if (gp.keyScale) setKeyScale(gp.keyScale);
+    if (gp.timeSignature) setTimeSignature(gp.timeSignature);
+    if (gp.duration) setDuration(typeof gp.duration === 'string' ? parseFloat(gp.duration) : gp.duration);
+    if (gp.inferenceSteps) setInferenceSteps(gp.inferenceSteps);
+    if (gp.guidanceScale !== undefined) setGuidanceScale(gp.guidanceScale);
+    if (gp.seed !== undefined) setSeed(gp.seed);
+  }, [reuseData?.timestamp]);
+
   const handleGenerate = () => {
     const params: GenerationParams = {
       caption,
@@ -94,12 +113,15 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   };
 
   return (
-    <div className="create-panel">
-      <div className="create-panel-header">
-        <h2 className="create-panel-title">Create</h2>
+    <div className="h-full flex flex-col bg-zinc-50 dark:bg-suno-panel">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-white/5">
+        <h2 className="text-lg font-bold text-zinc-900 dark:text-white">Create</h2>
+        <span className="text-xs text-zinc-500 font-medium">text2music</span>
       </div>
 
-      <div className="create-panel-scroll">
+      {/* Scrollable body */}
+      <div className="flex-1 overflow-y-auto hide-scrollbar px-4 py-3 space-y-1">
         <ContentSection
           caption={caption} onCaptionChange={setCaption}
           lyrics={lyrics} onLyricsChange={setLyrics}
@@ -141,19 +163,22 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
       </div>
 
       {/* Generate button */}
-      <div className="create-panel-footer">
+      <div className="px-4 py-3 border-t border-zinc-200 dark:border-white/5">
         <button
-          className="btn btn-generate btn-lg w-full"
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-semibold text-sm transition-all duration-200 hover:shadow-lg hover:shadow-pink-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={handleGenerate}
           disabled={isGenerating || (!caption.trim() && !lyrics.trim() && !instrumental)}
         >
           {isGenerating ? (
             <>
-              <span className="spinner">⟳</span>
+              <Loader2 size={18} className="spinner" />
               Generating...
             </>
           ) : (
-            <>⚡ Generate</>
+            <>
+              <Zap size={18} />
+              Generate
+            </>
           )}
         </button>
       </div>

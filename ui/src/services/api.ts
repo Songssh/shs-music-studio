@@ -71,10 +71,52 @@ export const authApi = {
     patch<AuthState>('/auth/username', { username }, token),
 };
 
+// ── Song Normalizer ─────────────────────────────────────────
+/** Map DB snake_case fields to camelCase for component consumption */
+function normalizeSong(s: any): Song {
+  const gp = (() => {
+    if (s.generationParams) return s.generationParams;
+    if (s.generation_params) {
+      return typeof s.generation_params === 'string'
+        ? JSON.parse(s.generation_params) : s.generation_params;
+    }
+    return undefined;
+  })();
+
+  return {
+    id: s.id,
+    title: s.title || '',
+    lyrics: s.lyrics || '',
+    style: s.style || '',
+    caption: s.caption || s.style || '',
+    audioUrl: s.audio_url || s.audioUrl || '',
+    audio_url: s.audio_url,
+    coverUrl: s.cover_url || s.coverUrl,
+    cover_url: s.cover_url,
+    duration: s.duration || 0,
+    bpm: s.bpm || gp?.bpm,
+    key_scale: s.key_scale,
+    time_signature: s.time_signature,
+    tags: s.tags || [],
+    is_public: s.is_public,
+    dit_model: s.dit_model,
+    generation_params: s.generation_params,
+    generationParams: gp,
+    created_at: s.created_at,
+    createdAt: s.created_at ? new Date(s.created_at) : undefined,
+  };
+}
+
 // ── Songs ────────────────────────────────────────────────────
 export const songApi = {
-  list: (token: string) => get<{ songs: Song[] }>('/songs', token),
-  get: (id: string) => get<{ song: Song }>(`/songs/${id}`),
+  list: async (token: string) => {
+    const data = await get<{ songs: any[] }>('/songs', token);
+    return { songs: data.songs.map(normalizeSong) };
+  },
+  get: async (id: string) => {
+    const data = await get<{ song: any }>(`/songs/${id}`);
+    return { song: normalizeSong(data.song) };
+  },
   create: (song: Partial<Song>, token: string) => post<{ song: Song }>('/songs', song, token),
   update: (id: string, data: Partial<Song>, token: string) =>
     patch<{ song: Song }>(`/songs/${id}`, data, token),

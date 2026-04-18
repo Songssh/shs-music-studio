@@ -1,109 +1,204 @@
 // Player.tsx — Bottom audio player bar
-//
-// Plays the currently selected song. Shows playback controls + progress.
+// Ported from hot-step-9000: 3-section layout (info | controls | volume).
 
-import React, { useRef, useState, useEffect } from 'react';
+import React from 'react';
+import {
+  Play, Pause, SkipBack, SkipForward,
+  Shuffle, Repeat, Repeat1,
+  Volume2, VolumeX,
+  RotateCcw, Trash2,
+  Music,
+} from 'lucide-react';
 import type { Song } from '../../types';
-import './Player.css';
 
 interface PlayerProps {
-  song: Song | null;
+  currentSong: Song | null;
+  isPlaying: boolean;
+  onTogglePlay: () => void;
+  currentTime: number;
+  duration: number;
+  onSeek: (time: number) => void;
+  onNext: () => void;
+  onPrevious: () => void;
+  volume: number;
+  onVolumeChange: (v: number) => void;
+  playbackRate: number;
+  onPlaybackRateChange: (r: number) => void;
+  audioRef: React.RefObject<HTMLAudioElement | null>;
+  isShuffle: boolean;
+  onToggleShuffle: () => void;
+  repeatMode: 'none' | 'all' | 'one';
+  onToggleRepeat: () => void;
+  onReusePrompt?: () => void;
+  onDelete?: () => void;
 }
 
-export const Player: React.FC<PlayerProps> = ({ song }) => {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [playing, setPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+const formatTime = (s: number) => {
+  if (!s || !isFinite(s)) return '0:00';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, '0')}`;
+};
 
-  // Reset when song changes
-  useEffect(() => {
-    setPlaying(false);
-    setCurrentTime(0);
-    setDuration(0);
-    if (audioRef.current && song?.audio_url) {
-      audioRef.current.load();
-    }
-  }, [song?.id]);
+export const Player: React.FC<PlayerProps> = ({
+  currentSong,
+  isPlaying,
+  onTogglePlay,
+  currentTime,
+  duration,
+  onSeek,
+  onNext,
+  onPrevious,
+  volume,
+  onVolumeChange,
+  playbackRate,
+  onPlaybackRateChange,
+  isShuffle,
+  onToggleShuffle,
+  repeatMode,
+  onToggleRepeat,
+  onReusePrompt,
+  onDelete,
+}) => {
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-  // Auto-play on song change
-  useEffect(() => {
-    if (song?.audio_url && audioRef.current) {
-      audioRef.current.play().then(() => setPlaying(true)).catch(() => {});
-    }
-  }, [song?.id]);
-
-  const togglePlay = () => {
-    if (!audioRef.current) return;
-    if (playing) {
-      audioRef.current.pause();
-    } else {
-      audioRef.current.play();
-    }
-    setPlaying(!playing);
-  };
-
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!audioRef.current) return;
-    const time = parseFloat(e.target.value);
-    audioRef.current.currentTime = time;
-    setCurrentTime(time);
-  };
-
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m}:${sec.toString().padStart(2, '0')}`;
-  };
-
-  if (!song) {
+  if (!currentSong) {
     return (
-      <div className="player player-empty">
-        <span className="player-empty-text">Select a song to play</span>
+      <div className="h-20 flex-shrink-0 bg-zinc-950 border-t border-white/5 flex items-center justify-center">
+        <span className="text-sm text-zinc-600">Select a song to play</span>
       </div>
     );
   }
 
   return (
-    <div className="player">
-      <audio
-        ref={audioRef}
-        src={song.audio_url}
-        onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
-        onDurationChange={() => setDuration(audioRef.current?.duration || 0)}
-        onEnded={() => setPlaying(false)}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-      />
-
-      {/* Song info */}
-      <div className="player-info">
-        <div className="player-title">{song.title || 'Untitled'}</div>
-        <div className="player-caption">{song.caption?.substring(0, 40) || ''}</div>
+    <div className="h-20 flex-shrink-0 bg-zinc-950 border-t border-white/5 flex items-center px-4 gap-4">
+      {/* Left: Song Info */}
+      <div className="flex items-center gap-3 w-[240px] flex-shrink-0">
+        <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center overflow-hidden flex-shrink-0">
+          {currentSong.coverUrl ? (
+            <img src={currentSong.coverUrl} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <Music size={20} className="text-zinc-600" />
+          )}
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-white truncate">{currentSong.title || 'Untitled'}</div>
+          <div className="text-xs text-zinc-500 truncate">
+            {currentSong.caption || currentSong.style || ''}
+          </div>
+        </div>
       </div>
 
-      {/* Controls */}
-      <div className="player-controls">
-        <button className="btn btn-ghost btn-icon player-play-btn" onClick={togglePlay}>
-          {playing ? '⏸' : '▶'}
+      {/* Center: Transport Controls + Seekbar */}
+      <div className="flex-1 flex flex-col items-center gap-1 max-w-[700px] mx-auto">
+        {/* Transport buttons */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onToggleShuffle}
+            className={`p-1.5 rounded-lg transition-colors ${isShuffle ? 'text-pink-400' : 'text-zinc-500 hover:text-white'}`}
+            title="Shuffle"
+          >
+            <Shuffle size={16} />
+          </button>
+          <button onClick={onPrevious} className="p-1.5 rounded-lg text-zinc-400 hover:text-white transition-colors">
+            <SkipBack size={18} />
+          </button>
+          <button
+            onClick={onTogglePlay}
+            className="w-9 h-9 rounded-full bg-white flex items-center justify-center hover:scale-105 transition-transform"
+          >
+            {isPlaying
+              ? <Pause size={18} className="text-black" fill="black" />
+              : <Play size={18} className="text-black ml-0.5" fill="black" />
+            }
+          </button>
+          <button onClick={onNext} className="p-1.5 rounded-lg text-zinc-400 hover:text-white transition-colors">
+            <SkipForward size={18} />
+          </button>
+          <button
+            onClick={onToggleRepeat}
+            className={`p-1.5 rounded-lg transition-colors ${repeatMode !== 'none' ? 'text-pink-400' : 'text-zinc-500 hover:text-white'}`}
+            title={repeatMode === 'one' ? 'Repeat One' : repeatMode === 'all' ? 'Repeat All' : 'Repeat Off'}
+          >
+            {repeatMode === 'one' ? <Repeat1 size={16} /> : <Repeat size={16} />}
+          </button>
+        </div>
+
+        {/* Seekbar */}
+        <div className="flex items-center gap-2 w-full">
+          <span className="text-[10px] text-zinc-500 font-mono w-10 text-right">{formatTime(currentTime)}</span>
+          <div
+            className="flex-1 h-1 bg-zinc-700 rounded-full cursor-pointer group relative"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+              onSeek(pct * duration);
+            }}
+          >
+            <div
+              className="h-full bg-white group-hover:bg-pink-400 rounded-full transition-colors relative"
+              style={{ width: `${progress}%` }}
+            >
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white opacity-0 group-hover:opacity-100 transition-opacity shadow-md" />
+            </div>
+          </div>
+          <span className="text-[10px] text-zinc-500 font-mono w-10">{formatTime(duration)}</span>
+        </div>
+      </div>
+
+      {/* Right: Volume + Actions */}
+      <div className="flex items-center gap-3 w-[240px] flex-shrink-0 justify-end">
+        {/* Playback Rate */}
+        <button
+          onClick={() => {
+            const rates = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+            const idx = rates.indexOf(playbackRate);
+            onPlaybackRateChange(rates[(idx + 1) % rates.length]);
+          }}
+          className="text-xs text-zinc-500 hover:text-white px-1.5 py-0.5 rounded font-mono transition-colors"
+          title="Playback Speed"
+        >
+          {playbackRate}x
         </button>
 
-        <span className="player-time">{formatTime(currentTime)}</span>
-        <input
-          type="range"
-          className="player-seek"
-          value={currentTime}
-          onChange={handleSeek}
-          min={0}
-          max={duration || 0}
-          step={0.1}
-        />
-        <span className="player-time">{formatTime(duration)}</span>
-      </div>
+        {/* Volume */}
+        <div className="flex items-center gap-1.5 group">
+          <button
+            onClick={() => onVolumeChange(volume > 0 ? 0 : 0.8)}
+            className="text-zinc-400 hover:text-white transition-colors"
+          >
+            {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={volume}
+            onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+            className="w-20"
+          />
+        </div>
 
-      {/* Volume placeholder */}
-      <div className="player-end">
-        <a href={song.audio_url} download className="btn btn-ghost btn-sm">⬇</a>
+        {/* Quick Actions */}
+        {onReusePrompt && (
+          <button
+            onClick={onReusePrompt}
+            className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-white/5 transition-colors"
+            title="Reuse Prompt"
+          >
+            <RotateCcw size={14} />
+          </button>
+        )}
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            title="Delete"
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
       </div>
     </div>
   );
