@@ -7,7 +7,7 @@ import {
   Shuffle, Repeat, Repeat1,
   Volume2, VolumeX,
   RotateCcw, Trash2,
-  Music,
+  Music, Sparkles,
 } from 'lucide-react';
 import type { Song } from '../../types';
 
@@ -31,6 +31,8 @@ interface PlayerProps {
   onToggleRepeat: () => void;
   onReusePrompt?: () => void;
   onDelete?: () => void;
+  playMastered: boolean;
+  onToggleMastered: () => void;
 }
 
 const formatTime = (s: number) => {
@@ -59,6 +61,8 @@ export const Player: React.FC<PlayerProps> = ({
   onToggleRepeat,
   onReusePrompt,
   onDelete,
+  playMastered,
+  onToggleMastered,
 }) => {
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -160,6 +164,21 @@ export const Player: React.FC<PlayerProps> = ({
         >
           {playbackRate}x
         </button>
+
+        {/* Mastered toggle — only when song has mastered version */}
+        {currentSong.masteredAudioUrl && (
+          <button
+            onClick={onToggleMastered}
+            className={`p-1.5 rounded-lg transition-all ${
+              playMastered
+                ? 'text-amber-400 bg-amber-500/10 shadow-[0_0_8px_rgba(245,158,11,0.15)]'
+                : 'text-zinc-500 hover:text-amber-400 hover:bg-amber-500/5'
+            }`}
+            title={playMastered ? 'Playing mastered • Click for original' : 'Playing original • Click for mastered'}
+          >
+            <Sparkles size={15} />
+          </button>
+        )}
 
         {/* Volume */}
         <div className="flex items-center gap-1.5 group">

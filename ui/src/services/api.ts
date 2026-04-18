@@ -104,6 +104,8 @@ function normalizeSong(s: any): Song {
     generationParams: gp,
     created_at: s.created_at,
     createdAt: s.created_at ? new Date(s.created_at) : undefined,
+    masteredAudioUrl: s.mastered_audio_url || s.masteredAudioUrl || '',
+    mastered_audio_url: s.mastered_audio_url,
   };
 }
 
@@ -152,4 +154,25 @@ export const healthApi = {
 export const shutdownApi = {
   quit: () => post<{ success: boolean; message: string }>('/shutdown'),
 };
-
+// ── Mastering ───────────────────────────────────────────────
+export const masteringApi = {
+  /** Upload a reference track */
+  uploadReference: async (file: File, token: string): Promise<{ name: string; path: string; url: string }> => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${BASE}/mastering/upload-reference`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    if (!res.ok) throw new Error('Upload failed');
+    return res.json();
+  },
+  /** List uploaded reference tracks */
+  listReferences: () => get<{ references: Array<{ name: string; size: number; url: string }> }>('/mastering/references'),
+  /** Delete a reference track */
+  deleteReference: (name: string, token: string) => del<{ ok: boolean }>(`/mastering/references/${name}`, token),
+  /** Run mastering on an existing song */
+  run: (songId: string, referenceName: string, token: string) =>
+    post<{ ok: boolean; masteredUrl: string; songId: string }>('/mastering/run', { songId, referenceName }, token),
+};

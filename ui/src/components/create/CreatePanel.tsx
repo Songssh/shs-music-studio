@@ -10,6 +10,7 @@ import { ContentSection } from './ContentSection';
 import { MetadataSection } from './MetadataSection';
 import { GenerationSettings } from './GenerationSettings';
 import { ModelSelector } from './ModelSelector';
+import { MasteringSection } from './MasteringSection';
 import type { GenerationParams, Song } from '../../types';
 
 interface CreatePanelProps {
@@ -61,6 +62,10 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   });
   const [adapterMode, setAdapterMode] = usePersistedState('hs-adapterMode', 'runtime');
 
+  // Mastering
+  const [masteringEnabled, setMasteringEnabled] = usePersistedState('hs-masteringEnabled', false);
+  const [masteringReference, setMasteringReference] = usePersistedState('hs-masteringReference', '');
+
   // Reuse data
   useEffect(() => {
     if (!reuseData) return;
@@ -110,6 +115,8 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
       adapterGroupScales: adapter ? adapterGroupScales : undefined,
       adapterMode: adapter ? adapterMode : 'merge',
       taskType: 'text2music',
+      masteringEnabled,
+      masteringReference: masteringEnabled ? masteringReference : undefined,
     };
     onGenerate(params);
   };
@@ -162,6 +169,13 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
           lmTopP={lmTopP} onLmTopPChange={setLmTopP}
           lmNegativePrompt={lmNegativePrompt} onLmNegativePromptChange={setLmNegativePrompt}
           useCotCaption={useCotCaption} onUseCotCaptionChange={setUseCotCaption}
+        />
+
+        <MasteringSection
+          masteringEnabled={masteringEnabled}
+          onMasteringEnabledChange={setMasteringEnabled}
+          masteringReference={masteringReference}
+          onMasteringReferenceChange={setMasteringReference}
         />
       </div>
 

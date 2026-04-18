@@ -31,6 +31,9 @@ export interface Song {
   createdAt?: Date | string;
   // UI state
   isGenerating?: boolean;
+  // Mastered version
+  masteredAudioUrl?: string;
+  mastered_audio_url?: string;
 }
 
 /** Parameters sent to the generation API */
@@ -95,6 +98,10 @@ export interface GenerationParams {
   coverNoiseStrength?: number;
   repaintingStart?: number;
   repaintingEnd?: number;
+
+  // Mastering
+  masteringEnabled?: boolean;
+  masteringReference?: string;
 }
 
 /** Generation job status from the server */

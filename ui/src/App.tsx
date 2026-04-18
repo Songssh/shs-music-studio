@@ -50,6 +50,7 @@ const App: React.FC = () => {
   const [repeatMode, setRepeatMode] = useState<'none' | 'all' | 'one'>('none');
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const currentSongIdRef = useRef<string | null>(null);
+  const [playMastered, setPlayMastered] = useState(false);
 
   // Toast state
   const [toast, setToast] = useState<{ message: string; type: ToastType; isVisible: boolean }>({
@@ -149,11 +150,33 @@ const App: React.FC = () => {
     // New song
     currentSongIdRef.current = song.id;
     setCurrentSong(song);
-    audio.src = song.audioUrl;
+    // Auto-select mastered if available
+    const useMastered = !!(song.masteredAudioUrl);
+    setPlayMastered(useMastered);
+    audio.src = useMastered ? song.masteredAudioUrl! : song.audioUrl;
     audio.load();
     audio.play().catch(() => {});
     setIsPlaying(true);
   }, []);
+
+  const toggleMastered = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio || !currentSong) return;
+
+    const wantMastered = !playMastered;
+    setPlayMastered(wantMastered);
+
+    const newSrc = wantMastered && currentSong.masteredAudioUrl
+      ? currentSong.masteredAudioUrl
+      : currentSong.audioUrl;
+
+    const wasPlaying = !audio.paused;
+    const pos = audio.currentTime;
+    audio.src = newSrc;
+    audio.load();
+    audio.currentTime = pos;
+    if (wasPlaying) audio.play().catch(() => {});
+  }, [currentSong, playMastered]);
 
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
@@ -432,6 +455,8 @@ const App: React.FC = () => {
         onToggleRepeat={() => setRepeatMode(prev => prev === 'none' ? 'all' : prev === 'all' ? 'one' : 'none')}
         onReusePrompt={() => currentSong && handleReuse(currentSong)}
         onDelete={() => currentSong && handleDelete(currentSong)}
+        playMastered={playMastered}
+        onToggleMastered={toggleMastered}
       />
 
       {/* Hidden audio element */}
