@@ -34,13 +34,19 @@ struct DiTLoRALayer {
 
 #define DIT_LORA_MAX_LAYERS 32
 
+// Staged delta: pairs a tensor pointer with its F32 data for upload after buffer allocation
+struct DiTLoRAStagedDelta {
+    struct ggml_tensor * tensor;
+    std::vector<float>   f32_data;
+};
+
 // Runtime LoRA storage: holds all precomputed delta tensors
 struct DiTLoRA {
-    bool                      active = false;
-    DiTLoRALayer              layers[DIT_LORA_MAX_LAYERS];
-    struct ggml_context *     ctx    = nullptr;  // owns the delta tensors
-    ggml_backend_buffer_t     buffer = nullptr;  // single buffer for all deltas
-    std::vector<std::vector<float>> staging;     // temp F32 staging during load
+    bool                            active = false;
+    DiTLoRALayer                    layers[DIT_LORA_MAX_LAYERS];
+    struct ggml_context *           ctx    = nullptr;  // owns the delta tensors
+    ggml_backend_buffer_t           buffer = nullptr;  // single buffer for all deltas
+    std::vector<DiTLoRAStagedDelta> staged;            // temp F32 data awaiting BF16 upload
 };
 
 static void dit_lora_free(DiTLoRA * lora) {
@@ -91,7 +97,7 @@ static DiTLoRADelta * dit_lora_slot(DiTLoRA * lora, const std::string & gguf_nam
     return nullptr;
 }
 
-// Compute one delta on GPU and store the result as F32 in staging.
+// Compute one delta on GPU and store the result as F32.
 // Uses a temporary graph: builds the delta subgraph (LoRA B@A or LoKr kron),
 // computes on backend, downloads the result.
 // Returns true on success.
@@ -134,6 +140,19 @@ static bool adapter_compute_delta(
     ggml_backend_buffer_free(buf);
     ggml_free(ctx);
     return true;
+}
+
+// Stage a precomputed delta: create BF16 tensor in lora context, store F32 data for later upload.
+// The tensor and data are paired so upload order doesn't matter.
+static void adapter_stage_delta(DiTLoRA * lora, DiTLoRADelta * slot,
+                                 const std::string & gguf_name,
+                                 int64_t ne0, int64_t ne1,
+                                 std::vector<float> && delta_f32) {
+    char tname[128];
+    snprintf(tname, sizeof(tname), "lora_%s", gguf_name.c_str());
+    slot->delta = ggml_new_tensor_2d(lora->ctx, GGML_TYPE_BF16, ne0, ne1);
+    ggml_set_name(slot->delta, tname);
+    lora->staged.push_back({ slot->delta, std::move(delta_f32) });
 }
 
 // ─── LoRA runtime loading ───
@@ -187,7 +206,8 @@ static bool adapter_runtime_lora(DiTLoRA *                  lora,
 
         DiTLoRADelta * slot = dit_lora_slot(lora, gguf_name);
         if (!slot) {
-            fprintf(stderr, "[Adapter-RT] WARNING: no LoRA slot for %s, skipping\n", gguf_name.c_str());
+            fprintf(stderr, "[Adapter-RT] INFO: no runtime slot for %s (non-layer weight, merge-only)\n",
+                    gguf_name.c_str());
             skipped++; continue;
         }
 
@@ -233,14 +253,7 @@ static bool adapter_runtime_lora(DiTLoRA *                  lora,
             skipped++; continue;
         }
 
-        // Create BF16 tensor in lora context, stage F32 data for later upload
-        char tname[128];
-        snprintf(tname, sizeof(tname), "lora_%s", gguf_name.c_str());
-        slot->delta = ggml_new_tensor_2d(lora->ctx, GGML_TYPE_BF16, ne0, ne1);
-        ggml_set_name(slot->delta, tname);
-
-        // Stage F32 data — will be converted to BF16 during upload
-        lora->staging.push_back(std::move(delta_f32));
+        adapter_stage_delta(lora, slot, gguf_name, ne0, ne1, std::move(delta_f32));
         merged++;
     }
 
@@ -298,7 +311,8 @@ static bool adapter_runtime_lokr(DiTLoRA *                  lora,
 
         DiTLoRADelta * slot = dit_lora_slot(lora, gguf_name);
         if (!slot) {
-            fprintf(stderr, "[Adapter-RT] WARNING: no LoRA slot for %s, skipping\n", gguf_name.c_str());
+            fprintf(stderr, "[Adapter-RT] INFO: no runtime slot for %s (non-layer weight, merge-only)\n",
+                    gguf_name.c_str());
             skipped++; continue;
         }
 
@@ -375,11 +389,7 @@ static bool adapter_runtime_lokr(DiTLoRA *                  lora,
         std::vector<float> delta_f32;
         if (!adapter_compute_delta(build, ne0, ne1, backend, delta_f32)) { skipped++; continue; }
 
-        char tname[128];
-        snprintf(tname, sizeof(tname), "lora_%s", gguf_name.c_str());
-        slot->delta = ggml_new_tensor_2d(lora->ctx, GGML_TYPE_BF16, ne0, ne1);
-        ggml_set_name(slot->delta, tname);
-        lora->staging.push_back(std::move(delta_f32));
+        adapter_stage_delta(lora, slot, gguf_name, ne0, ne1, std::move(delta_f32));
         merged++;
     }
 
@@ -396,8 +406,8 @@ static bool adapter_load_runtime(DiTLoRA *                  lora,
                                   float                      adapter_scale,
                                   const AdapterGroupScales & gs,
                                   ggml_backend_t             backend) {
-    // Estimate max deltas (24 layers × 11 projections = 264)
-    int max_deltas = DIT_LORA_MAX_LAYERS * 11 + 16;
+    // Estimate max deltas (24 layers × 11 projections = 264, plus non-layer weights)
+    int max_deltas = DIT_LORA_MAX_LAYERS * 11 + 32;
     size_t ctx_size = (size_t) max_deltas * ggml_tensor_overhead() + 4096;
     struct ggml_init_params params = { ctx_size, NULL, true };
     lora->ctx = ggml_init(params);
@@ -453,7 +463,7 @@ static bool adapter_load_runtime(DiTLoRA *                  lora,
 
     st_close(&st);
 
-    if (!ok || lora->staging.empty()) {
+    if (!ok || lora->staged.empty()) {
         fprintf(stderr, "[Adapter-RT] WARNING: no deltas computed\n");
         ggml_free(lora->ctx);
         lora->ctx = nullptr;
@@ -470,39 +480,23 @@ static bool adapter_load_runtime(DiTLoRA *                  lora,
     }
     ggml_backend_buffer_set_usage(lora->buffer, GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
 
-    // Upload: convert F32 staging to BF16 and set into tensors
-    // Walk all layers and find tensors with data
-    size_t staging_idx = 0;
+    // Upload: convert F32 staging to BF16 and set into tensors.
+    // Each staged entry pairs its tensor pointer with its F32 data,
+    // so iteration order is irrelevant — no order mismatch possible.
     size_t total_bytes = 0;
-    for (int i = 0; i < DIT_LORA_MAX_LAYERS; i++) {
-        DiTLoRADelta * slots[] = {
-            &lora->layers[i].sa_q, &lora->layers[i].sa_k,
-            &lora->layers[i].sa_v, &lora->layers[i].sa_o,
-            &lora->layers[i].ca_q, &lora->layers[i].ca_k,
-            &lora->layers[i].ca_v, &lora->layers[i].ca_o,
-            &lora->layers[i].gate, &lora->layers[i].up,
-            &lora->layers[i].down,
-        };
-        for (DiTLoRADelta * s : slots) {
-            if (!s->delta) continue;
-            if (staging_idx >= lora->staging.size()) {
-                fprintf(stderr, "[Adapter-RT] ERROR: staging index overflow\n");
-                break;
-            }
-            const std::vector<float> & f32 = lora->staging[staging_idx++];
-            int64_t nel = ggml_nelements(s->delta);
-            // Convert F32 to BF16 on host
-            std::vector<ggml_bf16_t> bf16((size_t) nel);
-            ggml_fp32_to_bf16_row(f32.data(), bf16.data(), nel);
-            ggml_backend_tensor_set(s->delta, bf16.data(), 0, (size_t) nel * sizeof(ggml_bf16_t));
-            total_bytes += (size_t) nel * sizeof(ggml_bf16_t);
-        }
+    for (auto & sd : lora->staged) {
+        int64_t nel = ggml_nelements(sd.tensor);
+        std::vector<ggml_bf16_t> bf16((size_t) nel);
+        ggml_fp32_to_bf16_row(sd.f32_data.data(), bf16.data(), nel);
+        ggml_backend_tensor_set(sd.tensor, bf16.data(), 0, (size_t) nel * sizeof(ggml_bf16_t));
+        total_bytes += (size_t) nel * sizeof(ggml_bf16_t);
     }
 
-    lora->staging.clear();
+    size_t n_deltas = lora->staged.size();
+    lora->staged.clear();
     lora->active = true;
 
     fprintf(stderr, "[Adapter-RT] Loaded %zu deltas (%.1f MB BF16) into VRAM\n",
-            staging_idx, (float) total_bytes / (1024 * 1024));
+            n_deltas, (float) total_bytes / (1024 * 1024));
     return true;
 }
