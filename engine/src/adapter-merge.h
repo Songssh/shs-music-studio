@@ -303,6 +303,49 @@ static bool adapter_backend_can_encode(ggml_backend_t backend, enum ggml_type ty
     return ok;
 }
 
+// True when the backend has a native -> F32 decode cast kernel for this type.
+// K-quants (Q4_K_M, Q5_K_M, Q6_K) lack this on CUDA, causing a hard crash if
+// we attempt ggml_cast(native, F32) on the backend. When false, the caller
+// must dequantize on the CPU and upload as F32.
+static bool adapter_backend_can_decode(ggml_backend_t backend, enum ggml_type type) {
+    if (type == GGML_TYPE_F32 || type == GGML_TYPE_F16 || type == GGML_TYPE_BF16) {
+        return true;
+    }
+    // quantized types need a block-aligned element count for the probe tensor
+    int64_t                 probe_n = (int64_t) ggml_blck_size(type) * 4;
+    size_t                  meta    = ggml_tensor_overhead() * 4 + 1024;
+    struct ggml_init_params params  = { meta, NULL, true };
+    struct ggml_context *   ctx     = ggml_init(params);
+    struct ggml_tensor *    src     = ggml_new_tensor_1d(ctx, type, probe_n);
+    struct ggml_tensor *    dst     = ggml_cast(ctx, src, GGML_TYPE_F32);
+    bool                    ok      = ggml_backend_supports_op(backend, dst);
+    ggml_free(ctx);
+    return ok;
+}
+
+// Dequantize a native-type buffer to F32 on the CPU. Used as a fallback when
+// the backend can't cast native -> F32 (K-quants on CUDA).
+static void adapter_dequant_cpu(const void * src, float * dst, int64_t nel, int64_t n_per_row, enum ggml_type type) {
+    if (type == GGML_TYPE_F32) {
+        memcpy(dst, src, (size_t) nel * sizeof(float));
+        return;
+    }
+    const struct ggml_type_traits * traits = ggml_get_type_traits(type);
+    if (traits->to_float) {
+        // K-quants: process row by row since to_float operates on contiguous blocks
+        int64_t nrows    = nel / n_per_row;
+        size_t  row_nb   = ggml_row_size(type, n_per_row);
+        const uint8_t * sptr = (const uint8_t *) src;
+        for (int64_t r = 0; r < nrows; r++) {
+            traits->to_float(sptr + r * row_nb, dst + r * n_per_row, n_per_row);
+        }
+    } else if (type == GGML_TYPE_BF16) {
+        ggml_bf16_to_fp32_row((const ggml_bf16_t *) src, dst, nel);
+    } else if (type == GGML_TYPE_F16) {
+        ggml_fp16_to_fp32_row((const ggml_fp16_t *) src, dst, nel);
+    }
+}
+
 // Build the reverse map from LyCORIS key prefix to GGUF tensor name.
 // LyCORIS stores adapter tensors as "lycoris_<path_with_underscores>.<suffix>",
 // where the torch module path has all dots flattened to underscores. We cannot
@@ -426,9 +469,22 @@ static bool adapter_merge_on_backend(WeightCtx *                                
         return false;
     }
 
-    // base uploaded in native type, dequant to F32 on backend via ggml_cast
-    struct ggml_tensor * tbase_native = ggml_new_tensor_2d(ctx, ttype, ne0, ne1);
-    struct ggml_tensor * tbase_f32    = ggml_cast(ctx, tbase_native, GGML_TYPE_F32);
+    // base weight upload strategy:
+    //   decode_ok=true  → upload native, cast to F32 on backend (fast, zero host work)
+    //   decode_ok=false → dequant on CPU, upload as F32 (K-quants on CUDA: Q4_K_M/Q5_K_M/Q6_K)
+    bool                    decode_ok = adapter_backend_can_decode(backend, ttype);
+    struct ggml_tensor *    tbase_f32;
+    struct ggml_tensor *    tbase_native = nullptr;
+    std::vector<float>      base_f32_cpu;  // only used when !decode_ok
+
+    if (decode_ok) {
+        // upload in native type, cast to F32 on backend
+        tbase_native = ggml_new_tensor_2d(ctx, ttype, ne0, ne1);
+        tbase_f32    = ggml_cast(ctx, tbase_native, GGML_TYPE_F32);
+    } else {
+        // will dequant on CPU and upload as F32
+        tbase_f32 = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, ne0, ne1);
+    }
 
     // DoRA scale vector, one F32 per output row when dora_scale is set
     struct ggml_tensor * tds = ds ? ggml_new_tensor_2d(ctx, GGML_TYPE_F32, 1, ne1) : NULL;
@@ -472,8 +528,16 @@ static bool adapter_merge_on_backend(WeightCtx *                                
         return false;
     }
 
-    // helper-owned uploads: base in native type from mmap, ds if DoRA
-    ggml_backend_tensor_set(tbase_native, base_ptr, 0, base_nb);
+    // helper-owned uploads: base weight + DoRA scale
+    if (decode_ok) {
+        // upload native from mmap
+        ggml_backend_tensor_set(tbase_native, base_ptr, 0, base_nb);
+    } else {
+        // dequant on CPU, upload as F32
+        base_f32_cpu.resize((size_t) nel);
+        adapter_dequant_cpu(base_ptr, base_f32_cpu.data(), nel, ne0, ttype);
+        ggml_backend_tensor_set(tbase_f32, base_f32_cpu.data(), 0, (size_t) nel * sizeof(float));
+    }
     if (tds) {
         ggml_backend_tensor_set(tds, ds, 0, (size_t) ne1 * sizeof(float));
     }
