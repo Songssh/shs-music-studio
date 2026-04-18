@@ -184,6 +184,7 @@ static std::string g_loaded_dit;
 static std::string g_loaded_adapter;
 static float       g_loaded_adapter_scale = 1.0f;
 static AdapterGroupScales g_loaded_adapter_gs;
+static std::string g_loaded_adapter_mode;
 static std::string g_loaded_und_dit;
 
 // pipeline params (rebuilt from registry paths on each load)
@@ -447,6 +448,7 @@ struct ServerFields {
     std::string        adapter;
     float              adapter_scale;
     AdapterGroupScales adapter_gs;
+    std::string        adapter_mode;  // "merge" or "runtime"
 };
 
 static void parse_server_fields(const char * json, ServerFields * sf) {
@@ -454,6 +456,7 @@ static void parse_server_fields(const char * json, ServerFields * sf) {
     sf->lm_model      = "";
     sf->adapter       = "";
     sf->adapter_scale = 1.0f;
+    sf->adapter_mode  = "";
 
     yyjson_doc * doc = yyjson_read(json, strlen(json), 0);
     if (!doc) {
@@ -505,6 +508,9 @@ static void parse_server_fields(const char * json, ServerFields * sf) {
         if ((gs_v = yyjson_obj_get(gs_obj, "cond_embed")) && yyjson_is_num(gs_v)) {
             sf->adapter_gs.cond_embed = (float) yyjson_get_num(gs_v);
         }
+    }
+    if ((v = yyjson_obj_get(obj, "adapter_mode")) && yyjson_is_str(v)) {
+        sf->adapter_mode = yyjson_get_str(v);
     }
 
     yyjson_doc_free(doc);
@@ -584,14 +590,16 @@ static bool ensure_understand(const std::string & lm_name, const std::string & d
 static bool ensure_synth(const std::string &        dit_name,
                          const std::string &        adapter_name,
                          float                      adapter_scale,
-                         const AdapterGroupScales & adapter_gs = {}) {
+                         const AdapterGroupScales & adapter_gs = {},
+                         const std::string &        adapter_mode = "") {
     // cache key: reload only when model, adapter, overall scale, OR group scales change
     if (g_ctx_synth && g_loaded_dit == dit_name && g_loaded_adapter == adapter_name &&
         g_loaded_adapter_scale == adapter_scale &&
         g_loaded_adapter_gs.self_attn  == adapter_gs.self_attn &&
         g_loaded_adapter_gs.cross_attn == adapter_gs.cross_attn &&
         g_loaded_adapter_gs.mlp        == adapter_gs.mlp &&
-        g_loaded_adapter_gs.cond_embed == adapter_gs.cond_embed) {
+        g_loaded_adapter_gs.cond_embed == adapter_gs.cond_embed &&
+        g_loaded_adapter_mode          == adapter_mode) {
         return true;
     }
 
@@ -631,6 +639,7 @@ static bool ensure_synth(const std::string &        dit_name,
         g_synth_params.adapter_group_cross_attn  = adapter_gs.cross_attn;
         g_synth_params.adapter_group_mlp         = adapter_gs.mlp;
         g_synth_params.adapter_group_cond_embed  = adapter_gs.cond_embed;
+        g_synth_params.adapter_mode  = adapter_mode.empty() ? nullptr : adapter_mode.c_str();
     } else {
         g_synth_params.adapter_path  = nullptr;
         g_synth_params.adapter_scale = 1.0f;
@@ -638,6 +647,7 @@ static bool ensure_synth(const std::string &        dit_name,
         g_synth_params.adapter_group_cross_attn  = 1.0f;
         g_synth_params.adapter_group_mlp         = 1.0f;
         g_synth_params.adapter_group_cond_embed  = 1.0f;
+        g_synth_params.adapter_mode  = nullptr;
     }
 
     fprintf(stderr, "[Server] Loading synth: DiT=%s%s%s\n", dit_name.c_str(),
@@ -654,6 +664,7 @@ static bool ensure_synth(const std::string &        dit_name,
     g_loaded_adapter       = adapter_name;
     g_loaded_adapter_scale = adapter_scale;
     g_loaded_adapter_gs    = adapter_gs;
+    g_loaded_adapter_mode  = adapter_mode;
     return true;
 }
 
@@ -799,7 +810,7 @@ static void synth_worker(std::shared_ptr<Job>    job,
 
     // Load resident modules (TextEnc, CondEnc, FSQ). DiT and VAE are phased.
     std::string dit_name = resolve_name(g_registry.dit, sf.synth_model, g_loaded_dit);
-    if (!ensure_synth(dit_name, sf.adapter, sf.adapter_scale, sf.adapter_gs)) {
+    if (!ensure_synth(dit_name, sf.adapter, sf.adapter_scale, sf.adapter_gs, sf.adapter_mode)) {
         free(src_interleaved);
         free(ref_interleaved);
         job->status.store(2);

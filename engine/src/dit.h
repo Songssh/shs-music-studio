@@ -9,6 +9,7 @@
 //                conv_transpose_1d, add, mul, scale, view, reshape, permute.
 
 #include "adapter-merge.h"
+#include "adapter-runtime.h"
 #include "backend.h"
 #include "ggml-backend.h"
 #include "ggml.h"
@@ -122,6 +123,9 @@ struct DiTGGML {
 
     // Pre-allocated constant for AdaLN (1+scale) fusion
     struct ggml_tensor * scalar_one;  // [1] = 1.0f, broadcast in ggml_add
+
+    // Runtime LoRA: precomputed deltas stored in VRAM
+    DiTLoRA lora;
 };
 
 // Load timestep embedding weights
@@ -255,7 +259,8 @@ static bool dit_ggml_load(DiTGGML *                m,
                           const char *             gguf_path,
                           const char *             adapter_path  = nullptr,
                           float                    adapter_scale = 1.0f,
-                          AdapterGroupScales       adapter_gs    = {}) {
+                          AdapterGroupScales       adapter_gs    = {},
+                          const char *             adapter_mode  = nullptr) {
     GGUFModel gf;
     if (!gf_load(&gf, gguf_path)) {
         fprintf(stderr, "[Load] FATAL: cannot load %s\n", gguf_path);
@@ -411,12 +416,20 @@ static bool dit_ggml_load(DiTGGML *                m,
     // Merge adapter deltas into projection weights (before GPU upload and QKV fusion)
     if (adapter_path) {
         Timer adapter_timer;
-        if (!adapter_merge(&m->wctx, gf, adapter_path, adapter_scale, adapter_gs, m->backend)) {
-            fprintf(stderr, "[Adapter] FATAL: no tensors merged (model mismatch)\n");
-            gf_close(&gf);
-            return false;
+        if (adapter_mode && strcmp(adapter_mode, "runtime") == 0) {
+            // Runtime LoRA: precompute deltas on GPU, store as BF16
+            // Must happen AFTER wctx_alloc (base weights live in VRAM)
+            // so we defer to after the alloc below
+            fprintf(stderr, "[Adapter] mode=runtime, deferring delta precompute\n");
+        } else {
+            // Classic merge: modify base weights in-place
+            if (!adapter_merge(&m->wctx, gf, adapter_path, adapter_scale, adapter_gs, m->backend)) {
+                fprintf(stderr, "[Adapter] FATAL: no tensors merged (model mismatch)\n");
+                gf_close(&gf);
+                return false;
+            }
+            fprintf(stderr, "[Adapter] Merge time: %.1f ms\n", adapter_timer.ms());
         }
-        fprintf(stderr, "[Adapter] Merge time: %.1f ms\n", adapter_timer.ms());
     }
 
     // Allocate backend buffer and copy weights
@@ -425,6 +438,21 @@ static bool dit_ggml_load(DiTGGML *                m,
         return false;
     }
     gf_close(&gf);
+
+    // Runtime LoRA: precompute deltas now that base weights are in VRAM
+    if (adapter_path && adapter_mode && strcmp(adapter_mode, "runtime") == 0) {
+        Timer rt_timer;
+        GGUFModel gf_rt;
+        if (!gf_load(&gf_rt, gguf_path)) {
+            fprintf(stderr, "[Adapter-RT] FATAL: cannot reopen GGUF for runtime adapter\n");
+            return false;
+        }
+        if (!adapter_load_runtime(&m->lora, gf_rt, adapter_path, adapter_scale, adapter_gs, m->backend)) {
+            fprintf(stderr, "[Adapter-RT] WARNING: runtime adapter load failed, continuing without adapter\n");
+        }
+        gf_close(&gf_rt);
+        fprintf(stderr, "[Adapter-RT] Total time: %.1f ms\n", rt_timer.ms());
+    }
 
     fprintf(stderr, "[Load] DiT: %d layers, H=%d, Nh=%d/%d, D=%d\n", cfg.n_layers, cfg.hidden_size, cfg.n_heads,
             cfg.n_kv_heads, cfg.head_dim);
@@ -443,6 +471,7 @@ static void dit_ggml_init_backend(DiTGGML * m) {
 }
 
 static void dit_ggml_free(DiTGGML * m) {
+    dit_lora_free(&m->lora);
     if (m->sched) {
         ggml_backend_sched_free(m->sched);
     }

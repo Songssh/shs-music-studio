@@ -30,6 +30,7 @@ void ace_synth_default_params(AceSynthParams * p) {
     p->adapter_group_cross_attn  = 1.0f;
     p->adapter_group_mlp         = 1.0f;
     p->adapter_group_cond_embed  = 1.0f;
+    p->adapter_mode      = NULL;  // NULL or "merge" = classic merge, "runtime" = runtime LoRA
     p->use_fa            = true;
     p->clamp_fp16        = false;
     p->use_batch_cfg     = true;
@@ -225,7 +226,7 @@ bool ace_synth_dit_load(AceSynth * ctx) {
 
     timer.reset();
     if (!dit_ggml_load(&ctx->dit, ctx->params.dit_path, ctx->params.adapter_path, ctx->params.adapter_scale,
-                       adapter_gs)) {
+                       adapter_gs, ctx->params.adapter_mode)) {
         fprintf(stderr, "[Synth-Phase] FATAL: DiT load failed\n");
         dit_ggml_free(&ctx->dit);
         return false;

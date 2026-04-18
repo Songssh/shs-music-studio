@@ -32,6 +32,7 @@ struct AceSynthParams {
     float        adapter_group_cross_attn;  // per-group scale: cross-attention (default: 1.0)
     float        adapter_group_mlp;         // per-group scale: MLP/feed-forward (default: 1.0)
     float        adapter_group_cond_embed;  // per-group scale: conditioning embedder (default: 1.0)
+    const char * adapter_mode;       // "merge" (default) or "runtime" for runtime LoRA
     bool         use_fa;             // flash attention (default: true)
     bool         clamp_fp16;         // clamp hidden states to FP16 range (default: false)
     bool         use_batch_cfg;      // batch cond+uncond in one DiT forward (default: true)
