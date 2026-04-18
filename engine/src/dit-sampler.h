@@ -1,13 +1,15 @@
 #pragma once
-// dit-sampler.h: DiT sampling loop with APG (Adaptive Projected Guidance)
+// dit-sampler.h: DiT sampling loop with modular solver/guidance dispatch
 //
-// Flow matching sampler with modular solver dispatch.
-// Solvers are resolved by name via the solver registry (solvers/solver-registry.h).
-// CFG via APG momentum. Matches Python ACE-Step-1.5 acestep/models/base/apg_guidance.py
+// Flow matching sampler with modular solver and guidance mode dispatch.
+// Solvers are resolved by name via solvers/solver-registry.h.
+// Guidance modes are resolved by name via guidance/guidance-registry.h.
+// Matches Python ACE-Step-1.5 acestep/models/base/apg_guidance.py
 
 #include "debug.h"
 #include "dit-graph.h"
 #include "dit.h"
+#include "guidance/guidance-registry.h"
 #include "philox.h"
 #include "solvers/solver-registry.h"
 
@@ -16,111 +18,8 @@
 #include <cstring>
 #include <vector>
 
-// APG (Adaptive Projected Guidance) for DiT CFG
-// Matches Python ACE-Step-1.5 acestep/models/base/apg_guidance.py
-struct APGMomentumBuffer {
-    double              momentum;
-    std::vector<double> running_average;
-    bool                initialized;
-
-    APGMomentumBuffer(double m = -0.75) : momentum(m), initialized(false) {}
-
-    void update(const double * values, int n) {
-        if (!initialized) {
-            running_average.assign(values, values + n);
-            initialized = true;
-        } else {
-            for (int i = 0; i < n; i++) {
-                running_average[i] = values[i] + momentum * running_average[i];
-            }
-        }
-    }
-};
-
-// project(v0, v1, dims=[1]): decompose v0 into parallel + orthogonal w.r.t. v1
-// All math in double precision matching Python .double() calls.
-// Layout: memory [T, Oc] time-major (ggml ne=[Oc, T]).
-// Python dims=[1] on [B,T,C] = normalize/project per channel over T dimension.
-// In memory [T, Oc] layout: for each channel c, operate over all T time frames.
-static void apg_project(const double * v0, const double * v1, double * out_par, double * out_orth, int Oc, int T) {
-    for (int c = 0; c < Oc; c++) {
-        double norm2 = 0.0;
-        for (int t = 0; t < T; t++) {
-            norm2 += v1[t * Oc + c] * v1[t * Oc + c];
-        }
-        double inv_norm = (norm2 > 1e-60) ? (1.0 / sqrt(norm2)) : 0.0;
-
-        double dot = 0.0;
-        for (int t = 0; t < T; t++) {
-            dot += v0[t * Oc + c] * (v1[t * Oc + c] * inv_norm);
-        }
-
-        for (int t = 0; t < T; t++) {
-            int    idx    = t * Oc + c;
-            double v1n    = v1[idx] * inv_norm;
-            out_par[idx]  = dot * v1n;
-            out_orth[idx] = v0[idx] - out_par[idx];
-        }
-    }
-}
-
-// APG forward matching Python apg_forward() exactly:
-//   1. diff = cond - uncond
-//   2. momentum.update(diff); diff = running_average
-//   3. norm clip: per-channel L2 over T (dims=[1]), clip to norm_threshold=2.5
-//   4. project(diff, pred_COND) -> (parallel, orthogonal)
-//   5. result = pred_cond + (scale - 1) * orthogonal
-// Internal computation in double precision (Python uses .double()).
-static void apg_forward(const float *       pred_cond,
-                        const float *       pred_uncond,
-                        float               guidance_scale,
-                        APGMomentumBuffer & mbuf,
-                        float *             result,
-                        int                 Oc,
-                        int                 T,
-                        float               norm_threshold = 2.5f) {
-    int n = Oc * T;
-
-    // 1. diff = cond - uncond (promote to double)
-    std::vector<double> diff(n);
-    for (int i = 0; i < n; i++) {
-        diff[i] = (double) pred_cond[i] - (double) pred_uncond[i];
-    }
-
-    // 2. momentum update, then use smoothed diff
-    mbuf.update(diff.data(), n);
-    memcpy(diff.data(), mbuf.running_average.data(), n * sizeof(double));
-
-    // 3. norm clipping: per-channel L2 over T (dims=[1]), clip to threshold
-    if (norm_threshold > 0.0f) {
-        for (int c = 0; c < Oc; c++) {
-            double norm2 = 0.0;
-            for (int t = 0; t < T; t++) {
-                norm2 += diff[t * Oc + c] * diff[t * Oc + c];
-            }
-            double norm = sqrt(norm2 > 0.0 ? norm2 : 0.0);
-            double s    = (norm > 1e-60) ? fmin(1.0, (double) norm_threshold / norm) : 1.0;
-            if (s < 1.0) {
-                for (int t = 0; t < T; t++) {
-                    diff[t * Oc + c] *= s;
-                }
-            }
-        }
-    }
-
-    // 4. project(diff, pred_COND) -> orthogonal component (double precision)
-    std::vector<double> pred_cond_d(n), par(n), orth(n);
-    for (int i = 0; i < n; i++) {
-        pred_cond_d[i] = (double) pred_cond[i];
-    }
-    apg_project(diff.data(), pred_cond_d.data(), par.data(), orth.data(), Oc, T);
-
-    // 5. result = pred_cond + (scale - 1) * orthogonal (back to float)
-    double w = (double) guidance_scale - 1.0;
-    for (int i = 0; i < n; i++) {
-        result[i] = (float) ((double) pred_cond[i] + w * orth[i]);
-    }
-}
+// APG core primitives are now in guidance/apg-core.h
+// (included transitively via guidance/guidance-registry.h)
 
 // Flow matching generation loop (batched)
 // Runs num_steps euler steps to denoise N latent samples in parallel.
@@ -157,7 +56,8 @@ static int dit_ggml_generate(DiTGGML *           model,
                              int             repaint_crossfade_frames = 0,
                              const char *    solver_name              = "euler",
                              const int64_t * seeds                    = nullptr,
-                             bool            use_batch_cfg            = true) {
+                             bool            use_batch_cfg            = true,
+                             const char *    guidance_mode            = "apg") {
     DiTGGMLConfig & c       = model->cfg;
     int             Oc      = c.out_channels;      // 64
     int             ctx_ch  = c.in_channels - Oc;  // 128
@@ -407,6 +307,17 @@ static int dit_ggml_generate(DiTGGML *           model,
     solver_state.n_per   = n_per;
     solver_state.xt_scratch.resize(n_total);
 
+    // ── Guidance mode dispatch setup ─────────────────────────────────────
+    const GuidanceInfo * guidance_info = guidance_lookup(guidance_mode);
+    if (!guidance_info) {
+        fprintf(stderr, "[DiT] ERROR: unknown guidance mode '%s', falling back to apg\n", guidance_mode);
+        guidance_info = guidance_lookup("apg");
+    }
+    fprintf(stderr, "[DiT] Guidance: %s (%s)\n", guidance_info->display_name, guidance_info->name);
+
+    // Per-step guidance context (updated in the main loop, captured by lambda)
+    GuidanceCtx g_ctx = {0, num_steps, 0.0f, 0.0f};
+
     // ── evaluate_velocity lambda ─────────────────────────────────────────────
     // Evaluates the DiT model at an arbitrary (xt_in, t_val) point and writes
     // the CFG-processed velocity into `vt`. This is the "model_fn" that
@@ -458,8 +369,8 @@ static int dit_ggml_generate(DiTGGML *           model,
             memcpy(vt_cond.data(), full_output.data(), n_total * sizeof(float));
             memcpy(vt_uncond.data(), full_output.data() + n_total, n_total * sizeof(float));
             for (int b = 0; b < N; b++) {
-                apg_forward(vt_cond.data() + b * n_per, vt_uncond.data() + b * n_per, guidance_scale, apg_mbufs[b],
-                            vt.data() + b * n_per, Oc, T);
+                guidance_info->fn(vt_cond.data() + b * n_per, vt_uncond.data() + b * n_per, guidance_scale,
+                                  apg_mbufs[b], vt.data() + b * n_per, Oc, T, g_ctx);
             }
         } else if (do_cfg) {
             ggml_backend_tensor_get(t_output, vt_cond.data(), 0, n_total * sizeof(float));
@@ -479,8 +390,8 @@ static int dit_ggml_generate(DiTGGML *           model,
             ggml_backend_sched_graph_compute(model->sched, gf);
             ggml_backend_tensor_get(t_output, vt_uncond.data(), 0, n_total * sizeof(float));
             for (int b = 0; b < N; b++) {
-                apg_forward(vt_cond.data() + b * n_per, vt_uncond.data() + b * n_per, guidance_scale, apg_mbufs[b],
-                            vt.data() + b * n_per, Oc, T);
+                guidance_info->fn(vt_cond.data() + b * n_per, vt_uncond.data() + b * n_per, guidance_scale,
+                                  apg_mbufs[b], vt.data() + b * n_per, Oc, T, g_ctx);
             }
         } else {
             ggml_backend_tensor_get(t_output, vt.data(), 0, n_total * sizeof(float));
@@ -525,6 +436,12 @@ static int dit_ggml_generate(DiTGGML *           model,
             }
             fprintf(stderr, "[DiT] Cover: switched to non-cover context at step %d/%d\n", step, num_steps);
         }
+
+        // Update guidance context for this step
+        float t_next_for_ctx = (step + 1 < num_steps) ? schedule[step + 1] : 0.0f;
+        g_ctx.step_idx   = step;
+        g_ctx.t_curr     = t_curr;
+        g_ctx.dt         = t_curr - t_next_for_ctx;
 
         // Evaluate velocity at (xt, t_curr) — first evaluation (k1 for RK4, only eval for Euler)
         evaluate_velocity(xt.data(), t_curr);

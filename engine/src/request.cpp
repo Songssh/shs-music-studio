@@ -45,6 +45,7 @@ void request_init(AceRequest * r) {
     r->track                = "";
     r->infer_method         = "";
     r->scheduler             = "";
+    r->guidance_mode         = "";
     r->peak_clip            = 10;
 }
 
@@ -90,6 +91,9 @@ static void request_parse_obj(yyjson_val * obj, AceRequest * r) {
     }
     if ((v = yyjson_obj_get(obj, "scheduler")) && yyjson_is_str(v)) {
         r->scheduler = yy_str(v);
+    }
+    if ((v = yyjson_obj_get(obj, "guidance_mode")) && yyjson_is_str(v)) {
+        r->guidance_mode = yy_str(v);
     }
 
     // ints
@@ -340,6 +344,9 @@ static yyjson_mut_doc * request_build_doc(const AceRequest * r, bool sparse) {
     if (all || r->scheduler != def.scheduler) {
         yyjson_mut_obj_add_str(doc, root, "scheduler", r->scheduler.c_str());
     }
+    if (all || r->guidance_mode != def.guidance_mode) {
+        yyjson_mut_obj_add_str(doc, root, "guidance_mode", r->guidance_mode.c_str());
+    }
 
     // batch
     if (all || r->synth_batch_size != def.synth_batch_size) {
@@ -435,6 +442,9 @@ void request_dump(const AceRequest * r, FILE * f) {
     }
     if (!r->scheduler.empty()) {
         fprintf(f, "[Request] scheduler: %s\n", r->scheduler.c_str());
+    }
+    if (!r->guidance_mode.empty()) {
+        fprintf(f, "[Request] guidance_mode: %s\n", r->guidance_mode.c_str());
     }
     if (r->peak_clip != 10) {
         fprintf(f, "[Request] peak_clip: %d\n", r->peak_clip);

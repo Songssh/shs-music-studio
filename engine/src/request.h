@@ -72,6 +72,9 @@ struct AceRequest {
     // scheduler: "" = linear (default), or one of the registered schedulers
     std::string scheduler;  // ""
 
+    // guidance mode: "" = apg (default), or one of the registered guidance modes
+    std::string guidance_mode;  // ""
+
     // audio output: peak clip via percentile normalization.
     // 0 = peak normalization (100.0000th percentile, no clipping).
     // 10 = default (99.9990th percentile, clips top 0.001%).

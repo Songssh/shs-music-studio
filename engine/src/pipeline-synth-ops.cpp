@@ -635,7 +635,8 @@ int ops_dit_generate(AceSynth * ctx, int batch_n, SynthState & s, bool (*cancel)
         s.per_S.data(), s.per_enc_S.data(), s.enc_hidden_nc.empty() ? nullptr : s.enc_hidden_nc.data(),
         s.per_enc_S_nc_final.empty() ? nullptr : s.per_enc_S_nc_final.data(),
         s.repaint_src.empty() ? nullptr : s.repaint_src.data(), s.repaint_t0, s.repaint_t1, s.repaint_injection_ratio,
-        s.repaint_crossfade_frames, s.solver.c_str(), s.seeds.data(), ctx->params.use_batch_cfg);
+        s.repaint_crossfade_frames, s.solver.c_str(), s.seeds.data(), ctx->params.use_batch_cfg,
+        s.guidance_mode.c_str());
     if (dit_rc != 0) {
         return -1;
     }

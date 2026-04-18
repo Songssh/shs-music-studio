@@ -15,6 +15,7 @@ interface GenerationSettingsProps {
   shift: number; onShiftChange: (v: number) => void;
   inferMethod: string; onInferMethodChange: (v: string) => void;
   scheduler: string; onSchedulerChange: (v: string) => void;
+  guidanceMode: string; onGuidanceModeChange: (v: string) => void;
   // Seed
   seed: number; onSeedChange: (v: number) => void;
   randomSeed: boolean; onRandomSeedChange: (v: boolean) => void;
@@ -95,6 +96,18 @@ export const GenerationSettings: React.FC<GenerationSettingsProps> = (props) => 
               <option value="bong_tangent">Tangent (Front-loaded)</option>
               <option value="linear_quadratic">Linear-Quadratic</option>
               <option value="power">Power (p=2)</option>
+            </select>
+          </div>
+
+          {/* Guidance Mode */}
+          <div>
+            <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1.5">Guidance</label>
+            <select className={selectClasses} value={props.guidanceMode}
+              onChange={e => props.onGuidanceModeChange(e.target.value)}>
+              <option value="apg">APG (Default)</option>
+              <option value="cfg_pp">CFG++</option>
+              <option value="dynamic_cfg">Dynamic CFG</option>
+              <option value="rescaled_cfg">Rescaled CFG</option>
             </select>
           </div>
 

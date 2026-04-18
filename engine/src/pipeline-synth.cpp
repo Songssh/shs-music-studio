@@ -386,6 +386,9 @@ AceSynthJob * ace_synth_job_run_dit(AceSynth *         ctx,
     s.solver = s.rr.infer_method.empty() ? "euler" : s.rr.infer_method;
     if (s.solver == "ode") s.solver = "euler";  // legacy alias
 
+    // Guidance mode selection: resolve from request, default to "apg"
+    s.guidance_mode = s.rr.guidance_mode.empty() ? "apg" : s.rr.guidance_mode;
+
     // Resolve latent frame count T
     if (ops_resolve_T(ctx, s) != 0) {
         delete job;

@@ -130,6 +130,7 @@ function translateParams(params: any): AceRequest {
   if (params.shift !== undefined) req.shift = params.shift;
   if (params.inferMethod) req.infer_method = params.inferMethod;
   if (params.scheduler) req.scheduler = params.scheduler;
+  if (params.guidanceMode) req.guidance_mode = params.guidanceMode;
 
   // Cover/repaint
   if (params.taskType) req.task_type = params.taskType;
@@ -262,6 +263,7 @@ async function runGeneration(job: GenerationJob): Promise<void> {
         if (aceReq.shift !== undefined) result.shift = aceReq.shift;
         if (aceReq.infer_method !== undefined) result.infer_method = aceReq.infer_method;
         if (aceReq.scheduler !== undefined) result.scheduler = aceReq.scheduler;
+        if (aceReq.guidance_mode !== undefined) result.guidance_mode = aceReq.guidance_mode;
 
         // Routing fields (adapter, model selection)
         if (aceReq.synth_model) result.synth_model = aceReq.synth_model;

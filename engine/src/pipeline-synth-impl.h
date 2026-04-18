@@ -108,6 +108,10 @@ struct SynthState {
     // Alias: "karras" -> "sgm_uniform"
     std::string scheduler;
 
+    // Guidance mode: dispatched via guidance_lookup() in guidance/guidance-registry.h
+    // Valid values: "apg", "cfg_pp", "dynamic_cfg", "rescaled_cfg"
+    std::string guidance_mode;
+
     // per-batch seeds (for reproducible SDE re-noising: seed + step offset)
     std::vector<int64_t> seeds;
 
