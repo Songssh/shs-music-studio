@@ -306,13 +306,17 @@ static bool adapter_backend_can_encode(ggml_backend_t backend, enum ggml_type ty
 }
 
 // True when the backend has a native -> F32 decode cast kernel for this type.
-// K-quants (Q4_K_M, Q5_K_M, Q6_K) lack this on CUDA, causing a hard crash if
-// we attempt ggml_cast(native, F32) on the backend. When false, the caller
-// must dequantize on the CPU and upload as F32.
+// Results are cached per type — the probe involves creating a ggml context
+// and calling supports_op, so we don't want to do it 600 times.
 static bool adapter_backend_can_decode(ggml_backend_t backend, enum ggml_type type) {
     if (type == GGML_TYPE_F32 || type == GGML_TYPE_F16 || type == GGML_TYPE_BF16) {
         return true;
     }
+    // cache per type
+    static std::unordered_map<int, bool> cache;
+    auto it = cache.find((int) type);
+    if (it != cache.end()) return it->second;
+
     // quantized types need a block-aligned element count for the probe tensor
     int64_t                 probe_n = (int64_t) ggml_blck_size(type) * 4;
     size_t                  meta    = ggml_tensor_overhead() * 4 + 1024;
@@ -323,6 +327,7 @@ static bool adapter_backend_can_decode(ggml_backend_t backend, enum ggml_type ty
     bool                    ok      = ggml_backend_supports_op(backend, dst);
     fprintf(stderr, "[Adapter] can_decode(%s → F32): %s\n", ggml_type_name(type), ok ? "GPU" : "CPU fallback");
     ggml_free(ctx);
+    cache[(int) type] = ok;
     return ok;
 }
 
