@@ -91,6 +91,21 @@ export function initDb(): void {
     CREATE INDEX IF NOT EXISTS idx_playlists_user ON playlists(user_id);
   `);
 
+  // Migrations — add columns that may not exist in older databases
+  const migrations: Array<{ check: string; alter: string }> = [
+    {
+      check: `SELECT COUNT(*) as c FROM pragma_table_info('songs') WHERE name='mastered_audio_url'`,
+      alter: `ALTER TABLE songs ADD COLUMN mastered_audio_url TEXT DEFAULT ''`,
+    },
+  ];
+  for (const m of migrations) {
+    const row = db.prepare(m.check).get() as any;
+    if (row.c === 0) {
+      db.exec(m.alter);
+      console.log(`[DB] Migration: ${m.alter}`);
+    }
+  }
+
   console.log(`[DB] Initialized: ${config.data.dbPath}`);
 }
 
