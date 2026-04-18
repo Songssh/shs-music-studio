@@ -17,7 +17,7 @@ import { RightSidebar } from './components/details/RightSidebar';
 import { Toast, type ToastType } from './components/shared/Toast';
 import { ConfirmDialog } from './components/shared/ConfirmDialog';
 import { DownloadModal } from './components/shared/DownloadModal';
-import { SettingsPanel, type AppSettings } from './components/settings/SettingsPanel';
+import { SettingsPanel, type AppSettings, DEFAULT_SETTINGS } from './components/settings/SettingsPanel';
 import type { Song, GenerationParams } from './types';
 
 const App: React.FC = () => {
@@ -33,10 +33,7 @@ const App: React.FC = () => {
   const [showRightSidebar, setShowRightSidebar] = useState(true);
 
   // Settings state (persisted)
-  const [settings, setSettings] = usePersistedState<AppSettings>('ace-settings', {
-    coResident: false,
-    cacheLmCodes: true,
-  });
+  const [settings, setSettings] = usePersistedState<AppSettings>('ace-settings', DEFAULT_SETTINGS);
 
   // Player state
   const [isPlaying, setIsPlaying] = useState(false);
@@ -491,6 +488,9 @@ const App: React.FC = () => {
           song={downloadSong}
           isOpen={true}
           onClose={() => setDownloadSong(null)}
+          defaultFormat={settings.downloadFormat}
+          defaultMp3Bitrate={settings.downloadMp3Bitrate}
+          defaultOpusBitrate={settings.downloadOpusBitrate}
         />
       )}
     </div>

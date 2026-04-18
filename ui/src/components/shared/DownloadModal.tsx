@@ -11,6 +11,9 @@ interface DownloadModalProps {
   song: Song;
   isOpen: boolean;
   onClose: () => void;
+  defaultFormat?: 'wav' | 'flac' | 'opus' | 'mp3';
+  defaultMp3Bitrate?: number;
+  defaultOpusBitrate?: number;
 }
 
 type AudioFormat = 'wav' | 'flac' | 'opus' | 'mp3';
@@ -25,9 +28,16 @@ const FORMAT_INFO: Record<AudioFormat, { label: string; desc: string; lossy: boo
 
 const BITRATES = [128, 192, 256, 320];
 
-export const DownloadModal: React.FC<DownloadModalProps> = ({ song, isOpen, onClose }) => {
-  const [format, setFormat] = useState<AudioFormat>('flac');
-  const [bitrate, setBitrate] = useState(192);
+export const DownloadModal: React.FC<DownloadModalProps> = ({
+  song, isOpen, onClose,
+  defaultFormat = 'flac',
+  defaultMp3Bitrate = 192,
+  defaultOpusBitrate = 192,
+}) => {
+  const [format, setFormat] = useState<AudioFormat>(defaultFormat);
+  const [bitrate, setBitrate] = useState(
+    defaultFormat === 'opus' ? defaultOpusBitrate : defaultMp3Bitrate
+  );
   const [version, setVersion] = useState<DownloadVersion>('original');
   const [downloading, setDownloading] = useState(false);
 
@@ -115,7 +125,11 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({ song, isOpen, onCl
                 {(Object.keys(FORMAT_INFO) as AudioFormat[]).map(f => (
                   <button
                     key={f}
-                    onClick={() => setFormat(f)}
+                    onClick={() => {
+                      setFormat(f);
+                      if (f === 'opus') setBitrate(defaultOpusBitrate);
+                      else if (f === 'mp3') setBitrate(defaultMp3Bitrate);
+                    }}
                     className={`flex flex-col items-center gap-1 px-3 py-2.5 rounded-xl border transition-all ${
                       format === f
                         ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'

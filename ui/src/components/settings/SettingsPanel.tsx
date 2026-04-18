@@ -1,17 +1,28 @@
 // SettingsPanel.tsx — Application settings with persistent state
 //
-// First settings page for HOT-Step CPP. All settings use localStorage
-// via usePersistedState and survive page refreshes.
+// All settings use localStorage via usePersistedState and survive page refreshes.
 
 import React from 'react';
-import { Zap, Brain, Settings } from 'lucide-react';
+import { Zap, Download, Settings } from 'lucide-react';
 import { usePersistedState } from '../../hooks/usePersistedState';
 import './SettingsPanel.css';
 
 export interface AppSettings {
   coResident: boolean;
   cacheLmCodes: boolean;
+  // Download defaults
+  downloadFormat: 'wav' | 'flac' | 'opus' | 'mp3';
+  downloadMp3Bitrate: number;
+  downloadOpusBitrate: number;
 }
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  coResident: false,
+  cacheLmCodes: true,
+  downloadFormat: 'flac',
+  downloadMp3Bitrate: 192,
+  downloadOpusBitrate: 192,
+};
 
 interface SettingsPanelProps {
   settings: AppSettings;
@@ -61,11 +72,38 @@ const SettingRow: React.FC<{
   </div>
 );
 
+/** Select dropdown row for settings */
+const SelectRow: React.FC<{
+  id: string;
+  label: string;
+  description: string;
+  value: string | number;
+  options: Array<{ value: string | number; label: string }>;
+  onChange: (v: string) => void;
+}> = ({ id, label, description, value, options, onChange }) => (
+  <div className="setting-row">
+    <div className="setting-info">
+      <div className="setting-label">{label}</div>
+      <div className="setting-description">{description}</div>
+    </div>
+    <select
+      id={id}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="px-3 py-1.5 rounded-lg bg-zinc-800 border border-white/10 text-sm text-zinc-200 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 outline-none cursor-pointer min-w-[100px]"
+    >
+      {options.map(o => (
+        <option key={o.value} value={o.value}>{o.label}</option>
+      ))}
+    </select>
+  </div>
+);
+
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   settings,
   onSettingsChange,
 }) => {
-  const update = (key: keyof AppSettings, value: boolean) => {
+  const update = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     onSettingsChange({ ...settings, [key]: value });
   };
 
@@ -106,6 +144,56 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           badges={[
             { text: '−12s', type: 'speed' },
           ]}
+        />
+      </div>
+
+      {/* Downloads Section */}
+      <div className="settings-section">
+        <div className="settings-section-header">
+          <Download size={16} className="settings-section-icon" />
+          <span className="settings-section-title">Downloads</span>
+        </div>
+
+        <SelectRow
+          id="setting-dl-format"
+          label="Default format"
+          description="Preferred audio format when downloading tracks."
+          value={settings.downloadFormat}
+          options={[
+            { value: 'wav', label: 'WAV (lossless)' },
+            { value: 'flac', label: 'FLAC (lossless)' },
+            { value: 'opus', label: 'Opus (lossy)' },
+            { value: 'mp3', label: 'MP3 (lossy)' },
+          ]}
+          onChange={(v) => update('downloadFormat', v as AppSettings['downloadFormat'])}
+        />
+
+        <SelectRow
+          id="setting-dl-mp3-bitrate"
+          label="MP3 bitrate"
+          description="Default bitrate for MP3 downloads."
+          value={settings.downloadMp3Bitrate}
+          options={[
+            { value: 128, label: '128 kbps' },
+            { value: 192, label: '192 kbps' },
+            { value: 256, label: '256 kbps' },
+            { value: 320, label: '320 kbps' },
+          ]}
+          onChange={(v) => update('downloadMp3Bitrate', parseInt(v))}
+        />
+
+        <SelectRow
+          id="setting-dl-opus-bitrate"
+          label="Opus bitrate"
+          description="Default bitrate for Opus downloads."
+          value={settings.downloadOpusBitrate}
+          options={[
+            { value: 96, label: '96 kbps' },
+            { value: 128, label: '128 kbps' },
+            { value: 192, label: '192 kbps' },
+            { value: 256, label: '256 kbps' },
+          ]}
+          onChange={(v) => update('downloadOpusBitrate', parseInt(v))}
         />
       </div>
     </div>
