@@ -167,3 +167,22 @@ else()
     target_link_libraries(mp3-codec PRIVATE m)
 endif()
 target_link_libraries(mp3-codec PRIVATE Threads::Threads)
+
+# mastering: reference-based audio mastering (standalone, no ggml needed)
+# Implements the matchering algorithm using pocketfft for FFT.
+add_executable(mastering tools/mastering.cpp)
+target_include_directories(mastering PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/pocketfft
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
+add_dependencies(mastering version)
+if(MSVC)
+    target_compile_options(mastering PRIVATE /W4 /wd4100 /wd4505 /wd4244 /wd4267)
+else()
+    target_compile_options(mastering PRIVATE -Wall -Wextra -Wconversion
+                          -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion)
+    target_link_libraries(mastering PRIVATE m)
+endif()
+target_link_libraries(mastering PRIVATE Threads::Threads)
