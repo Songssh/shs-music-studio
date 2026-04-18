@@ -52,6 +52,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -327,10 +328,22 @@ static bool adapter_backend_can_decode(ggml_backend_t backend, enum ggml_type ty
 // Dequantize a native-type buffer to F32 on the CPU using the ggml CPU backend.
 // Uses all available threads + SIMD (AVX512/NEON). The CPU backend supports
 // ggml_cast for ALL quantized types, unlike CUDA which lacks K-quant cpy kernels.
+// The CPU backend is cached as a static to avoid per-tensor init overhead.
 static bool adapter_dequant_cpu(const void * src, float * dst, int64_t ne0, int64_t ne1, enum ggml_type type) {
     if (type == GGML_TYPE_F32) {
         memcpy(dst, src, (size_t)(ne0 * ne1) * sizeof(float));
         return true;
+    }
+
+    // cached CPU backend — created once, reused for all tensor merges
+    static ggml_backend_t cpu = nullptr;
+    if (!cpu) {
+        cpu = ggml_backend_cpu_init();
+        if (!cpu) return false;
+        int n_threads = (int) std::thread::hardware_concurrency();
+        if (n_threads < 1) n_threads = 4;
+        ggml_backend_cpu_set_n_threads(cpu, n_threads);
+        fprintf(stderr, "[Adapter] CPU dequant backend: %d threads\n", n_threads);
     }
 
     size_t  base_nb = ggml_row_size(type, ne0) * (size_t) ne1;
@@ -345,18 +358,14 @@ static bool adapter_dequant_cpu(const void * src, float * dst, int64_t ne0, int6
     struct ggml_cgraph * graph = ggml_new_graph(ctx);
     ggml_build_forward_expand(graph, tdst);
 
-    ggml_backend_t cpu = ggml_backend_cpu_init();
-    if (!cpu) { ggml_free(ctx); return false; }
-
     ggml_backend_buffer_t buf = ggml_backend_alloc_ctx_tensors(ctx, cpu);
-    if (!buf) { ggml_backend_free(cpu); ggml_free(ctx); return false; }
+    if (!buf) { ggml_free(ctx); return false; }
 
     ggml_backend_tensor_set(tsrc, src, 0, base_nb);
     ggml_backend_graph_compute(cpu, graph);
     ggml_backend_tensor_get(tdst, dst, 0, (size_t)(ne0 * ne1) * sizeof(float));
 
     ggml_backend_buffer_free(buf);
-    ggml_backend_free(cpu);
     ggml_free(ctx);
     return true;
 }
