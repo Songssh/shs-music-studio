@@ -59,13 +59,23 @@
 
 // Classify a GGUF tensor name into its adapter group.
 // Returns "self_attn", "cross_attn", "mlp", "cond_embed", or "" for unclassified.
-// Ported from Python hot-step-9000 _determine_group().
+//
+// IMPORTANT: These patterns intentionally match the Python hot-step-9000
+// _determine_group() behaviour.  The Python uses ".attn." / ".ff." which do
+// NOT match the ACE-Step model's actual ".self_attn." / ".mlp." naming, so
+// self_attn and mlp tensors fall through to "" (unclassified) and receive the
+// average of all group scales.  This is the behaviour the user has been
+// tuning against for months, so we replicate it here for parity.
+//
+// See ADAPTER_GROUP_SCALES_INVESTIGATION.md for the full write-up.
+// TODO: once Python is fixed, update these patterns to the correct ones:
+//         ".self_attn." → "self_attn",  ".mlp." → "mlp"
 static std::string adapter_determine_group(const std::string & gguf_name) {
     // cross_attn checked first because it also contains "attn"
-    if (gguf_name.find(".cross_attn.") != std::string::npos) return "cross_attn";
-    if (gguf_name.find(".self_attn.")  != std::string::npos) return "self_attn";
-    if (gguf_name.find(".mlp.")        != std::string::npos) return "mlp";
-    if (gguf_name.find("condition_embedder") != std::string::npos) return "cond_embed";
+    if (gguf_name.find("cross_attn")      != std::string::npos) return "cross_attn";
+    if (gguf_name.find(".attn.")          != std::string::npos) return "self_attn";
+    if (gguf_name.find(".ff.")            != std::string::npos) return "mlp";
+    if (gguf_name.find("condition_embed") != std::string::npos) return "cond_embed";
     return "";
 }
 
