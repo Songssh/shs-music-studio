@@ -251,10 +251,11 @@ static struct ggml_tensor * dit_load_proj_out_w(WeightCtx *         wctx,
 }
 
 // Load full DiT model from GGUF
-static bool dit_ggml_load(DiTGGML *    m,
-                          const char * gguf_path,
-                          const char * adapter_path  = nullptr,
-                          float        adapter_scale = 1.0f) {
+static bool dit_ggml_load(DiTGGML *                m,
+                          const char *             gguf_path,
+                          const char *             adapter_path  = nullptr,
+                          float                    adapter_scale = 1.0f,
+                          AdapterGroupScales       adapter_gs    = {}) {
     GGUFModel gf;
     if (!gf_load(&gf, gguf_path)) {
         fprintf(stderr, "[Load] FATAL: cannot load %s\n", gguf_path);
@@ -410,7 +411,7 @@ static bool dit_ggml_load(DiTGGML *    m,
     // Merge adapter deltas into projection weights (before GPU upload and QKV fusion)
     if (adapter_path) {
         Timer adapter_timer;
-        if (!adapter_merge(&m->wctx, gf, adapter_path, adapter_scale, m->backend)) {
+        if (!adapter_merge(&m->wctx, gf, adapter_path, adapter_scale, adapter_gs, m->backend)) {
             fprintf(stderr, "[Adapter] FATAL: no tensors merged (model mismatch)\n");
             gf_close(&gf);
             return false;

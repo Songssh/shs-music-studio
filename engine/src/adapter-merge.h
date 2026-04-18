@@ -54,6 +54,40 @@
 #include <unordered_map>
 #include <vector>
 
+// Per-group scale multipliers for selective adapter application.
+// Each float defaults to 1.0 (full adapter effect). 0.0 = no adapter for that group.
+struct AdapterGroupScales {
+    float self_attn  = 1.0f;  // self-attention projections (q/k/v/o_proj)
+    float cross_attn = 1.0f;  // cross-attention projections
+    float mlp        = 1.0f;  // feed-forward / SwiGLU projections
+    float cond_embed = 1.0f;  // condition_embedder linear
+};
+
+// Classify a GGUF tensor name into its adapter group.
+// Returns "self_attn", "cross_attn", "mlp", "cond_embed", or "" for unclassified.
+// Ported from Python hot-step-9000 _determine_group().
+static std::string adapter_determine_group(const std::string & gguf_name) {
+    // cross_attn checked first because it also contains "attn"
+    if (gguf_name.find(".cross_attn.") != std::string::npos) return "cross_attn";
+    if (gguf_name.find(".self_attn.")  != std::string::npos) return "self_attn";
+    if (gguf_name.find(".mlp.")        != std::string::npos) return "mlp";
+    if (gguf_name.find("condition_embedder") != std::string::npos) return "cond_embed";
+    return "";
+}
+
+// Look up the group scale for a given group name.
+// Unclassified tensors (norms, final_layer, scale_shift_table) get the
+// average of all group scales so they respect the user's intent when groups
+// are zeroed out.
+static float adapter_group_scale_for(const AdapterGroupScales & gs, const std::string & group) {
+    if (group == "self_attn")   return gs.self_attn;
+    if (group == "cross_attn") return gs.cross_attn;
+    if (group == "mlp")        return gs.mlp;
+    if (group == "cond_embed") return gs.cond_embed;
+    // unclassified: average
+    return (gs.self_attn + gs.cross_attn + gs.mlp + gs.cond_embed) / 4.0f;
+}
+
 // Convert safetensors tensor data to F32 based on dtype string.
 // Handles "F32", "BF16", "F16". Returns false for unknown dtypes.
 static bool adapter_to_f32(const void * src, float * dst, int64_t n, const std::string & dtype) {
@@ -478,12 +512,13 @@ static bool adapter_merge_on_backend(WeightCtx *                                
 //   delta = (alpha / rank) * scale * B @ A
 // Applied to base weights in place. Alpha is read per tensor if present
 // (ComfyUI baked), else from adapter_config.json, else defaults to rank.
-static bool adapter_merge_lora(WeightCtx *         wctx,
-                               const GGUFModel &   gf,
-                               const STFile &      st,
-                               const std::string & cfg_dir,
-                               float               scale,
-                               ggml_backend_t      backend) {
+static bool adapter_merge_lora(WeightCtx *                wctx,
+                               const GGUFModel &          gf,
+                               const STFile &             st,
+                               const std::string &        cfg_dir,
+                               float                      scale,
+                               const AdapterGroupScales & gs,
+                               ggml_backend_t             backend) {
     int alpha_cfg = adapter_read_alpha(cfg_dir.c_str());
 
     // group lora_A and lora_B entries by their GGUF base tensor name.
@@ -583,7 +618,8 @@ static bool adapter_merge_lora(WeightCtx *         wctx,
         } else {
             alpha = (float) rank;
         }
-        float scaling = (alpha / (float) rank) * scale;
+        float g_scale = adapter_group_scale_for(gs, adapter_determine_group(gguf_name));
+        float scaling = (alpha / (float) rank) * scale * g_scale;
 
         // load A and B to F32, PEFT rounds them through BF16 before the GEMM
         int64_t            a_nel = rank * in_feat;
@@ -670,11 +706,12 @@ static bool adapter_merge_lora(WeightCtx *         wctx,
 // (1, 3, 0, 2). The fast pair (d, b) then collapses into in_feat and the
 // slow pair (c, a) into out_feat under reshape_2d. Net effect:
 //   delta_rm[aa*c + cc, bb*d + dd] = W1[aa, bb] * W2[cc, dd]
-static bool adapter_merge_lokr(WeightCtx *       wctx,
-                               const GGUFModel & gf,
-                               const STFile &    st,
-                               float             user_scale,
-                               ggml_backend_t    backend) {
+static bool adapter_merge_lokr(WeightCtx *                wctx,
+                               const GGUFModel &          gf,
+                               const STFile &             st,
+                               float                      user_scale,
+                               const AdapterGroupScales & gs,
+                               ggml_backend_t             backend) {
     // group the per module tensors by LyCORIS prefix. Each module has either
     // w2 alone (monolithic) or w2_a + w2_b (factorized), never both.
     struct LoKrEntry {
@@ -880,7 +917,8 @@ static bool adapter_merge_lokr(WeightCtx *       wctx,
             ds_ptr = ds_f32.data();
         }
 
-        float scaling = alpha / (float) r;
+        float g_scale = adapter_group_scale_for(gs, adapter_determine_group(gguf_name));
+        float scaling = (alpha / (float) r) * g_scale;
 
         auto build = [&](struct ggml_context * ctx) {
             struct ggml_tensor * tw1 = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, b, a);
@@ -956,11 +994,12 @@ static bool adapter_merge_lokr(WeightCtx *       wctx,
 //   LyCORIS file    : a flat .safetensors file (LoRA ComfyUI or LoKr)
 // Directories exist only for PEFT. LyCORIS ships as a single file for both LoRA
 // and LoKr payloads.
-static bool adapter_merge(WeightCtx *       wctx,
-                          const GGUFModel & gf,
-                          const char *      adapter_path,
-                          float             scale,
-                          ggml_backend_t    backend) {
+static bool adapter_merge(WeightCtx *                wctx,
+                          const GGUFModel &          gf,
+                          const char *               adapter_path,
+                          float                      scale,
+                          const AdapterGroupScales & gs,
+                          ggml_backend_t             backend) {
     std::string sf_path;
     std::string cfg_dir;
 
@@ -1002,9 +1041,9 @@ static bool adapter_merge(WeightCtx *       wctx,
 
     bool ok;
     if (adapter_detect_lokr(st)) {
-        ok = adapter_merge_lokr(wctx, gf, st, scale, backend);
+        ok = adapter_merge_lokr(wctx, gf, st, scale, gs, backend);
     } else {
-        ok = adapter_merge_lora(wctx, gf, st, cfg_dir, scale, backend);
+        ok = adapter_merge_lora(wctx, gf, st, cfg_dir, scale, gs, backend);
     }
 
     st_close(&st);

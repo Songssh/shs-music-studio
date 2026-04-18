@@ -66,6 +66,12 @@ export interface GenerationParams {
   // Adapter
   loraPath: string;
   loraScale: number;
+  adapterGroupScales?: {
+    self_attn: number;
+    cross_attn: number;
+    mlp: number;
+    cond_embed: number;
+  };
 
   // Task type
   taskType: string;

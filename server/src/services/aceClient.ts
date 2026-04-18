@@ -58,6 +58,12 @@ export interface AceRequest {
   lm_model?: string;
   adapter?: string;
   adapter_scale?: number;
+  adapter_group_scales?: {
+    self_attn: number;
+    cross_attn: number;
+    mlp: number;
+    cond_embed: number;
+  };
 }
 
 /** Job status from ace-server */

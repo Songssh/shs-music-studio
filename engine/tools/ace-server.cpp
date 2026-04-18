@@ -183,6 +183,7 @@ static std::string g_loaded_lm;
 static std::string g_loaded_dit;
 static std::string g_loaded_adapter;
 static float       g_loaded_adapter_scale = 1.0f;
+static AdapterGroupScales g_loaded_adapter_gs;
 static std::string g_loaded_und_dit;
 
 // pipeline params (rebuilt from registry paths on each load)
@@ -441,10 +442,11 @@ static std::string resolve_name(const std::vector<ModelEntry> & bucket,
 
 // server-side routing fields parsed from JSON (not part of AceRequest)
 struct ServerFields {
-    std::string synth_model;
-    std::string lm_model;
-    std::string adapter;
-    float       adapter_scale;
+    std::string        synth_model;
+    std::string        lm_model;
+    std::string        adapter;
+    float              adapter_scale;
+    AdapterGroupScales adapter_gs;
 };
 
 static void parse_server_fields(const char * json, ServerFields * sf) {
@@ -485,6 +487,24 @@ static void parse_server_fields(const char * json, ServerFields * sf) {
     }
     if ((v = yyjson_obj_get(obj, "adapter_scale")) && yyjson_is_num(v)) {
         sf->adapter_scale = (float) yyjson_get_num(v);
+    }
+
+    // per-group adapter scales: {"adapter_group_scales": {"self_attn": 1.0, ...}}
+    yyjson_val * gs_obj = yyjson_obj_get(obj, "adapter_group_scales");
+    if (gs_obj && yyjson_is_obj(gs_obj)) {
+        yyjson_val * gs_v;
+        if ((gs_v = yyjson_obj_get(gs_obj, "self_attn")) && yyjson_is_num(gs_v)) {
+            sf->adapter_gs.self_attn = (float) yyjson_get_num(gs_v);
+        }
+        if ((gs_v = yyjson_obj_get(gs_obj, "cross_attn")) && yyjson_is_num(gs_v)) {
+            sf->adapter_gs.cross_attn = (float) yyjson_get_num(gs_v);
+        }
+        if ((gs_v = yyjson_obj_get(gs_obj, "mlp")) && yyjson_is_num(gs_v)) {
+            sf->adapter_gs.mlp = (float) yyjson_get_num(gs_v);
+        }
+        if ((gs_v = yyjson_obj_get(gs_obj, "cond_embed")) && yyjson_is_num(gs_v)) {
+            sf->adapter_gs.cond_embed = (float) yyjson_get_num(gs_v);
+        }
     }
 
     yyjson_doc_free(doc);
@@ -561,9 +581,17 @@ static bool ensure_understand(const std::string & lm_name, const std::string & d
 
 // load synth pipeline (DiT + adapter + text-enc + VAE). frees previous context first.
 // returns false on failure (caller returns 500).
-static bool ensure_synth(const std::string & dit_name, const std::string & adapter_name, float adapter_scale) {
+static bool ensure_synth(const std::string &        dit_name,
+                         const std::string &        adapter_name,
+                         float                      adapter_scale,
+                         const AdapterGroupScales & adapter_gs = {}) {
+    // cache key: reload only when model, adapter, overall scale, OR group scales change
     if (g_ctx_synth && g_loaded_dit == dit_name && g_loaded_adapter == adapter_name &&
-        g_loaded_adapter_scale == adapter_scale) {
+        g_loaded_adapter_scale == adapter_scale &&
+        g_loaded_adapter_gs.self_attn  == adapter_gs.self_attn &&
+        g_loaded_adapter_gs.cross_attn == adapter_gs.cross_attn &&
+        g_loaded_adapter_gs.mlp        == adapter_gs.mlp &&
+        g_loaded_adapter_gs.cond_embed == adapter_gs.cond_embed) {
         return true;
     }
 
@@ -599,9 +627,17 @@ static bool ensure_synth(const std::string & dit_name, const std::string & adapt
         }
         g_synth_params.adapter_path  = adapter->path.c_str();
         g_synth_params.adapter_scale = adapter_scale;
+        g_synth_params.adapter_group_self_attn   = adapter_gs.self_attn;
+        g_synth_params.adapter_group_cross_attn  = adapter_gs.cross_attn;
+        g_synth_params.adapter_group_mlp         = adapter_gs.mlp;
+        g_synth_params.adapter_group_cond_embed  = adapter_gs.cond_embed;
     } else {
         g_synth_params.adapter_path  = nullptr;
         g_synth_params.adapter_scale = 1.0f;
+        g_synth_params.adapter_group_self_attn   = 1.0f;
+        g_synth_params.adapter_group_cross_attn  = 1.0f;
+        g_synth_params.adapter_group_mlp         = 1.0f;
+        g_synth_params.adapter_group_cond_embed  = 1.0f;
     }
 
     fprintf(stderr, "[Server] Loading synth: DiT=%s%s%s\n", dit_name.c_str(),
@@ -617,6 +653,7 @@ static bool ensure_synth(const std::string & dit_name, const std::string & adapt
     g_loaded_dit           = dit_name;
     g_loaded_adapter       = adapter_name;
     g_loaded_adapter_scale = adapter_scale;
+    g_loaded_adapter_gs    = adapter_gs;
     return true;
 }
 
@@ -761,7 +798,7 @@ static void synth_worker(std::shared_ptr<Job>    job,
 
     // Load resident modules (TextEnc, CondEnc, FSQ). DiT and VAE are phased.
     std::string dit_name = resolve_name(g_registry.dit, sf.synth_model, g_loaded_dit);
-    if (!ensure_synth(dit_name, sf.adapter, sf.adapter_scale)) {
+    if (!ensure_synth(dit_name, sf.adapter, sf.adapter_scale, sf.adapter_gs)) {
         free(src_interleaved);
         free(ref_interleaved);
         job->status.store(2);

@@ -19,6 +19,10 @@ struct AceSynthParams {
     const char * vae_path;           // VAE GGUF (required)
     const char * adapter_path;       // adapter safetensors or directory (NULL to disable)
     float        adapter_scale;      // user scale multiplier, 1.0 by default
+    float        adapter_group_self_attn;   // per-group scale: self-attention (default: 1.0)
+    float        adapter_group_cross_attn;  // per-group scale: cross-attention (default: 1.0)
+    float        adapter_group_mlp;         // per-group scale: MLP/feed-forward (default: 1.0)
+    float        adapter_group_cond_embed;  // per-group scale: conditioning embedder (default: 1.0)
     bool         use_fa;             // flash attention (default: true)
     bool         clamp_fp16;         // clamp hidden states to FP16 range (default: false)
     bool         use_batch_cfg;      // batch cond+uncond in one DiT forward (default: true)

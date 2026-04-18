@@ -55,6 +55,9 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   const [lmModel, setLmModel] = usePersistedState('hs-lmModel', '');
   const [adapter, setAdapter] = usePersistedState('hs-adapter', '');
   const [adapterScale, setAdapterScale] = usePersistedState('hs-adapterScale', 1.0);
+  const [adapterGroupScales, setAdapterGroupScales] = usePersistedState('hs-adapterGroupScales', {
+    self_attn: 1.0, cross_attn: 1.0, mlp: 1.0, cond_embed: 1.0,
+  });
 
   const handleGenerate = () => {
     const params: GenerationParams = {
@@ -84,6 +87,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
       lmModel,
       loraPath: adapter,
       loraScale: adapterScale,
+      adapterGroupScales: adapter ? adapterGroupScales : undefined,
       taskType: 'text2music',
     };
     onGenerate(params);
@@ -115,6 +119,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
           lmModel={lmModel} onLmModelChange={setLmModel}
           adapter={adapter} onAdapterChange={setAdapter}
           adapterScale={adapterScale} onAdapterScaleChange={setAdapterScale}
+          adapterGroupScales={adapterGroupScales} onAdapterGroupScalesChange={setAdapterGroupScales}
         />
 
         <GenerationSettings

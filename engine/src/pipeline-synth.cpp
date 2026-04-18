@@ -26,6 +26,10 @@ void ace_synth_default_params(AceSynthParams * p) {
     p->vae_path          = NULL;
     p->adapter_path      = NULL;
     p->adapter_scale     = 1.0f;
+    p->adapter_group_self_attn   = 1.0f;
+    p->adapter_group_cross_attn  = 1.0f;
+    p->adapter_group_mlp         = 1.0f;
+    p->adapter_group_cond_embed  = 1.0f;
     p->use_fa            = true;
     p->clamp_fp16        = false;
     p->use_batch_cfg     = true;
@@ -213,8 +217,15 @@ bool ace_synth_dit_load(AceSynth * ctx) {
     }
     fprintf(stderr, "[Synth-Phase] DiT backend init: %.1f ms\n", timer.ms());
 
+    AdapterGroupScales adapter_gs;
+    adapter_gs.self_attn  = ctx->params.adapter_group_self_attn;
+    adapter_gs.cross_attn = ctx->params.adapter_group_cross_attn;
+    adapter_gs.mlp        = ctx->params.adapter_group_mlp;
+    adapter_gs.cond_embed = ctx->params.adapter_group_cond_embed;
+
     timer.reset();
-    if (!dit_ggml_load(&ctx->dit, ctx->params.dit_path, ctx->params.adapter_path, ctx->params.adapter_scale)) {
+    if (!dit_ggml_load(&ctx->dit, ctx->params.dit_path, ctx->params.adapter_path, ctx->params.adapter_scale,
+                       adapter_gs)) {
         fprintf(stderr, "[Synth-Phase] FATAL: DiT load failed\n");
         dit_ggml_free(&ctx->dit);
         return false;
