@@ -285,7 +285,7 @@ async function runGeneration(job: GenerationJob): Promise<void> {
 
     // Submit all LM results for synthesis
     const coResident = job.params.coResident === true;
-    const synthJobId = await aceClient.submitSynth(lmResults, false, coResident);
+    const synthJobId = await aceClient.submitSynth(lmResults, 'wav16', coResident);
     job.aceJobId = synthJobId;
     if (coResident) {
       logGeneration(job.id, 'INFO', '[Synth Phase] Co-resident mode: DiT+VAE will stay in VRAM');

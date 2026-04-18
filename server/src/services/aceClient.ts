@@ -138,10 +138,11 @@ export const aceClient = {
     return data.id;
   },
 
-  /** POST /synth — submit synth job, returns job ID */
-  async submitSynth(request: AceRequest | AceRequest[], wav = false, keepLoaded = false): Promise<string> {
+  /** POST /synth — submit synth job, returns job ID.
+   *  format: 'wav16'|'wav24'|'wav32'|'mp3' — output format (default: wav16 for lossless) */
+  async submitSynth(request: AceRequest | AceRequest[], format: string = 'wav16', keepLoaded = false): Promise<string> {
     const params = new URLSearchParams();
-    if (wav) params.set('wav', '1');
+    if (format !== 'mp3') params.set('format', format);
     if (keepLoaded) params.set('keep_loaded', '1');
     const qs = params.toString();
     const path = qs ? `/synth?${qs}` : '/synth';
@@ -158,9 +159,9 @@ export const aceClient = {
     request: AceRequest | AceRequest[],
     srcAudio?: Buffer,
     refAudio?: Buffer,
-    wav = false,
+    format: string = 'wav16',
   ): Promise<string> {
-    const path = wav ? '/synth?wav=1' : '/synth';
+    const path = format !== 'mp3' ? `/synth?format=${format}` : '/synth';
     const boundary = '----HotStepBoundary' + Date.now();
 
     const parts: Buffer[] = [];
