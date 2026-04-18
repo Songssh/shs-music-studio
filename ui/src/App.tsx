@@ -117,6 +117,30 @@ const App: React.FC = () => {
     showToast(`Deleted "${song.title}"`, 'success');
   }, [token, currentSong, selectedSong]);
 
+  // Handle bulk delete
+  const handleBulkDelete = useCallback((ids: string[]) => {
+    if (!token || ids.length === 0) return;
+    setConfirmDialog({
+      title: `Delete ${ids.length} song${ids.length !== 1 ? 's' : ''}?`,
+      message: `This will permanently delete ${ids.length} track${ids.length !== 1 ? 's' : ''} and their audio files from disk.`,
+      confirmLabel: `Delete ${ids.length}`,
+      danger: true,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          await songApi.bulkDelete(ids, token);
+          const idSet = new Set(ids);
+          setSongs(prev => prev.filter(s => !idSet.has(s.id)));
+          if (currentSong && idSet.has(currentSong.id)) setCurrentSong(null);
+          if (selectedSong && idSet.has(selectedSong.id)) setSelectedSong(null);
+          showToast(`Deleted ${ids.length} track${ids.length !== 1 ? 's' : ''}`, 'success');
+        } catch (err: any) {
+          showToast(`Delete failed: ${err.message}`, 'error');
+        }
+      },
+    });
+  }, [token, currentSong, selectedSong]);
+
   // Reuse handler
   const [reuseData, setReuseData] = useState<{ song: Song; timestamp: number } | null>(null);
   const handleReuse = useCallback((song: Song) => {
@@ -298,6 +322,7 @@ const App: React.FC = () => {
             currentSongId={currentSong?.id}
             onPlay={playSong}
             onDelete={handleDelete}
+            onBulkDelete={handleBulkDelete}
             onSelect={(s) => { setSelectedSong(s); setShowRightSidebar(true); }}
             onReuse={handleReuse}
             onDownload={setDownloadSong}
@@ -359,6 +384,7 @@ const App: React.FC = () => {
             currentSongId={currentSong?.id}
             onPlay={playSong}
             onDelete={handleDelete}
+            onBulkDelete={handleBulkDelete}
             onSelect={(s) => { setSelectedSong(s); setShowRightSidebar(true); }}
             onReuse={handleReuse}
             onDownload={setDownloadSong}

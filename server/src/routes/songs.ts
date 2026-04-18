@@ -164,4 +164,42 @@ router.delete('/', (req, res) => {
   res.json({ success: true, deletedCount: result.changes });
 });
 
+// POST /api/songs/bulk-delete — delete multiple songs by ID
+router.post('/bulk-delete', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: 'ids must be a non-empty array' });
+    return;
+  }
+
+  // Fetch all matching songs to get file paths
+  const placeholders = ids.map(() => '?').join(',');
+  const songs = getDb()
+    .prepare(`SELECT id, audio_url, mastered_audio_url FROM songs WHERE id IN (${placeholders}) AND user_id = ?`)
+    .all(...ids, userId) as any[];
+
+  // Delete audio files from disk
+  for (const song of songs) {
+    if (song.audio_url) {
+      const filepath = path.join(config.data.audioDir, path.basename(song.audio_url));
+      if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
+    }
+    if (song.mastered_audio_url) {
+      const filepath = path.join(config.data.audioDir, path.basename(song.mastered_audio_url));
+      if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
+    }
+  }
+
+  // Delete from DB
+  const result = getDb()
+    .prepare(`DELETE FROM songs WHERE id IN (${placeholders}) AND user_id = ?`)
+    .run(...ids, userId);
+
+  console.log(`[Songs] Bulk deleted ${result.changes}/${ids.length} songs`);
+  res.json({ success: true, deletedCount: result.changes });
+});
+
 export default router;

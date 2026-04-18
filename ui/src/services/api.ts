@@ -124,6 +124,8 @@ export const songApi = {
     patch<{ song: Song }>(`/songs/${id}`, data, token),
   delete: (id: string, token: string) => del<{ success: boolean }>(`/songs/${id}`, token),
   deleteAll: (token: string) => del<{ success: boolean; deletedCount: number }>('/songs', token),
+  bulkDelete: (ids: string[], token: string) =>
+    post<{ success: boolean; deletedCount: number }>('/songs/bulk-delete', { ids }, token),
 };
 
 // ── Generation ──────────────────────────────────────────────
