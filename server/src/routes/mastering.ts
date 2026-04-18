@@ -34,46 +34,133 @@ const upload = multer({
   },
 });
 
-/** Resolve the mastering.exe path (same directory as ace-server exe) */
-function getMasteringExePath(): string {
+/** Resolve tool paths — both live in the same build directory */
+function getToolPath(name: string): string {
   const aceExe = config.aceServer.exe;
   if (aceExe) {
-    return path.join(path.dirname(aceExe), 'mastering.exe');
+    return path.join(path.dirname(aceExe), name);
   }
-  // Fallback: look relative to project root
-  return path.resolve(process.cwd(), '..', 'engine', 'build', 'Release', 'mastering.exe');
+  return path.resolve(process.cwd(), '..', 'engine', 'build', 'Release', name);
 }
 
-/** Run mastering.exe on a target WAV, given a reference WAV */
-export async function runMastering(targetWavPath: string, referenceWavPath: string, outputWavPath: string): Promise<void> {
-  const exe = getMasteringExePath();
+/** Convert any audio format to WAV using mp3-codec (for MP3) or ffmpeg (for everything else) */
+async function convertToWav(inputPath: string, outputWavPath: string): Promise<void> {
+  const ext = path.extname(inputPath).toLowerCase();
+
+  if (ext === '.wav') {
+    // Already WAV — just copy
+    fs.copyFileSync(inputPath, outputWavPath);
+    return;
+  }
+
+  if (ext === '.mp3') {
+    // Use mp3-codec.exe (no ffmpeg dependency needed)
+    const codec = getToolPath('mp3-codec.exe');
+    if (fs.existsSync(codec)) {
+      console.log(`[Mastering] Converting MP3 → WAV via mp3-codec`);
+      await execFileAsync(codec, ['-i', inputPath, '-o', outputWavPath], { timeout: 60_000 });
+      return;
+    }
+  }
+
+  // For FLAC, OGG, AAC, etc. — use ffmpeg
+  console.log(`[Mastering] Converting ${ext} → WAV via ffmpeg`);
+  try {
+    await execFileAsync('ffmpeg', [
+      '-y', '-i', inputPath,
+      '-ar', '44100', '-ac', '2', '-sample_fmt', 's16',
+      outputWavPath,
+    ], { timeout: 120_000 });
+  } catch {
+    throw new Error(
+      `Cannot convert ${ext} to WAV. Install ffmpeg or provide a WAV/MP3 file.`
+    );
+  }
+}
+
+/** Convert WAV back to MP3 using mp3-codec */
+async function convertWavToMp3(wavPath: string, mp3Path: string, bitrate = 192): Promise<void> {
+  const codec = getToolPath('mp3-codec.exe');
+  if (!fs.existsSync(codec)) {
+    throw new Error(`mp3-codec.exe not found at ${codec}`);
+  }
+  console.log(`[Mastering] Encoding WAV → MP3 (${bitrate} kbps)`);
+  await execFileAsync(codec, ['-i', wavPath, '-o', mp3Path, '-b', String(bitrate)], { timeout: 60_000 });
+}
+
+/**
+ * Run mastering on any supported audio format.
+ *
+ * Pipeline:
+ *   1. Convert target + reference to temp WAV (if not already WAV)
+ *   2. Run mastering.exe (WAV → WAV)
+ *   3. If original target was MP3, re-encode mastered WAV to MP3
+ *   4. Clean up temp files
+ */
+export async function runMastering(targetPath: string, referencePath: string, outputPath: string): Promise<void> {
+  const exe = getToolPath('mastering.exe');
 
   if (!fs.existsSync(exe)) {
     throw new Error(`mastering.exe not found at ${exe}`);
   }
-  if (!fs.existsSync(targetWavPath)) {
-    throw new Error(`Target file not found: ${targetWavPath}`);
+  if (!fs.existsSync(targetPath)) {
+    throw new Error(`Target file not found: ${targetPath}`);
   }
-  if (!fs.existsSync(referenceWavPath)) {
-    throw new Error(`Reference file not found: ${referenceWavPath}`);
+  if (!fs.existsSync(referencePath)) {
+    throw new Error(`Reference file not found: ${referencePath}`);
   }
 
-  console.log(`[Mastering] Running: ${exe}`);
-  console.log(`[Mastering]   target:    ${targetWavPath}`);
-  console.log(`[Mastering]   reference: ${referenceWavPath}`);
-  console.log(`[Mastering]   output:    ${outputWavPath}`);
+  const targetExt = path.extname(targetPath).toLowerCase();
+  const outputExt = path.extname(outputPath).toLowerCase();
+  const tempDir = path.join(config.data.dir, 'mastering_temp');
+  fs.mkdirSync(tempDir, { recursive: true });
 
-  const { stderr } = await execFileAsync(exe, [
-    '--target', targetWavPath,
-    '--reference', referenceWavPath,
-    '--output', outputWavPath,
-  ], { timeout: 120_000 }); // 2 minute timeout
+  const tempId = Date.now().toString(36);
+  const tempTargetWav = path.join(tempDir, `target_${tempId}.wav`);
+  const tempRefWav = path.join(tempDir, `ref_${tempId}.wav`);
+  const tempOutputWav = path.join(tempDir, `mastered_${tempId}.wav`);
 
-  // Log mastering output (it goes to stderr)
-  if (stderr) {
-    for (const line of stderr.split('\n')) {
-      if (line.trim()) console.log(`[Mastering] ${line.trim()}`);
+  const tempFiles = [tempTargetWav, tempRefWav, tempOutputWav];
+
+  try {
+    // Step 1: Convert inputs to WAV
+    console.log(`[Mastering] Preparing inputs...`);
+    await convertToWav(targetPath, tempTargetWav);
+    await convertToWav(referencePath, tempRefWav);
+
+    // Step 2: Run mastering.exe on WAV files
+    console.log(`[Mastering] Running mastering.exe`);
+    console.log(`[Mastering]   target:    ${targetPath} (${targetExt})`);
+    console.log(`[Mastering]   reference: ${referencePath}`);
+    console.log(`[Mastering]   output:    ${outputPath} (${outputExt})`);
+
+    const { stderr } = await execFileAsync(exe, [
+      '--target', tempTargetWav,
+      '--reference', tempRefWav,
+      '--output', tempOutputWav,
+    ], { timeout: 120_000 });
+
+    if (stderr) {
+      for (const line of stderr.split('\n')) {
+        if (line.trim()) console.log(`[Mastering] ${line.trim()}`);
+      }
     }
+
+    // Step 3: Convert output to final format
+    if (outputExt === '.mp3') {
+      await convertWavToMp3(tempOutputWav, outputPath);
+    } else {
+      // WAV output — just move
+      fs.copyFileSync(tempOutputWav, outputPath);
+    }
+
+    console.log(`[Mastering] Done → ${outputPath}`);
+  } finally {
+    // Step 4: Clean up temp files
+    for (const f of tempFiles) {
+      try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
+    }
+    try { fs.rmdirSync(tempDir); } catch {} // Remove if empty
   }
 }
 
