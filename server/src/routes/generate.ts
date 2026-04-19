@@ -294,6 +294,21 @@ async function runGeneration(job: GenerationJob): Promise<void> {
         if (aceReq.adapter_scale !== undefined) result.adapter_scale = aceReq.adapter_scale;
         if (aceReq.adapter_group_scales) result.adapter_group_scales = aceReq.adapter_group_scales;
         if (aceReq.adapter_mode) result.adapter_mode = aceReq.adapter_mode;
+
+        // Re-inject trigger word — CoT caption replaces the original so the
+        // trigger word that was injected into aceReq.caption gets lost.
+        if (job.params.triggerWord && job.params.triggerPlacement && job.params.loraPath) {
+          const tw = job.params.triggerWord;
+          const caption = result.caption || '';
+          // Only inject if it's not already present (cache hits may already have it)
+          if (!caption.includes(tw)) {
+            switch (job.params.triggerPlacement) {
+              case 'prepend': result.caption = caption ? `${tw}, ${caption}` : tw; break;
+              case 'append':  result.caption = caption ? `${caption}, ${tw}` : tw; break;
+              case 'replace': result.caption = tw; break;
+            }
+          }
+        }
       }
     }
 
