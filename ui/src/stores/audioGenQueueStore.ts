@@ -213,8 +213,20 @@ export async function enqueueAudioGen(
 }
 
 export function removeFromAudioQueue(id: string): void {
-  _state.items = _state.items.filter(i => i.id !== id || i.status !== 'pending');
+  _state.items = _state.items.filter(i => i.id !== id);
   _emit();
+}
+
+/** Force-dismiss an active/generating item (user clicked X) */
+export function forceFailQueueItem(id: string): void {
+  const item = _state.items.find(i => i.id === id);
+  if (item && (item.status === 'generating' || item.status === 'loading-adapter')) {
+    item.status = 'failed';
+    item.error = 'Dismissed by user';
+    item.stage = undefined;
+    item.progress = undefined;
+    _emit();
+  }
 }
 
 export function clearFinishedFromAudioQueue(): void {
@@ -228,7 +240,8 @@ export function resumeQueue(token: string): void {
 
   let didFix = false;
   for (const item of _state.items) {
-    if (item.status === 'generating' && !item.jobId) {
+    // Reset items that were mid-processing but have no job ID (interrupted before submission)
+    if ((item.status === 'generating' || item.status === 'loading-adapter') && !item.jobId) {
       item.status = 'pending';
       item.stage = undefined;
       item.progress = undefined;

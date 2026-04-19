@@ -12,6 +12,7 @@ import {
   useAudioGenQueue,
   removeFromAudioQueue,
   clearFinishedFromAudioQueue,
+  forceFailQueueItem,
 } from '../../stores/audioGenQueueStore';
 import type { AudioQueueItem } from '../../stores/audioGenQueueStore';
 import { usePlaylist } from './playlistStore';
@@ -170,6 +171,13 @@ const QueueItemRow: React.FC<QueueItemRowProps> = ({ item, isPlayingInMain, onPl
             <button onClick={() => removeFromAudioQueue(item.id)}
               className="p-0.5 rounded hover:bg-red-500/20 text-zinc-500 hover:text-red-400 transition-colors"
               title="Remove from queue">
+              <X className="w-3 h-3" />
+            </button>
+          )}
+          {isRunning && (
+            <button onClick={() => forceFailQueueItem(item.id)}
+              className="p-0.5 rounded hover:bg-red-500/20 text-zinc-500 hover:text-red-400 transition-colors"
+              title="Dismiss stuck item">
               <X className="w-3 h-3" />
             </button>
           )}
