@@ -1,147 +1,370 @@
-// lireekApi.ts — Lyric Studio API client
-//
-// Port of Lireek/frontend/src/api.ts
-// Uses raw fetch() (no axios). Routes prefixed /api/lireek/.
-// SSE consumer parses named events (event: chunk, event: phase, etc.)
+/**
+ * Lyric Studio API client — typed wrappers for /api/lireek/ endpoints.
+ * Ported from hot-step-9000 lyricStudioApi.ts for the cpp engine.
+ */
 
-const BASE = '/api/lireek';
+const API_BASE = '';
+
+async function api<T>(endpoint: string, options: {
+  method?: string;
+  body?: unknown;
+  timeoutMs?: number;
+} = {}): Promise<T> {
+  const { method = 'GET', body, timeoutMs = 10000 } = options;
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+
+  // Abort controller with timeout to prevent connection pool hangs
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.detail || error.error || error.message || `Request failed (${response.status})`);
+    }
+
+    return response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export interface ProviderInfo {
-  id: string;
-  name: string;
-  available: boolean;
-  models: string[];
-  default_model: string;
-}
-
-export interface SongLyrics {
-  title: string;
-  album: string | null;
-  lyrics: string;
-}
-
-export interface LyricsProfile {
-  artist: string;
-  album: string | null;
-  themes: string[];
-  common_subjects: string[];
-  rhyme_schemes: string[];
-  avg_verse_lines: number;
-  avg_chorus_lines: number;
-  vocabulary_notes: string;
-  tone_and_mood: string;
-  structural_patterns: string;
-  additional_notes: string;
-  raw_summary: string;
-}
-
-export interface SavedArtist {
+export interface Artist {
   id: number;
   name: string;
+  image_url?: string;
+  genius_id?: number;
+  lyrics_set_count?: number;
   created_at: string;
-  lyrics_set_count: number;
 }
 
-export interface SavedLyricsSetSummary {
+export interface LyricsSet {
   id: number;
   artist_id: number;
   artist_name: string;
   album: string | null;
+  image_url?: string;
+  songs: SongLyric[] | string;
   max_songs: number;
-  total_songs: number;
-  fetched_at: string;
+  total_songs?: number;
+  created_at: string;
 }
 
-export interface SavedLyricsSet {
-  id: number;
-  artist_id: number;
-  artist_name: string;
-  album: string | null;
-  max_songs: number;
-  total_songs: number;
-  songs: SongLyrics[];
-  fetched_at: string;
+export interface SongLyric {
+  title: string;
+  lyrics: string;
+  url?: string;
 }
 
-export interface SavedProfile {
+export interface Profile {
   id: number;
   lyrics_set_id: number;
   provider: string;
   model: string;
-  profile_data: LyricsProfile;
+  profile_data: Record<string, any>;
   created_at: string;
 }
 
-export interface SavedGeneration {
+export interface Generation {
   id: number;
   profile_id: number;
   provider: string;
   model: string;
-  extra_instructions: string | null;
-  title: string;
-  subject: string;
-  bpm: number;
-  key: string;
-  caption: string;
-  duration: number;
   lyrics: string;
-  system_prompt: string;
-  user_prompt: string;
-  parent_generation_id: number | null;
+  title?: string;
+  subject?: string;
+  caption?: string;
+  bpm?: number;
+  key?: string;
+  duration?: number;
+  parent_generation_id?: number;
+  system_prompt?: string;
+  user_prompt?: string;
+  extra_instructions?: string;
+  created_at: string;
+  // Context fields (from /generations/all)
+  artist_name?: string;
+  album?: string;
+}
+
+export interface AlbumPreset {
+  id: number;
+  lyrics_set_id: number;
+  adapter_path?: string;
+  adapter_scale?: number;
+  adapter_group_scales?: { self_attn: number; cross_attn: number; mlp: number; cond_embed: number };
+  reference_track_path?: string;
+  audio_cover_strength?: number;
   created_at: string;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || `API error: ${res.status}`);
-  }
-  return res.json();
+export interface AudioGeneration {
+  id: number;
+  generation_id: number;
+  hotstep_job_id: string;
+  audio_url?: string;
+  cover_url?: string;
+  created_at: string;
 }
 
-async function post<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || `API error: ${res.status}`);
-  }
-  return res.json();
+export interface RecentSong {
+  ag_id: number;
+  hotstep_job_id: string;
+  audio_url?: string;
+  cover_url?: string;
+  ag_created_at: string;
+  generation_id: number;
+  song_title: string;
+  subject?: string;
+  caption?: string;
+  lyrics?: string;
+  duration?: number;
+  lyrics_set_id: number;
+  album?: string;
+  album_image?: string;
+  artist_id: number;
+  artist_name: string;
+  artist_image?: string;
 }
 
-async function del<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: 'DELETE' });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || `API error: ${res.status}`);
-  }
-  return res.json();
-}
+// ── API ─────────────────────────────────────────────────────────────────────
 
-async function put<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || `API error: ${res.status}`);
-  }
-  return res.json();
-}
+export const lireekApi = {
+  // ── Artists ──────────────────────────────────────────────────────────────
+  listArtists: (): Promise<{ artists: Artist[] }> =>
+    api<Artist[]>('/api/lireek/artists').then(artists => ({ artists })),
 
-// ── SSE Streaming ────────────────────────────────────────────────────────────
-// Backend sends: event: <type>\ndata: <json>\n\n
-// We parse the event name and dispatch to the right callback.
+  deleteArtist: (id: number): Promise<{ deleted: boolean }> =>
+    api(`/api/lireek/artists/${id}`, { method: 'DELETE' }),
+
+  refreshArtistImage: (id: number): Promise<{ image_url: string }> =>
+    api(`/api/lireek/artists/${id}/refresh-image`, { method: 'POST' }),
+
+  setArtistImage: (id: number, imageUrl: string): Promise<{ image_url: string }> =>
+    api(`/api/lireek/artists/${id}/set-image`, { method: 'POST', body: { image_url: imageUrl } }),
+
+  createArtist: (params: { name: string; image_url?: string }): Promise<{ artist: Artist }> =>
+    api<Artist>('/api/lireek/artists/create', { method: 'POST', body: params }).then(artist => ({ artist })),
+
+  // ── Lyrics Sets ─────────────────────────────────────────────────────────
+  listLyricsSets: (artistId?: number): Promise<{ lyrics_sets: LyricsSet[] }> => {
+    const params = new URLSearchParams();
+    if (artistId != null) params.set('artist_id', String(artistId));
+    const qs = params.toString();
+    return api<LyricsSet[]>(`/api/lireek/lyrics-sets${qs ? `?${qs}` : ''}`).then(lyrics_sets => ({ lyrics_sets }));
+  },
+
+  getLyricsSet: (id: number): Promise<LyricsSet> =>
+    api(`/api/lireek/lyrics-sets/${id}`),
+
+  /** Fetch everything for the album detail page in a single call. */
+  getAlbumFullDetail: (lyricsSetId: number): Promise<{
+    lyrics_set: LyricsSet;
+    profiles: Profile[];
+    generations: Generation[];
+    preset: AlbumPreset | null;
+  }> => api(`/api/lireek/lyrics-sets/${lyricsSetId}/full-detail`),
+
+  deleteLyricsSet: (id: number): Promise<{ deleted: boolean }> =>
+    api(`/api/lireek/lyrics-sets/${id}`, { method: 'DELETE' }),
+
+  removeSong: (lyricsSetId: number, songIndex: number): Promise<any> =>
+    api(`/api/lireek/lyrics-sets/${lyricsSetId}/songs/${songIndex}`, { method: 'DELETE' }),
+
+  editSong: (lyricsSetId: number, songIndex: number, lyrics: string): Promise<LyricsSet> =>
+    api(`/api/lireek/lyrics-sets/${lyricsSetId}/songs/${songIndex}`, { method: 'PUT', body: { lyrics } }),
+
+  addSongToSet: (lyricsSetId: number, params: { title: string; lyrics: string }): Promise<LyricsSet> =>
+    api(`/api/lireek/lyrics-sets/${lyricsSetId}/add-song`, { method: 'POST', body: params }),
+
+  refreshAlbumImage: (id: number): Promise<{ image_url: string }> =>
+    api(`/api/lireek/lyrics-sets/${id}/refresh-image`, { method: 'POST' }),
+
+  setAlbumImage: (id: number, imageUrl: string): Promise<{ image_url: string }> =>
+    api(`/api/lireek/lyrics-sets/${id}/set-image`, { method: 'POST', body: { image_url: imageUrl } }),
+
+  createLyricsSet: (params: {
+    artist_id: number;
+    album?: string;
+    image_url?: string;
+    songs?: { title: string; lyrics: string }[];
+  }): Promise<{ lyrics_set: LyricsSet }> =>
+    api('/api/lireek/lyrics-sets/create', { method: 'POST', body: params }),
+
+  // ── Genius Fetch ────────────────────────────────────────────────────────
+  fetchLyrics: (params: {
+    artist: string;
+    album?: string;
+    max_songs?: number;
+  }): Promise<{ artist: Artist; lyrics_set: LyricsSet; songs_fetched: number }> =>
+    api('/api/lireek/fetch-lyrics', { method: 'POST', body: params, timeoutMs: 120_000 }),
+
+  searchSongLyrics: (artist: string, title: string): Promise<{ title: string; lyrics: string }> =>
+    api('/api/lireek/search-song-lyrics', { method: 'POST', body: { artist, title }, timeoutMs: 30_000 }),
+
+  // ── Profiles ────────────────────────────────────────────────────────────
+  listProfiles: (lyricsSetId?: number): Promise<{ profiles: Profile[] }> => {
+    const params = new URLSearchParams();
+    if (lyricsSetId != null) params.set('lyrics_set_id', String(lyricsSetId));
+    const qs = params.toString();
+    return api<Profile[]>(`/api/lireek/profiles${qs ? `?${qs}` : ''}`).then(profiles => ({ profiles }));
+  },
+
+  getProfile: (id: number): Promise<Profile> =>
+    api(`/api/lireek/profiles/${id}`),
+
+  deleteProfile: (id: number): Promise<{ deleted: boolean }> =>
+    api(`/api/lireek/profiles/${id}`, { method: 'DELETE' }),
+
+  buildProfile: (lyricsSetId: number, params: {
+    provider: string;
+    model?: string;
+  }): Promise<Profile> =>
+    api(`/api/lireek/lyrics-sets/${lyricsSetId}/build-profile`, { method: 'POST', body: params, timeoutMs: 300_000 }),
+
+  // ── Generations ─────────────────────────────────────────────────────────
+  listGenerations: (profileId?: number, lyricsSetId?: number): Promise<{ generations: Generation[] }> => {
+    const params = new URLSearchParams();
+    if (profileId != null) params.set('profile_id', String(profileId));
+    if (lyricsSetId != null) params.set('lyrics_set_id', String(lyricsSetId));
+    const qs = params.toString();
+    return api<Generation[]>(`/api/lireek/generations${qs ? `?${qs}` : ''}`).then(generations => ({ generations }));
+  },
+
+  listAllGenerations: (): Promise<{ generations: Generation[] }> =>
+    api('/api/lireek/generations/all'),
+
+  getGeneration: (id: number): Promise<Generation> =>
+    api(`/api/lireek/generations/${id}`),
+
+  generateLyrics: (profileId: number, params: {
+    profile_id: number;
+    provider: string;
+    model?: string;
+    extra_instructions?: string;
+  }): Promise<Generation> =>
+    api(`/api/lireek/profiles/${profileId}/generate`, { method: 'POST', body: params, timeoutMs: 300_000 }),
+
+  refineLyrics: (generationId: number, params: {
+    provider: string;
+    model?: string;
+  }): Promise<Generation> =>
+    api(`/api/lireek/generations/${generationId}/refine`, { method: 'POST', body: params, timeoutMs: 300_000 }),
+
+  updateMetadata: (generationId: number, updates: {
+    title?: string;
+    caption?: string;
+    bpm?: number;
+    key?: string;
+    duration?: number;
+    subject?: string;
+    lyrics?: string;
+  }): Promise<any> =>
+    api(`/api/lireek/generations/${generationId}`, { method: 'PATCH', body: updates }),
+
+  deleteGeneration: (id: number): Promise<{ deleted: boolean }> =>
+    api(`/api/lireek/generations/${id}`, { method: 'DELETE' }),
+
+  // ── Export ──────────────────────────────────────────────────────────────
+  exportGeneration: (generationId: number): Promise<{ exported: boolean; path: string }> =>
+    api(`/api/lireek/generations/${generationId}/export`, { method: 'POST' }),
+
+  // ── Album Presets ───────────────────────────────────────────────────────
+  getPreset: (lyricsSetId: number): Promise<{ preset: AlbumPreset | null }> =>
+    api(`/api/lireek/lyrics-sets/${lyricsSetId}/preset`),
+
+  upsertPreset: (lyricsSetId: number, params: {
+    adapter_path?: string;
+    adapter_scale?: number;
+    adapter_group_scales?: { self_attn: number; cross_attn: number; mlp: number; cond_embed: number };
+    reference_track_path?: string;
+    audio_cover_strength?: number;
+  }): Promise<{ preset: AlbumPreset }> =>
+    api(`/api/lireek/lyrics-sets/${lyricsSetId}/preset`, { method: 'PUT', body: params }),
+
+  deletePreset: (lyricsSetId: number): Promise<{ deleted: boolean }> =>
+    api(`/api/lireek/lyrics-sets/${lyricsSetId}/preset`, { method: 'DELETE' }),
+
+  listAllPresets: (): Promise<{ presets: AlbumPreset[] }> =>
+    api('/api/lireek/presets'),
+
+  // ── Slop Detection ──────────────────────────────────────────────────────
+  slopScan: (text: string): Promise<any> =>
+    api('/api/lireek/slop-scan', { method: 'POST', body: { text } }),
+
+  // ── Bulk Operations ─────────────────────────────────────────────────────
+  purgeAll: (): Promise<any> =>
+    api('/api/lireek/purge', { method: 'POST' }),
+
+  // ── Audio Generations ───────────────────────────────────────────────────
+  linkAudio: (generationId: number, jobId: string): Promise<any> =>
+    api(`/api/lireek/generations/${generationId}/audio`, { method: 'POST', body: { job_id: jobId } }),
+
+  getAudioGenerations: (generationId: number): Promise<{ audio_generations: AudioGeneration[] }> =>
+    api(`/api/lireek/generations/${generationId}/audio`),
+
+  deleteAudioGeneration: (agId: number): Promise<{ deleted: boolean }> =>
+    api(`/api/lireek/audio-generations/${agId}`, { method: 'DELETE' }),
+
+  resolveAudioGeneration: (jobId: string, audioUrl: string, coverUrl?: string): Promise<{ updated: boolean }> =>
+    api('/api/lireek/audio-generations/resolve', {
+      method: 'PATCH',
+      body: { job_id: jobId, audio_url: audioUrl, cover_url: coverUrl || null },
+    }),
+
+  // ── Direct Audio Generation (via cpp engine) ────────────────────────────
+  submitAudioGeneration: (params: {
+    lyrics: string;
+    prompt: string;
+    bpm?: number;
+    key_scale?: string;
+    audio_duration?: number;
+    lireek_adapter_path?: string;
+    lireek_adapter_scale?: number;
+    lireek_group_scales?: { self_attn: number; cross_attn: number; mlp: number };
+    mastering_params?: { mode: string; reference_file?: string };
+  }): Promise<{ job_id: string }> =>
+    api('/api/generate', { method: 'POST', body: params }),
+
+  // ── Prompts ───────────────────────────────────────────────────────────
+  listPrompts: (): Promise<{ prompts: { name: string; custom: string | null }[] }> =>
+    api('/api/lireek/prompts'),
+
+  savePrompt: (name: string, value: string): Promise<{ success: boolean }> =>
+    api(`/api/lireek/prompts/${name}`, { method: 'PUT', body: { value } }),
+
+  resetPrompt: (name: string): Promise<{ success: boolean }> =>
+    api(`/api/lireek/prompts/${name}`, { method: 'DELETE' }),
+
+  // ── Recent Songs ────────────────────────────────────────────────────────
+  getRecentSongs: (limit = 30): Promise<{ songs: RecentSong[] }> =>
+    api(`/api/lireek/recent-songs?limit=${limit}`),
+
+  // ── Curated Profile ─────────────────────────────────────────────────────
+  buildCuratedProfile: (artistId: number, params: {
+    selections: { lyrics_set_id: number; song_indices: number[] }[];
+    provider: string;
+    model?: string;
+  }): Promise<{ lyrics_set: LyricsSet; profile: Profile }> =>
+    api(`/api/lireek/artists/${artistId}/curated-profile`, {
+      method: 'POST', body: params, timeoutMs: 300_000,
+    }),
+
+  // ── LLM Providers ───────────────────────────────────────────────────────
+  getProviders: (): Promise<{ id: string; name: string; available: boolean; models: string[]; default_model: string }[]> =>
+    api('/api/lireek/providers'),
+};
+
+// ── SSE Streaming ─────────────────────────────────────────────────────────
 
 export interface StreamCallbacks {
   onChunk?: (text: string) => void;
@@ -151,7 +374,7 @@ export interface StreamCallbacks {
 }
 
 async function consumeSSE(url: string, body: any, callbacks: StreamCallbacks): Promise<void> {
-  const resp = await fetch(`${BASE}${url}`, {
+  const resp = await fetch(`${API_BASE}${url}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -167,199 +390,79 @@ async function consumeSSE(url: string, body: any, callbacks: StreamCallbacks): P
 
   const decoder = new TextDecoder();
   let buffer = '';
+  let currentEventType = '';
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
 
-    // Process complete SSE messages (separated by double newlines)
-    const messages = buffer.split('\n\n');
-    buffer = messages.pop() || '';
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
 
-    for (const msg of messages) {
-      if (!msg.trim()) continue;
+    for (const line of lines) {
+      const trimmed = line.trim();
 
-      let eventType = '';
-      let eventData = '';
-
-      for (const line of msg.split('\n')) {
-        if (line.startsWith('event: ')) {
-          eventType = line.slice(7).trim();
-        } else if (line.startsWith('data: ')) {
-          eventData = line.slice(6).trim();
-        }
+      // Named event lines: "event: chunk"
+      if (trimmed.startsWith('event: ')) {
+        currentEventType = trimmed.slice(7).trim();
+        continue;
       }
 
-      if (!eventData) continue;
+      if (!trimmed.startsWith('data: ')) continue;
+      const jsonStr = trimmed.slice(6).trim();
+      if (!jsonStr) continue;
 
       try {
-        const parsed = JSON.parse(eventData);
+        const data = JSON.parse(jsonStr);
+
+        // Use named event type if available, else fallback to inline type
+        const eventType = currentEventType || data.type;
+        currentEventType = ''; // Reset after use
+
         switch (eventType) {
-          case 'chunk':
-            callbacks.onChunk?.(parsed.text);
-            break;
-          case 'phase':
-            callbacks.onPhase?.(parsed.phase);
-            break;
+          case 'chunk': callbacks.onChunk?.(data.text ?? data); break;
+          case 'phase': callbacks.onPhase?.(data.phase ?? data.text ?? data); break;
           case 'complete':
-            callbacks.onResult?.(parsed);
-            break;
-          case 'error':
-            callbacks.onError?.(parsed.error || parsed.message || 'Unknown error');
-            break;
-          default:
-            // Fallback: try inline type field for compatibility
-            if (parsed.type === 'chunk') callbacks.onChunk?.(parsed.text);
-            else if (parsed.type === 'phase') callbacks.onPhase?.(parsed.text);
-            else if (parsed.type === 'result') callbacks.onResult?.(parsed.data);
-            else if (parsed.type === 'error') callbacks.onError?.(parsed.message);
-            break;
+          case 'result': callbacks.onResult?.(data); break;
+          case 'error': callbacks.onError?.(data.error ?? data.message ?? data); break;
         }
       } catch { /* skip malformed lines */ }
     }
   }
 }
 
-// ── API Functions ────────────────────────────────────────────────────────────
-
-// Providers
-export const getProviders = (): Promise<ProviderInfo[]> =>
-  get('/providers');
-
-// Fetch lyrics from Genius & save
-export const fetchAndSave = (req: {
-  artist: string;
-  album?: string;
-  max_songs: number;
-}): Promise<SavedLyricsSetSummary> =>
-  post('/fetch-and-save', req);
-
-// Artists
-export const getArtists = (): Promise<SavedArtist[]> =>
-  get('/artists');
-
-export const deleteArtist = (id: number): Promise<void> =>
-  del(`/artists/${id}`);
-
-// Lyrics sets
-export const getArtistLyricsSets = (artistId: number): Promise<SavedLyricsSetSummary[]> =>
-  get(`/artists/${artistId}/lyrics-sets`);
-
-export const getLyricsSet = (id: number): Promise<SavedLyricsSet> =>
-  get(`/lyrics-sets/${id}`);
-
-export const deleteLyricsSet = (id: number): Promise<void> =>
-  del(`/lyrics-sets/${id}`);
-
-export const removeSong = (lyricsSetId: number, songIndex: number): Promise<SavedLyricsSet> =>
-  del(`/lyrics-sets/${lyricsSetId}/songs/${songIndex}`);
-
-export const editSong = (lyricsSetId: number, songIndex: number, newLyrics: string): Promise<SavedLyricsSet> =>
-  put(`/lyrics-sets/${lyricsSetId}/songs/${songIndex}`, { lyrics: newLyrics });
-
-export const addSong = (lyricsSetId: number, song: { title: string; album?: string; lyrics: string }): Promise<SavedLyricsSet> =>
-  post(`/lyrics-sets/${lyricsSetId}/songs`, song);
-
-// Profiles
-export const buildProfile = (lyricsSetId: number, req: {
-  provider_name: string;
-  model?: string;
-}): Promise<SavedProfile> =>
-  post(`/lyrics-sets/${lyricsSetId}/build-profile`, req);
-
-export const getLyricsSetProfiles = (lyricsSetId: number): Promise<SavedProfile[]> =>
-  get(`/profiles?lyrics_set_id=${lyricsSetId}`);
-
-export const getProfile = (id: number): Promise<SavedProfile> =>
-  get(`/profiles/${id}`);
-
-export const deleteProfile = (id: number): Promise<void> =>
-  del(`/profiles/${id}`);
-
-// Generations
-export const generateFromProfile = (profileId: number, req: {
-  provider_name: string;
-  model?: string;
-  extra_instructions?: string;
-}): Promise<SavedGeneration> =>
-  post(`/profiles/${profileId}/generate`, req);
-
-export const getProfileGenerations = (profileId: number): Promise<SavedGeneration[]> =>
-  get(`/generations?profile_id=${profileId}`);
-
-export const getLyricsSetGenerations = (lyricsSetId: number): Promise<SavedGeneration[]> =>
-  get(`/generations?lyrics_set_id=${lyricsSetId}`);
-
-export const getGeneration = (id: number): Promise<SavedGeneration> =>
-  get(`/generations/${id}`);
-
-export const deleteGeneration = (id: number): Promise<void> =>
-  del(`/generations/${id}`);
-
-// Export
-export const exportGeneration = (id: number): Promise<{ status: string; path: string }> =>
-  post(`/generations/${id}/export`);
-
-export const exportAllGenerations = (): Promise<{ status: string; exported: number; backfilled: number; errors: number }> =>
-  post('/export-all');
-
-// Skip thinking
-export const skipThinking = (): Promise<void> =>
-  post('/skip-thinking');
-
-// SSE Streaming
 export const streamBuildProfile = (
   lyricsSetId: number,
-  req: { provider_name: string; model?: string },
+  req: { provider: string; model?: string },
   callbacks: StreamCallbacks,
 ): Promise<void> =>
-  consumeSSE(`/lyrics-sets/${lyricsSetId}/build-profile-stream`, req, callbacks);
+  consumeSSE(`/api/lireek/lyrics-sets/${lyricsSetId}/build-profile-stream`, req, callbacks);
 
-export const streamGenerateFromProfile = (
+export const streamGenerate = (
   profileId: number,
-  req: { provider_name: string; model?: string; extra_instructions?: string },
+  req: { profile_id: number; provider: string; model?: string; extra_instructions?: string },
   callbacks: StreamCallbacks,
 ): Promise<void> =>
-  consumeSSE(`/profiles/${profileId}/generate-stream`, req, callbacks);
+  consumeSSE(`/api/lireek/profiles/${profileId}/generate-stream`, req, callbacks);
 
-export const streamRefineGeneration = (
+export const streamRefine = (
   generationId: number,
-  req: { provider_name: string; model?: string },
+  req: { provider: string; model?: string },
   callbacks: StreamCallbacks,
 ): Promise<void> =>
-  consumeSSE(`/generations/${generationId}/refine-stream`, req, callbacks);
+  consumeSSE(`/api/lireek/generations/${generationId}/refine-stream`, req, callbacks);
 
-// ── Settings ─────────────────────────────────────────────────────────────────
+export const skipThinking = (): Promise<void> =>
+  api('/api/lireek/skip-thinking', { method: 'POST' });
 
-export interface LireekSettings {
-  generationProvider: string;
-  generationModel: string;
-  refinementProvider: string;
-  refinementModel: string;
-  profilingProvider: string;
-  profilingModel: string;
-}
-
-const SETTINGS_KEY = 'lireek-settings';
-
-const DEFAULT_SETTINGS: LireekSettings = {
-  generationProvider: 'gemini',
-  generationModel: '',
-  refinementProvider: 'gemini',
-  refinementModel: '',
-  profilingProvider: 'gemini',
-  profilingModel: '',
-};
-
-export function loadSettings(): LireekSettings {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
-  } catch { /* ignore */ }
-  return { ...DEFAULT_SETTINGS };
-}
-
-export function saveSettings(settings: LireekSettings): void {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-}
+export const streamBuildCuratedProfile = (
+  artistId: number,
+  req: {
+    selections: { lyrics_set_id: number; song_indices: number[] }[];
+    provider: string;
+    model?: string;
+  },
+  callbacks: StreamCallbacks,
+): Promise<void> =>
+  consumeSSE(`/api/lireek/artists/${artistId}/curated-profile-stream`, req, callbacks);
