@@ -309,3 +309,38 @@ input[type="range"]::-webkit-slider-thumb:hover {
   line-height: 1.9;
   font-size: 1rem;
 }
+
+/* ========================================
+   Lyric Studio V2 — Animations
+   ======================================== */
+
+@keyframes ls2-fade-in-kf {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ls2-slide-up-kf {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ls2-fade-in {
+  animation: ls2-fade-in-kf 0.2s ease-out;
+}
+
+.ls2-slide-up {
+  animation: ls2-slide-up-kf 0.3s ease-out;
+}
+
+/* ========================================
+   Utility — Scrollbar Hide
+   ======================================== */
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
