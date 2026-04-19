@@ -63,10 +63,13 @@ export interface AceRequest {
   task_type?: string;
   track?: string;
   infer_method?: string;
+  scheduler?: string;       // 'linear' | 'ddim_uniform' | 'sgm_uniform' | etc.
+  guidance_mode?: string;   // 'apg' | 'cfg' | etc.
   peak_clip?: number;
   // Server routing fields
   synth_model?: string;
   lm_model?: string;
+  vae_model?: string;
   adapter?: string;
   adapter_scale?: number;
   adapter_group_scales?: {
