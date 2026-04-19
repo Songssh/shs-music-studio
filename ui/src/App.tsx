@@ -22,6 +22,7 @@ import { ConfirmDialog } from './components/shared/ConfirmDialog';
 import { DownloadModal } from './components/shared/DownloadModal';
 import { SettingsPanel, type AppSettings, DEFAULT_SETTINGS } from './components/settings/SettingsPanel';
 import { TerminalPanel } from './components/terminal/TerminalPanel';
+import { LyricStudio } from './components/lyric-studio/LyricStudio';
 import type { Song, GenerationParams } from './types';
 
 const App: React.FC = () => {
@@ -386,6 +387,14 @@ const App: React.FC = () => {
             settings={settings}
             onSettingsChange={setSettings}
           />
+        </div>
+      );
+    }
+
+    if (activeView === 'lyric-studio') {
+      return (
+        <div className="flex-1 overflow-hidden">
+          <LyricStudio />
         </div>
       );
     }

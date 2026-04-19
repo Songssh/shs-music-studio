@@ -298,3 +298,14 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .toast-out {
   animation: toast-out 0.3s ease-in forwards;
 }
+
+/* ========================================
+   Lyric Studio — Lyrics Display
+   ======================================== */
+
+.lyrics-output {
+  white-space: pre-wrap;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  line-height: 1.9;
+  font-size: 1rem;
+}
