@@ -33,7 +33,7 @@
 // ─── Configuration ──────────────────────────────────────────────────
 
 struct MasteringConfig {
-    int   sample_rate           = 44100;
+    int   sample_rate           = 48000;
     int   fft_size              = 4096;
     float max_piece_seconds     = 15.0f;
     int   rms_correction_steps  = 4;
@@ -225,7 +225,7 @@ static std::vector<float> mg_lowess(const float * y, int n, float frac, int nite
 }
 
 // ─── Sinc Resampler ─────────────────────────────────────────────────
-// Quality sinc interpolation for 48000 ↔ 44100 conversion
+// Quality sinc interpolation for sample rate conversion (e.g. reference → 48000 Hz)
 
 static std::vector<float> mg_resample(const float * input, int n_in, int sr_in, int sr_out) {
     if (sr_in == sr_out) {
@@ -740,39 +740,31 @@ static MasteringResult mastering_process(
     fprintf(stderr, "[Mastering] Reference: %d samples @ %d Hz (%.1f s)\n",
             ref_n, ref_sr, (float) ref_n / ref_sr);
 
-    // ── Step 1: Resample both to 44100 Hz ──
-    std::vector<float> tgt_L_44, tgt_R_44, ref_L_44, ref_R_44;
-    if (target_sr != 44100 || ref_sr != 44100) {
-        fprintf(stderr, "[Mastering] Resampling to 44100 Hz...\n");
-        // Parallelize up to 4 independent resample operations
+    // ── Step 1: Resample reference to match target sample rate ──
+    // The target (generated audio) stays at its native rate (typically 48000 Hz).
+    // Only the reference is resampled if it differs.
+    cfg.sample_rate = target_sr;
+
+    std::vector<float> tgt_L_w(target_L, target_L + target_n);
+    std::vector<float> tgt_R_w(target_R, target_R + target_n);
+    std::vector<float> ref_L_w, ref_R_w;
+
+    if (ref_sr != target_sr) {
+        fprintf(stderr, "[Mastering] Resampling reference %d → %d Hz...\n", ref_sr, target_sr);
         std::vector<std::thread> resample_threads;
-        if (target_sr != 44100) {
-            resample_threads.emplace_back([&]() { tgt_L_44 = mg_resample(target_L, target_n, target_sr, 44100); });
-            resample_threads.emplace_back([&]() { tgt_R_44 = mg_resample(target_R, target_n, target_sr, 44100); });
-        } else {
-            tgt_L_44.assign(target_L, target_L + target_n);
-            tgt_R_44.assign(target_R, target_R + target_n);
-        }
-        if (ref_sr != 44100) {
-            resample_threads.emplace_back([&]() { ref_L_44 = mg_resample(ref_L, ref_n, ref_sr, 44100); });
-            resample_threads.emplace_back([&]() { ref_R_44 = mg_resample(ref_R, ref_n, ref_sr, 44100); });
-        } else {
-            ref_L_44.assign(ref_L, ref_L + ref_n);
-            ref_R_44.assign(ref_R, ref_R + ref_n);
-        }
+        resample_threads.emplace_back([&]() { ref_L_w = mg_resample(ref_L, ref_n, ref_sr, target_sr); });
+        ref_R_w = mg_resample(ref_R, ref_n, ref_sr, target_sr);
         for (auto & t : resample_threads) t.join();
     } else {
-        tgt_L_44.assign(target_L, target_L + target_n);
-        tgt_R_44.assign(target_R, target_R + target_n);
-        ref_L_44.assign(ref_L, ref_L + ref_n);
-        ref_R_44.assign(ref_R, ref_R + ref_n);
+        ref_L_w.assign(ref_L, ref_L + ref_n);
+        ref_R_w.assign(ref_R, ref_R + ref_n);
     }
 
-    int tn = (int) tgt_L_44.size();
-    int rn = (int) ref_L_44.size();
+    int tn = (int) tgt_L_w.size();
+    int rn = (int) ref_L_w.size();
 
     if (tn < cfg.fft_size || rn < cfg.fft_size) {
-        result.error = "Audio too short for mastering (need > 4096 samples at 44100 Hz)";
+        result.error = "Audio too short for mastering (need > 4096 samples)";
         return result;
     }
 
@@ -780,17 +772,17 @@ static MasteringResult mastering_process(
     fprintf(stderr, "[Mastering] Stage 1/4: Matching levels...\n");
 
     // Normalize reference
-    float ref_peak = std::max(mg_peak(ref_L_44.data(), rn), mg_peak(ref_R_44.data(), rn));
+    float ref_peak = std::max(mg_peak(ref_L_w.data(), rn), mg_peak(ref_R_w.data(), rn));
     float final_amp_coeff = 1.0f;
     if (ref_peak > cfg.threshold) {
         final_amp_coeff = ref_peak / cfg.threshold;
         float norm = cfg.threshold / ref_peak;
-        mg_amplify(ref_L_44.data(), rn, norm);
-        mg_amplify(ref_R_44.data(), rn, norm);
+        mg_amplify(ref_L_w.data(), rn, norm);
+        mg_amplify(ref_R_w.data(), rn, norm);
     }
 
-    auto tgt_la = mg_analyze_levels(tgt_L_44.data(), tgt_R_44.data(), tn, cfg);
-    auto ref_la = mg_analyze_levels(ref_L_44.data(), ref_R_44.data(), rn, cfg);
+    auto tgt_la = mg_analyze_levels(tgt_L_w.data(), tgt_R_w.data(), tn, cfg);
+    auto ref_la = mg_analyze_levels(ref_L_w.data(), ref_R_w.data(), rn, cfg);
 
     // RMS matching: amplify target to match reference
     float rms_coeff = (tgt_la.match_rms > cfg.min_value)
@@ -886,16 +878,9 @@ static MasteringResult mastering_process(
     mg_amplify(out_L.data(), tn, final_amp_coeff);
     mg_amplify(out_R.data(), tn, final_amp_coeff);
 
-    // ── Step 6: Resample back to original sample rate ──
-    if (target_sr != 44100) {
-        fprintf(stderr, "[Mastering] Resampling output 44100 → %d Hz\n", target_sr);
-        std::thread t_l([&]() { result.L = mg_resample(out_L.data(), tn, 44100, target_sr); });
-        result.R = mg_resample(out_R.data(), tn, 44100, target_sr);
-        t_l.join();
-    } else {
-        result.L = std::move(out_L);
-        result.R = std::move(out_R);
-    }
+    // ── Output (already at target sample rate, no resampling needed) ──
+    result.L = std::move(out_L);
+    result.R = std::move(out_R);
 
     result.success = true;
     fprintf(stderr, "[Mastering] Done. Output: %d samples @ %d Hz\n",
