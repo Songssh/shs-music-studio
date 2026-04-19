@@ -259,6 +259,7 @@ const QueueAddToPlaylistBtn: React.FC<{ item: AudioQueueItem }> = ({ item }) => 
         id: resolvedId,
         title: item.generation.title || 'Untitled',
         audioUrl: item.audioUrl || '',
+        masteredAudioUrl: item.masteredAudioUrl || '',
         artistName: item.artistName || '',
         coverUrl: item.artistImageUrl || '',
         duration: item.audioDuration || 0,

@@ -217,6 +217,7 @@ const AddToPlaylistBtn: React.FC<{ rs: RecentSong }> = ({ rs }) => {
         id: itemId,
         title: rs.song_title || 'Untitled',
         audioUrl: rs.audio_url || '',
+        masteredAudioUrl: rs.mastered_audio_url || '',
         artistName: rs.artist_name || '',
         coverUrl: rs.cover_url || rs.album_image || rs.artist_image || '',
         duration: rs.duration || 0,

@@ -317,6 +317,7 @@ const AddToPlaylistButton: React.FC<{ song: Song; artistName?: string }> = ({ so
         id: song.id,
         title: song.title || 'Untitled',
         audioUrl: song.audioUrl || '',
+        masteredAudioUrl: song.masteredAudioUrl || '',
         artistName: artistName || '',
         coverUrl: song.coverUrl || '',
         duration: seconds,
