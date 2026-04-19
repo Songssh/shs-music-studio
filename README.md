@@ -58,7 +58,19 @@ cd ..\..
 
 ### 3. Download models
 
-You need four GGUF model files. Download from [Hugging Face](https://huggingface.co/Serveurperso/ACE-Step-1.5-GGUF/tree/main) and place them in a `models/` directory:
+Download four GGUF model files from [Hugging Face](https://huggingface.co/Serveurperso/ACE-Step-1.5-GGUF/tree/main) and place them in a `models/` directory at the repo root:
+
+```
+HOT-Step-CPP/
+├── models/                          ← create this, put GGUFs here
+│   ├── acestep-5Hz-lm-4B-Q8_0.gguf
+│   ├── Qwen3-Embedding-0.6B-Q8_0.gguf
+│   ├── acestep-v15-turbo-Q8_0.gguf
+│   └── vae-BF16.gguf
+├── engine/
+├── server/
+└── ui/
+```
 
 | Type | Recommended File | Size |
 |------|-----------------|------|
@@ -82,34 +94,21 @@ cd server && npm install && cd ..
 cd ui && npm install && cd ..
 ```
 
-### 5. Configure
+### 5. Run
 
-Copy `.env.example` to `.env` and edit the paths:
-
-```ini
-# Point to your built engine executable
-ACESTEPCPP_EXE=D:\path\to\HOT-Step-CPP\engine\build\Release\ace-server.exe
-
-# Point to your downloaded models
-ACESTEPCPP_MODELS=D:\path\to\models
-
-# Point to adapters directory (optional, for LoRA)
-ACESTEPCPP_ADAPTERS=D:\path\to\adapters
-```
-
-### 6. Run
-
-**Production mode:**
 ```cmd
 LAUNCH.bat
 ```
+
+Open `http://localhost:3001` in your browser. That's it!
+
+> **No `.env` file needed** for the standard setup. The server automatically finds the engine at `engine/build/Release/ace-server.exe` and models at `models/`. See `.env.example` if you need to override paths for a custom setup.
 
 **Development mode** (with hot-reload):
 ```cmd
 dev.bat
 ```
-
-Open `http://localhost:3000` (dev) or `http://localhost:3001` (production) in your browser.
+Then open `http://localhost:3000`.
 
 ## Platform Support
 
