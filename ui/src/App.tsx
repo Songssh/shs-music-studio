@@ -55,6 +55,7 @@ const App: React.FC = () => {
   const [isShuffle, setIsShuffle] = useState(false);
   const [repeatMode, setRepeatMode] = useState<'none' | 'all' | 'one'>('none');
   const wavesurferRef = useRef<WaveformPlayerHandle>(null);
+  const wavesurferAltRef = useRef<WaveformPlayerHandle>(null);
   const currentSongIdRef = useRef<string | null>(null);
   const [playMastered, setPlayMastered] = useState(false);
   const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
@@ -179,71 +180,121 @@ const App: React.FC = () => {
     }
   }, [token, handleSongUpdate]);
 
-  // ── Player Logic (wavesurfer-based) ─────────────────────────
-  const playSong = useCallback((song: Song) => {
-    const ws = wavesurferRef.current;
-    if (!ws) return;
+  // ── Player Logic (dual wavesurfer for instant mastered toggle) ────
+  // wavesurferRef    = ORIGINAL track (always)
+  // wavesurferAltRef = MASTERED track (always, loaded when available)
+  // playMastered determines which gets volume and is visible via CSS.
 
-    // Always show song details when interacting with a song
+  const playSong = useCallback((song: Song) => {
+    const wsOrig = wavesurferRef.current;
+    if (!wsOrig) return;
+
     setSelectedSong(song);
     setShowRightSidebar(true);
 
     if (currentSongIdRef.current === song.id) {
-      // Toggle play/pause for same song
-      ws.playPause();
+      wsOrig.playPause();
+      wavesurferAltRef.current?.playPause();
       return;
     }
 
-    // New song
     currentSongIdRef.current = song.id;
     setCurrentSong(song);
-    // Auto-select mastered if available
-    const useMastered = !!(song.masteredAudioUrl);
+
+    const hasMastered = !!song.masteredAudioUrl;
+    const useMastered = hasMastered;
     setPlayMastered(useMastered);
-    const url = useMastered ? song.masteredAudioUrl! : song.audioUrl;
-    setCurrentAudioUrl(url);
-    ws.loadUrl(url);
+
+    // Load original — muted if mastered is preferred
+    wsOrig.loadUrl(song.audioUrl);
+
+    // Load mastered into alt (if available)
+    if (hasMastered && wavesurferAltRef.current) {
+      wavesurferAltRef.current.loadUrl(song.masteredAudioUrl!);
+    }
+
+    setCurrentAudioUrl(useMastered ? song.masteredAudioUrl! : song.audioUrl);
   }, []);
 
-  // Auto-play when wavesurfer finishes loading the new URL
+  // Original track ready — set volumes, start both
   const handleWaveformReady = useCallback((_dur: number) => {
-    wavesurferRef.current?.play();
+    const wsOrig = wavesurferRef.current;
+    if (!wsOrig) return;
+    // Volume is set reactively via useEffect below, just start playback
+    wsOrig.play();
   }, []);
+
+  // Mastered track ready — sync to original and start muted
+  const handleAltReady = useCallback((_dur: number) => {
+    const wsAlt = wavesurferAltRef.current;
+    const wsOrig = wavesurferRef.current;
+    if (!wsAlt || !wsOrig) return;
+    const dur = wsOrig.getDuration();
+    const pos = wsOrig.getCurrentTime();
+    if (dur > 0) wsAlt.seekTo(pos / dur);
+    // Start playing if original is already playing
+    const origMedia = wsOrig.getMediaElement();
+    if (origMedia && !origMedia.paused) {
+      wsAlt.play();
+    }
+  }, []);
+
+  // Keep volumes in sync with playMastered state
+  useEffect(() => {
+    if (wavesurferRef.current) {
+      wavesurferRef.current.setVolume(playMastered ? 0 : volume);
+    }
+    if (wavesurferAltRef.current) {
+      wavesurferAltRef.current.setVolume(playMastered ? volume : 0);
+    }
+  }, [playMastered, volume]);
 
   const toggleMastered = useCallback(() => {
-    const ws = wavesurferRef.current;
-    if (!ws || !currentSong) return;
+    const wsOrig = wavesurferRef.current;
+    const wsAlt = wavesurferAltRef.current;
+    if (!wsOrig || !wsAlt || !currentSong) return;
 
     const wantMastered = !playMastered;
+
+    // Sync position: from currently-audible to the other
+    const activeWs = playMastered ? wsAlt : wsOrig;
+    const inactiveWs = playMastered ? wsOrig : wsAlt;
+    const dur = activeWs.getDuration();
+    const pos = activeWs.getCurrentTime();
+    if (dur > 0) {
+      const inactiveDur = inactiveWs.getDuration();
+      if (inactiveDur > 0) inactiveWs.seekTo(pos / inactiveDur);
+    }
+
+    // Volume swap happens reactively via the useEffect above
     setPlayMastered(wantMastered);
 
-    const newUrl = wantMastered && currentSong.masteredAudioUrl
-      ? currentSong.masteredAudioUrl
-      : currentSong.audioUrl;
+    // Swap spectrum analyzer to the newly-active track
+    const newActiveEl = wantMastered
+      ? wavesurferAltRef.current?.getMediaElement()
+      : wavesurferRef.current?.getMediaElement();
+    if (newActiveEl) setSpectrumMediaEl(newActiveEl);
 
-    // Save position, load new URL, restore position after ready
-    const pos = ws.getCurrentTime();
-    const dur = ws.getDuration();
-    setCurrentAudioUrl(newUrl);
-    ws.loadUrl(newUrl);
-    // Seek back after load — wavesurfer 'ready' event fires before our onReady callback
-    const seekBack = () => {
-      if (dur > 0) ws.seekTo(pos / dur);
-      ws.play();
-    };
-    // Use a one-shot listener approach via timeout — wavesurfer re-decodes on load
-    setTimeout(seekBack, 300);
+    setCurrentAudioUrl(
+      wantMastered && currentSong.masteredAudioUrl
+        ? currentSong.masteredAudioUrl
+        : currentSong.audioUrl
+    );
   }, [currentSong, playMastered]);
 
   const togglePlay = useCallback(() => {
     if (!currentSong) return;
     wavesurferRef.current?.playPause();
+    wavesurferAltRef.current?.playPause();
   }, [currentSong]);
 
   const handleSeek = useCallback((time: number) => {
-    const ws = wavesurferRef.current;
-    const dur = ws?.getDuration() ?? 0;
-    if (ws && dur > 0) ws.seekTo(time / dur);
+    const wsOrig = wavesurferRef.current;
+    const wsAlt = wavesurferAltRef.current;
+    const durOrig = wsOrig?.getDuration() ?? 0;
+    if (wsOrig && durOrig > 0) wsOrig.seekTo(time / durOrig);
+    const durAlt = wsAlt?.getDuration() ?? 0;
+    if (wsAlt && durAlt > 0) wsAlt.seekTo(time / durAlt);
   }, []);
 
   const playNext = useCallback(() => {
@@ -267,6 +318,8 @@ const App: React.FC = () => {
     if (repeatMode === 'one') {
       wavesurferRef.current?.seekTo(0);
       wavesurferRef.current?.play();
+      wavesurferAltRef.current?.seekTo(0);
+      wavesurferAltRef.current?.play();
     } else if (repeatMode === 'all' || songs.length > 1) {
       playNext();
     } else {
@@ -509,21 +562,58 @@ const App: React.FC = () => {
       {/* ── Bottom Player Area: Markers → Waveform → Transport ── */}
       <div className="flex-shrink-0 bg-zinc-950 border-t border-white/5">
         <SectionMarkers audioUrl={currentAudioUrl ?? undefined} duration={duration} />
-        <SpectrumAnalyzer mediaElement={spectrumMediaEl} visible={spectrumEnabled} isPlaying={isPlaying} />
-        <WaveformPlayer
-          ref={wavesurferRef}
-          volume={volume}
-          playbackRate={playbackRate}
-          onTimeUpdate={setCurrentTime}
-          onDurationChange={setDuration}
-          onPlayChange={setIsPlaying}
-          onFinish={handleWaveformFinish}
-          onReady={(dur) => {
-            handleWaveformReady(dur);
-            // Capture the media element for the spectrum analyzer
-            setSpectrumMediaEl(wavesurferRef.current?.getMediaElement() ?? null);
-          }}
+        <SpectrumAnalyzer
+          mediaElement={spectrumMediaEl}
+          visible={spectrumEnabled}
+          isPlaying={isPlaying}
         />
+        {/* Dual waveform: original + mastered stacked, opacity-switched */}
+        <div className="relative" style={{ height: 56 }}>
+          <div style={{
+            position: 'absolute', inset: 0,
+            opacity: playMastered ? 0 : 1,
+            pointerEvents: playMastered ? 'none' : 'auto',
+            transition: 'opacity 0.15s ease',
+          }}>
+            <WaveformPlayer
+              ref={wavesurferRef}
+              volume={playMastered ? 0 : volume}
+              playbackRate={playbackRate}
+              onTimeUpdate={!playMastered ? setCurrentTime : undefined}
+              onDurationChange={!playMastered ? setDuration : undefined}
+              onPlayChange={!playMastered ? setIsPlaying : undefined}
+              onFinish={!playMastered ? handleWaveformFinish : undefined}
+              onReady={(dur) => {
+                handleWaveformReady(dur);
+                if (!playMastered) {
+                  setSpectrumMediaEl(wavesurferRef.current?.getMediaElement() ?? null);
+                }
+              }}
+            />
+          </div>
+          <div style={{
+            position: 'absolute', inset: 0,
+            opacity: playMastered ? 1 : 0,
+            pointerEvents: playMastered ? 'auto' : 'none',
+            transition: 'opacity 0.15s ease',
+          }}>
+            <WaveformPlayer
+              ref={wavesurferAltRef}
+              volume={playMastered ? volume : 0}
+              playbackRate={playbackRate}
+              onTimeUpdate={playMastered ? setCurrentTime : undefined}
+              onDurationChange={playMastered ? setDuration : undefined}
+              onPlayChange={playMastered ? setIsPlaying : undefined}
+              onFinish={playMastered ? handleWaveformFinish : undefined}
+              onReady={(dur) => {
+                handleAltReady(dur);
+                if (playMastered) {
+                  setSpectrumMediaEl(wavesurferAltRef.current?.getMediaElement() ?? null);
+                }
+              }}
+            />
+          </div>
+        </div>
         <Player
           currentSong={currentSong}
           isPlaying={isPlaying}
