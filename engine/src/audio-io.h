@@ -1,6 +1,6 @@
 #pragma once
-// audio-io.h: unified audio read/write for WAV and MP3.
-// Reads any WAV (PCM16/float32, mono/stereo, any rate) or MP3.
+// audio-io.h: unified audio read/write for WAV, MP3, and FLAC.
+// Reads any WAV (PCM16/float32, mono/stereo, any rate), MP3, or FLAC.
 // Writes WAV (16-bit PCM) or MP3 (via mp3enc).
 // All functions use planar stereo float: [L: T samples][R: T samples].
 // Part of acestep.cpp. MIT license.
@@ -43,6 +43,27 @@
 
 // mp3enc: MP3 encoder
 #include "mp3/mp3enc.h"
+
+// dr_flac (Unlicense/MIT-0): FLAC decoder. Guard against double-implementation.
+#ifndef AUDIO_IO_FLAC_IMPL
+#    define AUDIO_IO_FLAC_IMPL
+#    define DR_FLAC_IMPLEMENTATION
+#    define DR_FLAC_NO_STDIO
+#    ifdef _MSC_VER
+#        pragma warning(push, 0)
+#    elif defined(__GNUC__)
+#        pragma GCC diagnostic push
+#        pragma GCC diagnostic ignored "-Wconversion"
+#        pragma GCC diagnostic ignored "-Wsign-conversion"
+#    endif
+#    include "vendor/dr_flac/dr_flac.h"
+#    ifdef _MSC_VER
+#        pragma warning(pop)
+#    elif defined(__GNUC__)
+#        pragma GCC diagnostic pop
+#    endif
+#    undef DR_FLAC_IMPLEMENTATION
+#endif
 
 // case-insensitive extension check
 static bool audio_io_ends_with(const char * str, const char * suffix) {
@@ -188,11 +209,49 @@ static float * audio_io_read_wav_buf(const uint8_t * data, size_t size, int * T_
     return planar;
 }
 
-// Decode WAV or MP3 from memory buffer (auto-detect from magic bytes).
+// Decode FLAC from memory buffer. Returns planar stereo float [L:T][R:T].
+static float * audio_io_read_flac_buf(const uint8_t * data, size_t size, int * T_out, int * sr_out) {
+    *T_out  = 0;
+    *sr_out = 0;
+
+    unsigned int channels = 0, sampleRate = 0;
+    drflac_uint64 totalPCMFrameCount = 0;
+    float * interleaved = drflac_open_memory_and_read_pcm_frames_f32(
+        data, size, &channels, &sampleRate, &totalPCMFrameCount, NULL);
+    if (!interleaved || totalPCMFrameCount == 0) {
+        fprintf(stderr, "[Audio] FLAC: failed to decode buffer\n");
+        if (interleaved) drflac_free(interleaved, NULL);
+        return NULL;
+    }
+
+    int T   = (int) totalPCMFrameCount;
+    int nch = (int) channels;
+
+    float * planar = (float *) malloc((size_t) T * 2 * sizeof(float));
+    if (!planar) {
+        drflac_free(interleaved, NULL);
+        return NULL;
+    }
+    for (int t = 0; t < T; t++) {
+        planar[t]     = interleaved[t * nch + 0];
+        planar[T + t] = (nch >= 2) ? interleaved[t * nch + 1] : interleaved[t * nch + 0];
+    }
+    drflac_free(interleaved, NULL);
+
+    *T_out  = T;
+    *sr_out = (int) sampleRate;
+    fprintf(stderr, "[FLAC] Read buffer: %d samples, %d Hz, %d ch\n", T, (int) sampleRate, nch);
+    return planar;
+}
+
+// Decode WAV, MP3, or FLAC from memory buffer (auto-detect from magic bytes).
 // Returns planar stereo float [L:T][R:T]. Caller frees.
 static float * audio_read_buf(const uint8_t * data, size_t size, int * T_out, int * sr_out) {
     if (size >= 4 && memcmp(data, "RIFF", 4) == 0) {
         return audio_io_read_wav_buf(data, size, T_out, sr_out);
+    }
+    if (size >= 4 && memcmp(data, "fLaC", 4) == 0) {
+        return audio_io_read_flac_buf(data, size, T_out, sr_out);
     }
     return audio_io_read_mp3_buf(data, size, T_out, sr_out);
 }
@@ -254,13 +313,17 @@ static float * audio_io_read_wav(const char * path, int * T_out, int * sr_out) {
     return result;
 }
 
-// Read WAV or MP3 (auto-detect from extension).
+// Read WAV, MP3, or FLAC (auto-detect from magic bytes).
 // Returns planar stereo float [L: T][R: T]. Caller frees.
 static float * audio_read(const char * path, int * T_out, int * sr_out) {
-    if (audio_io_ends_with(path, ".mp3")) {
-        return audio_io_read_mp3(path, T_out, sr_out);
+    size_t    size = 0;
+    uint8_t * buf  = audio_io_load_file(path, &size);
+    if (!buf) {
+        return NULL;
     }
-    return audio_io_read_wav(path, T_out, sr_out);
+    float * result = audio_read_buf(buf, size, T_out, sr_out);
+    free(buf);
+    return result;
 }
 
 // Read WAV or MP3 and resample to 48000 Hz stereo.
