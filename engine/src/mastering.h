@@ -25,9 +25,9 @@
 #include <cstring>
 #include <deque>
 #include <numeric>
+#include <thread>
 #include <vector>
 
-#define POCKETFFT_NO_MULTITHREADING
 #include "pocketfft_hdronly.h"
 
 // ─── Configuration ──────────────────────────────────────────────────
@@ -742,19 +742,28 @@ static MasteringResult mastering_process(
 
     // ── Step 1: Resample both to 44100 Hz ──
     std::vector<float> tgt_L_44, tgt_R_44, ref_L_44, ref_R_44;
-    if (target_sr != 44100) {
-        fprintf(stderr, "[Mastering] Resampling target %d → 44100 Hz\n", target_sr);
-        tgt_L_44 = mg_resample(target_L, target_n, target_sr, 44100);
-        tgt_R_44 = mg_resample(target_R, target_n, target_sr, 44100);
+    if (target_sr != 44100 || ref_sr != 44100) {
+        fprintf(stderr, "[Mastering] Resampling to 44100 Hz...\n");
+        // Parallelize up to 4 independent resample operations
+        std::vector<std::thread> resample_threads;
+        if (target_sr != 44100) {
+            resample_threads.emplace_back([&]() { tgt_L_44 = mg_resample(target_L, target_n, target_sr, 44100); });
+            resample_threads.emplace_back([&]() { tgt_R_44 = mg_resample(target_R, target_n, target_sr, 44100); });
+        } else {
+            tgt_L_44.assign(target_L, target_L + target_n);
+            tgt_R_44.assign(target_R, target_R + target_n);
+        }
+        if (ref_sr != 44100) {
+            resample_threads.emplace_back([&]() { ref_L_44 = mg_resample(ref_L, ref_n, ref_sr, 44100); });
+            resample_threads.emplace_back([&]() { ref_R_44 = mg_resample(ref_R, ref_n, ref_sr, 44100); });
+        } else {
+            ref_L_44.assign(ref_L, ref_L + ref_n);
+            ref_R_44.assign(ref_R, ref_R + ref_n);
+        }
+        for (auto & t : resample_threads) t.join();
     } else {
         tgt_L_44.assign(target_L, target_L + target_n);
         tgt_R_44.assign(target_R, target_R + target_n);
-    }
-    if (ref_sr != 44100) {
-        fprintf(stderr, "[Mastering] Resampling reference %d → 44100 Hz\n", ref_sr);
-        ref_L_44 = mg_resample(ref_L, ref_n, ref_sr, 44100);
-        ref_R_44 = mg_resample(ref_R, ref_n, ref_sr, 44100);
-    } else {
         ref_L_44.assign(ref_L, ref_L + ref_n);
         ref_R_44.assign(ref_R, ref_R + ref_n);
     }
@@ -797,16 +806,29 @@ static MasteringResult mastering_process(
     // ── Step 3: Match Frequencies ──
     fprintf(stderr, "[Mastering] Stage 2/4: Matching frequencies...\n");
 
-    auto mid_fir = mg_get_fir(tgt_la.mid_loudest.data(), tgt_la.piece_size, tgt_la.n_loudest,
-                              ref_la.mid_loudest.data(), ref_la.piece_size, ref_la.n_loudest, cfg);
-    auto side_fir = mg_get_fir(tgt_la.side_loudest.data(), tgt_la.piece_size, tgt_la.n_loudest,
-                               ref_la.side_loudest.data(), ref_la.piece_size, ref_la.n_loudest, cfg);
+    // Compute FIR correction filters (mid and side in parallel)
+    std::vector<float> mid_fir, side_fir;
+    {
+        std::thread t_mid([&]() {
+            mid_fir = mg_get_fir(tgt_la.mid_loudest.data(), tgt_la.piece_size, tgt_la.n_loudest,
+                                ref_la.mid_loudest.data(), ref_la.piece_size, ref_la.n_loudest, cfg);
+        });
+        side_fir = mg_get_fir(tgt_la.side_loudest.data(), tgt_la.piece_size, tgt_la.n_loudest,
+                              ref_la.side_loudest.data(), ref_la.piece_size, ref_la.n_loudest, cfg);
+        t_mid.join();
+    }
 
     fprintf(stderr, "[Mastering]   FIR length: %d taps\n", (int) mid_fir.size());
 
-    // Convolve mid and side channels
-    auto result_mid  = mg_fftconvolve(tgt_la.mid.data(), tn, mid_fir.data(), (int) mid_fir.size());
-    auto result_side = mg_fftconvolve(tgt_la.side.data(), tn, side_fir.data(), (int) side_fir.size());
+    // Convolve mid and side channels (in parallel)
+    std::vector<float> result_mid, result_side;
+    {
+        std::thread t_mid([&]() {
+            result_mid = mg_fftconvolve(tgt_la.mid.data(), tn, mid_fir.data(), (int) mid_fir.size());
+        });
+        result_side = mg_fftconvolve(tgt_la.side.data(), tn, side_fir.data(), (int) side_fir.size());
+        t_mid.join();
+    }
 
     // Trim convolution result to original length (centered)
     int fir_half = (int) mid_fir.size() / 2;
@@ -867,8 +889,9 @@ static MasteringResult mastering_process(
     // ── Step 6: Resample back to original sample rate ──
     if (target_sr != 44100) {
         fprintf(stderr, "[Mastering] Resampling output 44100 → %d Hz\n", target_sr);
-        result.L = mg_resample(out_L.data(), tn, 44100, target_sr);
+        std::thread t_l([&]() { result.L = mg_resample(out_L.data(), tn, 44100, target_sr); });
         result.R = mg_resample(out_R.data(), tn, 44100, target_sr);
+        t_l.join();
     } else {
         result.L = std::move(out_L);
         result.R = std::move(out_R);
