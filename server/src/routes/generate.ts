@@ -312,7 +312,27 @@ async function runGeneration(job: GenerationJob): Promise<void> {
 
     // Submit all LM results for synthesis
     const coResident = job.params.coResident === true;
-    const synthJobId = await aceClient.submitSynth(lmResults, 'wav16', coResident);
+
+    // Timbre reference: if enabled, read the mastering reference WAV and pass
+    // it as ref_audio to the C++ engine's timbre conditioning pipeline.
+    let refAudioBuf: Buffer | undefined;
+    if (job.params.timbreReference && job.params.masteringReference) {
+      const refsDir = path.join(config.data.dir, 'references');
+      const refPath = path.join(refsDir, job.params.masteringReference);
+      if (fs.existsSync(refPath)) {
+        refAudioBuf = fs.readFileSync(refPath);
+        logGeneration(job.id, 'INFO', `[Synth Phase] Timbre reference: ${job.params.masteringReference} (${(refAudioBuf.length / 1024 / 1024).toFixed(1)} MB)`);
+      } else {
+        logGeneration(job.id, 'WARNING', `[Synth Phase] Timbre reference file not found: ${refPath}`);
+      }
+    }
+
+    let synthJobId: string;
+    if (refAudioBuf) {
+      synthJobId = await aceClient.submitSynthMultipart(lmResults, undefined, refAudioBuf, 'wav16');
+    } else {
+      synthJobId = await aceClient.submitSynth(lmResults, 'wav16', coResident);
+    }
     job.aceJobId = synthJobId;
     if (coResident) {
       logGeneration(job.id, 'INFO', '[Synth Phase] Co-resident mode: DiT+VAE will stay in VRAM');

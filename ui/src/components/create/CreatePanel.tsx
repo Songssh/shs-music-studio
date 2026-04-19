@@ -88,6 +88,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   // Mastering
   const [masteringEnabled, setMasteringEnabled] = usePersistedState('hs-masteringEnabled', false);
   const [masteringReference, setMasteringReference] = usePersistedState('hs-masteringReference', '');
+  const [timbreReference, setTimbreReference] = usePersistedState('hs-timbreReference', false);
 
   // Reuse data
   useEffect(() => {
@@ -123,7 +124,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
       lmTemperature, lmCfgScale, lmTopK, lmTopP, lmNegativePrompt,
       ditModel, lmModel, vaeModel,
       adapter, adapterScale, adapterGroupScales, adapterMode,
-      masteringEnabled, masteringReference,
+      masteringEnabled, masteringReference, timbreReference,
       // Solver sub-params
       storkSubsteps, beatStability, frequencyDamping, temporalSmoothing,
       // Guidance sub-params
@@ -185,6 +186,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
         // Mastering
         if (p.masteringEnabled !== undefined) setMasteringEnabled(p.masteringEnabled);
         if (p.masteringReference !== undefined) setMasteringReference(p.masteringReference);
+        if (p.timbreReference !== undefined) setTimbreReference(p.timbreReference);
         // Solver sub-params
         if (p.storkSubsteps !== undefined) setStorkSubsteps(p.storkSubsteps);
         if (p.beatStability !== undefined) setBeatStability(p.beatStability);
@@ -245,6 +247,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
       taskType: 'text2music',
       masteringEnabled,
       masteringReference: masteringEnabled ? masteringReference : undefined,
+      timbreReference: (masteringEnabled && timbreReference && masteringReference) ? true : undefined,
       // Solver sub-params (only when relevant solver is active)
       storkSubsteps: (inferMethod === 'stork2' || inferMethod === 'stork4') ? storkSubsteps : undefined,
       beatStability: inferMethod === 'jkass_fast' ? beatStability : undefined,
@@ -348,6 +351,8 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
           onMasteringEnabledChange={setMasteringEnabled}
           masteringReference={masteringReference}
           onMasteringReferenceChange={setMasteringReference}
+          timbreReference={timbreReference}
+          onTimbreReferenceChange={setTimbreReference}
         />
       </div>
 

@@ -14,6 +14,8 @@ interface MasteringSectionProps {
   onMasteringEnabledChange: (v: boolean) => void;
   masteringReference: string;
   onMasteringReferenceChange: (v: string) => void;
+  timbreReference: boolean;
+  onTimbreReferenceChange: (v: boolean) => void;
 }
 
 interface ReferenceTrack {
@@ -33,6 +35,8 @@ export const MasteringSection: React.FC<MasteringSectionProps> = ({
   onMasteringEnabledChange,
   masteringReference,
   onMasteringReferenceChange,
+  timbreReference,
+  onTimbreReferenceChange,
 }) => {
   const { token } = useAuth();
   const [open, setOpen] = useState(false);
@@ -174,6 +178,26 @@ export const MasteringSection: React.FC<MasteringSectionProps> = ({
                   )}
                 </label>
               </div>
+
+              {/* Timbre reference toggle */}
+              {masteringReference && (
+                <label className="flex items-center gap-2.5 cursor-pointer mt-1">
+                  <input
+                    type="checkbox"
+                    checked={timbreReference}
+                    onChange={e => onTimbreReferenceChange(e.target.checked)}
+                    className="rounded border-zinc-600 bg-zinc-800 text-teal-500 focus:ring-teal-500/20"
+                  />
+                  <span className="text-sm text-zinc-400">Also use as timbre reference</span>
+                  <Music2 size={14} className="text-teal-400 ml-auto" />
+                </label>
+              )}
+              {timbreReference && masteringReference && (
+                <p className="text-[10px] text-zinc-600 leading-relaxed">
+                  The reference track will be VAE-encoded and fed into the timbre conditioning pipeline,
+                  guiding the generation&apos;s tone and texture to match the reference.
+                </p>
+              )}
 
               {/* Info */}
               <p className="text-[10px] text-zinc-600 leading-relaxed">

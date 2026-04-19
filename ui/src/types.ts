@@ -109,6 +109,7 @@ export interface GenerationParams {
   // Mastering
   masteringEnabled?: boolean;
   masteringReference?: string;
+  timbreReference?: boolean;  // Also use mastering ref as timbre conditioner
 
   // Solver sub-parameters (conditional on selected solver)
   storkSubsteps?: number;
