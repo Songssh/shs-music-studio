@@ -39,6 +39,7 @@ export interface AudioQueueItem {
   audioUrl?: string;
   songId?: string;
   masteredAudioUrl?: string;
+  audioDuration?: number;
 }
 
 export interface AudioGenQueueState {
@@ -392,6 +393,7 @@ async function _pollUntilDone(item: AudioQueueItem, token: string): Promise<void
           item.audioUrl = audioUrl;
           if (songId) item.songId = songId;
           if (masteredUrl) item.masteredAudioUrl = masteredUrl;
+          if (status.result?.duration) item.audioDuration = status.result.duration;
           _emit();
         }
         // Resolve audio generation in Lireek DB

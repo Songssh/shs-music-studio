@@ -92,7 +92,7 @@ export const RecordingsTab: React.FC<RecordingsTabProps> = ({
                     caption: gen.caption || '',
                     lyrics: gen.lyrics || '',
                     coverUrl: ag.cover_url || '',
-                    duration: ag.duration || 0,
+                    duration: gen.duration || 0,
                     tags: [],
                     audioUrl: ag.audio_url,
                     masteredAudioUrl: ag.mastered_audio_url || '',

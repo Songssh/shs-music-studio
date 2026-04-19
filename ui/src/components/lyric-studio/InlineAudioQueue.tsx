@@ -46,7 +46,7 @@ export const InlineAudioQueue: React.FC<InlineAudioQueueProps> = ({ onPlaySong, 
       audioUrl: item.audioUrl,
       masteredAudioUrl: item.masteredAudioUrl || '',
       coverUrl: '',
-      duration: 0,
+      duration: item.audioDuration || 0,
       tags: [],
     };
     onPlaySong(song);
@@ -125,11 +125,12 @@ const QueueItemRow: React.FC<QueueItemRowProps> = ({ item, isPlayingInMain, onPl
   const isFailed = item.status === 'failed';
   const isPending = item.status === 'pending';
 
-  const elapsed = item.elapsed || 0;
-  const mins = Math.floor(elapsed / 60);
-  const secs = elapsed % 60;
-  const timeStr = elapsed > 0
-    ? mins > 0 ? `${mins}:${String(secs).padStart(2, '0')}` : `${secs}s`
+  // Show audio duration for completed items, generation elapsed for running/pending
+  const displaySeconds = isSucceeded && item.audioDuration ? item.audioDuration : (item.elapsed || 0);
+  const mins = Math.floor(displaySeconds / 60);
+  const secs = displaySeconds % 60;
+  const timeStr = displaySeconds > 0
+    ? `${mins}:${String(Math.floor(secs)).padStart(2, '0')}`
     : '';
 
   const borderColor = isSucceeded ? 'border-green-500/20'
