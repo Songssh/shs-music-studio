@@ -126,9 +126,11 @@ int ops_resolve_params(const AceSynth * ctx, const AceRequest * reqs, int batch_
     if (s.guidance_scale <= 0.0f) {
         s.guidance_scale = 1.0f;
     } else if (ctx->is_turbo && s.guidance_scale > 1.0f) {
-        fprintf(stderr, "[Resolve-Params] WARNING: turbo model, forcing guidance_scale=1.0 (was %.1f)\n",
+        // NOTE: bare turbo models ignore CFG (trained with guidance=1.0), but SFT/turbo merges
+        // can benefit from higher guidance. Log a warning but respect the user's setting.
+        fprintf(stderr, "[Resolve-Params] NOTE: turbo-flagged model with guidance_scale=%.1f "
+                        "(bare turbo ignores CFG; merge models may use it)\n",
                 s.guidance_scale);
-        s.guidance_scale = 1.0f;
     }
 
     if (s.shift <= 0.0f) {
