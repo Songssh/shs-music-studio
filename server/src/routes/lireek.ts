@@ -454,11 +454,22 @@ router.patch('/audio-generations/resolve', (req: Request, res: Response) => {
 
 // ── Album Presets ───────────────────────────────────────────────────────────
 
+/** Parse adapter_group_scales from JSON string to object if needed */
+function hydratePreset(preset: any): any {
+  if (!preset) return null;
+  const hydrated = { ...preset };
+  if (typeof hydrated.adapter_group_scales === 'string') {
+    try { hydrated.adapter_group_scales = JSON.parse(hydrated.adapter_group_scales); }
+    catch { hydrated.adapter_group_scales = null; }
+  }
+  return hydrated;
+}
+
 router.get('/lyrics-sets/:id/preset', (req: Request, res: Response) => {
   try {
     const id = intParam(req, 'id');
     const preset = db.getPreset(id);
-    res.json(preset ?? null);
+    res.json({ preset: hydratePreset(preset) });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -474,7 +485,7 @@ router.put('/lyrics-sets/:id/preset', (req: Request, res: Response) => {
       referenceTrackPath: req.body.reference_track_path,
       audioCoverStrength: req.body.audio_cover_strength,
     });
-    res.json(preset);
+    res.json({ preset: hydratePreset(preset) });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -492,7 +503,8 @@ router.delete('/lyrics-sets/:id/preset', (req: Request, res: Response) => {
 
 router.get('/presets', (_req: Request, res: Response) => {
   try {
-    res.json(db.getAllPresets());
+    const presets = db.getAllPresets().map(hydratePreset);
+    res.json({ presets });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
