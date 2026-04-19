@@ -393,17 +393,23 @@ async function runGeneration(job: GenerationJob): Promise<void> {
     // Submit all LM results for synthesis
     const coResident = job.params.coResident === true;
 
-    // Timbre reference: if enabled, read the mastering reference WAV and pass
+    // Timbre reference: if enabled, read the source audio and pass
     // it as ref_audio to the C++ engine's timbre conditioning pipeline.
+    // sourceAudioUrl can be an absolute path (from album presets) or a relative
+    // reference name (from the Create panel's uploaded references).
     let refAudioBuf: Buffer | undefined;
-    logGeneration(job.id, 'DEBUG', `[Synth Phase] timbreReference=${job.params.timbreReference}, masteringReference=${job.params.masteringReference}`);
-    if (job.params.timbreReference && job.params.masteringReference) {
-      const refsDir = path.join(config.data.dir, 'references');
-      const refPath = path.join(refsDir, job.params.masteringReference);
+    const timbreRef = job.params.sourceAudioUrl || job.params.timbreReference;
+    const masteringRef = job.params.masteringReference;
+    logGeneration(job.id, 'DEBUG', `[Synth Phase] timbreRef=${timbreRef}, masteringRef=${masteringRef}`);
+    if (timbreRef) {
+      // Resolve path: absolute paths used directly, relative names looked up in references dir
+      const refPath = path.isAbsolute(timbreRef)
+        ? timbreRef
+        : path.join(config.data.dir, 'references', timbreRef);
       logGeneration(job.id, 'DEBUG', `[Synth Phase] Looking for timbre ref at: ${refPath}`);
       if (fs.existsSync(refPath)) {
         refAudioBuf = fs.readFileSync(refPath);
-        logGeneration(job.id, 'INFO', `[Synth Phase] Timbre reference: ${job.params.masteringReference} (${(refAudioBuf.length / 1024 / 1024).toFixed(1)} MB)`);
+        logGeneration(job.id, 'INFO', `[Synth Phase] Timbre reference: ${refPath} (${(refAudioBuf.length / 1024 / 1024).toFixed(1)} MB)`);
       } else {
         logGeneration(job.id, 'WARNING', `[Synth Phase] Timbre reference file not found: ${refPath}`);
       }
@@ -477,15 +483,16 @@ async function runGeneration(job: GenerationJob): Promise<void> {
 
     // ── Post-generation mastering ──
     let masteredAudioUrl = '';
-    const masteringRef = job.params.masteringReference;
     if (masteringRef && job.params.masteringEnabled) {
       try {
         job.stage = 'Mastering...';
         job.progress = 92;
         logGeneration(job.id, 'INFO', `[Mastering] Applying reference mastering: ${masteringRef}`);
 
-        const refsDir = path.join(config.data.dir, 'references');
-        const refPath = path.join(refsDir, masteringRef);
+        // Resolve path: absolute paths used directly, relative names looked up in references dir
+        const refPath = path.isAbsolute(masteringRef)
+          ? masteringRef
+          : path.join(config.data.dir, 'references', masteringRef);
 
         for (const audioUrl of audioUrls) {
           const audioFilename = path.basename(audioUrl);
