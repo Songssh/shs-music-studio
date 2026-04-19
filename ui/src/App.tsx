@@ -220,8 +220,8 @@ const App: React.FC = () => {
   const handleWaveformReady = useCallback((_dur: number) => {
     const wsOrig = wavesurferRef.current;
     if (!wsOrig) return;
-    // Volume is set reactively via useEffect below, just start playback
     wsOrig.play();
+    setIsPlaying(true); // Always mark as playing — don't rely on onPlayChange which may be undefined
   }, []);
 
   // Mastered track ready — sync to original and start muted
