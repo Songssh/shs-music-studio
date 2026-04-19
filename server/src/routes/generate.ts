@@ -409,13 +409,22 @@ async function runGeneration(job: GenerationJob): Promise<void> {
       }
     }
 
+    // When mastering is enabled, request wav32 (float) from the engine.
+    // wav32 skips audio_normalize() which would push the audio to ~0dBFS
+    // BEFORE mastering — causing "overcooking" (double normalization).
+    // The mastering algorithm handles its own internal level matching.
+    const synthFormat = (job.params.masteringEnabled && job.params.masteringReference) ? 'wav32' : 'wav16';
+    if (synthFormat === 'wav32') {
+      logGeneration(job.id, 'INFO', '[Synth Phase] Using wav32 (raw float) for mastering input — normalization deferred to mastering');
+    }
+
     let synthJobId: string;
     if (refAudioBuf) {
       logGeneration(job.id, 'INFO', `[Synth Phase] Using MULTIPART submission with timbre ref (${refAudioBuf.length} bytes)`);
-      synthJobId = await aceClient.submitSynthMultipart(lmResults, undefined, refAudioBuf, 'wav16');
+      synthJobId = await aceClient.submitSynthMultipart(lmResults, undefined, refAudioBuf, synthFormat);
     } else {
       logGeneration(job.id, 'INFO', `[Synth Phase] Using plain JSON submission (no timbre ref)`);
-      synthJobId = await aceClient.submitSynth(lmResults, 'wav16', coResident);
+      synthJobId = await aceClient.submitSynth(lmResults, synthFormat, coResident);
     }
     job.aceJobId = synthJobId;
     if (coResident) {
