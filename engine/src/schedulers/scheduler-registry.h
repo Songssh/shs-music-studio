@@ -33,6 +33,9 @@ static const int SCHEDULER_REGISTRY_SIZE = (int) (sizeof(SCHEDULER_REGISTRY) / s
 
 // Look up a scheduler by name. Returns nullptr if not found.
 // Aliases: "karras" -> "sgm_uniform"
+// Parameterized: "power:<exp>", "beta:<a>:<b>", "composite:<A>+<B>:<cross>:<split>"
+//   - These are matched by prefix and return the base scheduler entry.
+//   - The caller should parse params from the full string when needed.
 static const SchedulerInfo * scheduler_lookup(const char * name) {
     if (!name || !name[0]) return &SCHEDULER_REGISTRY[0]; // default: linear
 
@@ -40,10 +43,20 @@ static const SchedulerInfo * scheduler_lookup(const char * name) {
     const char * resolved = name;
     if (strcmp(name, "karras") == 0) resolved = "sgm_uniform";
 
+    // Exact match first
     for (int i = 0; i < SCHEDULER_REGISTRY_SIZE; i++) {
         if (strcmp(SCHEDULER_REGISTRY[i].name, resolved) == 0) {
             return &SCHEDULER_REGISTRY[i];
         }
     }
+
+    // Prefix match for parameterized schedulers: "power:4.00" -> "power"
+    for (int i = 0; i < SCHEDULER_REGISTRY_SIZE; i++) {
+        size_t len = strlen(SCHEDULER_REGISTRY[i].name);
+        if (strncmp(resolved, SCHEDULER_REGISTRY[i].name, len) == 0 && resolved[len] == ':') {
+            return &SCHEDULER_REGISTRY[i];
+        }
+    }
+
     return nullptr;
 }

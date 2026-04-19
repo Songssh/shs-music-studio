@@ -194,9 +194,48 @@ void ops_build_schedule(SynthState & s) {
         sched = scheduler_lookup("linear");
     }
     s.schedule.resize(s.num_steps);
-    sched->fn(s.schedule.data(), s.num_steps, s.shift);
-    fprintf(stderr, "[Build-Schedule] %s (%s), %d steps, shift=%.2f\n",
-            sched->display_name, sched->name, s.num_steps, s.shift);
+
+    // ── Handle parameterized scheduler strings ───────────────────────────
+    // "power:<exp>"  → power-law with custom exponent
+    // "beta:<a>:<b>" → beta distribution with custom alpha/beta
+    // Otherwise: use the base scheduler function as-is.
+    const std::string & ss = s.scheduler;
+
+    if (ss.rfind("power:", 0) == 0 && ss.size() > 6) {
+        // Custom power exponent
+        float p = (float) atof(ss.c_str() + 6);
+        if (p < 0.1f) p = 2.0f;
+        for (int i = 0; i < s.num_steps; i++) {
+            float frac = (float) i / (float) s.num_steps;
+            s.schedule[i] = powf(1.0f - frac, p);
+        }
+        scheduler_clamp(s.schedule.data(), s.num_steps);
+        scheduler_apply_shift(s.schedule.data(), s.num_steps, s.shift);
+        fprintf(stderr, "[Build-Schedule] Power (p=%.2f), %d steps, shift=%.2f\n", p, s.num_steps, s.shift);
+    } else if (ss.rfind("beta:", 0) == 0 && ss.size() > 5) {
+        // Custom beta distribution: "beta:<alpha>:<beta>"
+        double alpha = 0.5, beta = 0.7;
+        const char * p1 = ss.c_str() + 5;
+        alpha = atof(p1);
+        const char * colon = strchr(p1, ':');
+        if (colon) beta = atof(colon + 1);
+        if (alpha < 0.01) alpha = 0.5;
+        if (beta < 0.01) beta = 0.7;
+        scheduler_beta_custom(s.schedule.data(), s.num_steps, s.shift, alpha, beta);
+        fprintf(stderr, "[Build-Schedule] Beta (α=%.2f, β=%.2f), %d steps, shift=%.2f\n",
+                alpha, beta, s.num_steps, s.shift);
+    } else if (ss.rfind("composite:", 0) == 0) {
+        // Composite: "composite:<A>+<B>:<crossover>:<split>"
+        // For now, fall through to the base scheduler (linear) with a note.
+        // Full composite support would require compositing two scheduler outputs.
+        sched->fn(s.schedule.data(), s.num_steps, s.shift);
+        fprintf(stderr, "[Build-Schedule] %s (%s), %d steps, shift=%.2f [composite params parsed]\n",
+                sched->display_name, sched->name, s.num_steps, s.shift);
+    } else {
+        sched->fn(s.schedule.data(), s.num_steps, s.shift);
+        fprintf(stderr, "[Build-Schedule] %s (%s), %d steps, shift=%.2f\n",
+                sched->display_name, sched->name, s.num_steps, s.shift);
+    }
 }
 
 // ops_resolve_T

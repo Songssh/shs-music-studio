@@ -285,3 +285,19 @@ static void scheduler_beta57(float * output, int num_steps, float shift) {
     scheduler_clamp(output, num_steps);
     scheduler_apply_shift(output, num_steps, shift);
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Beta (custom) — parameterized Beta(alpha, beta) distribution schedule
+// Called from ops_build_schedule when scheduler string is "beta:<a>:<b>"
+// ═══════════════════════════════════════════════════════════════════════════
+static void scheduler_beta_custom(float * output, int num_steps, float shift, double alpha, double beta) {
+    for (int i = 0; i < num_steps; i++) {
+        double u = ((double) i + 0.5) / (double) num_steps;
+        double t = 1.0 - _beta_ppf(u, alpha, beta);
+        output[i] = (float) t;
+    }
+    std::sort(output, output + num_steps, std::greater<float>());
+    scheduler_clamp(output, num_steps);
+    scheduler_apply_shift(output, num_steps, shift);
+}
