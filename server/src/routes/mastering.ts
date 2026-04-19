@@ -138,6 +138,7 @@ export async function runMastering(targetPath: string, referencePath: string, ou
       '--target', tempTargetWav,
       '--reference', tempRefWav,
       '--output', tempOutputWav,
+      '--pcm32f',
     ], { timeout: 120_000 });
 
     if (stderr) {
