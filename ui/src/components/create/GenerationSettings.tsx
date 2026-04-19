@@ -68,8 +68,36 @@ export const GenerationSettings: React.FC<GenerationSettingsProps> = (props) => 
           <Slider label="Guidance Scale" value={props.guidanceScale}
             onChange={props.onGuidanceScaleChange} min={0} max={20} step={0.1} showInput />
 
-          <Slider label="Shift" value={props.shift}
-            onChange={props.onShiftChange} min={0} max={10} step={0.1} showInput />
+          {/* Shift with Auto toggle */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Shift</label>
+              <button
+                onClick={() => {
+                  if (props.shift === -1) {
+                    props.onShiftChange(3.0); // restore default
+                  } else {
+                    props.onShiftChange(-1);
+                  }
+                }}
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition-all ${
+                  props.shift === -1
+                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                    : 'bg-zinc-800 text-zinc-500 border border-white/5 hover:text-zinc-300 hover:border-white/10'
+                }`}
+              >
+                Auto
+              </button>
+            </div>
+            {props.shift === -1 ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-cyan-500/5 border border-cyan-500/10 text-xs text-cyan-400/80">
+                <span>Adaptive shift based on duration &amp; step count</span>
+              </div>
+            ) : (
+              <Slider label="" value={props.shift}
+                onChange={props.onShiftChange} min={0} max={10} step={0.1} showInput />
+            )}
+          </div>
 
           {/* Solver */}
           <div>

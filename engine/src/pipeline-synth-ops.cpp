@@ -133,7 +133,18 @@ int ops_resolve_params(const AceSynth * ctx, const AceRequest * reqs, int batch_
                 s.guidance_scale);
     }
 
-    if (s.shift <= 0.0f) {
+    if (s.shift == -1.0f) {
+        // Auto shift — adaptive based on duration + step count.
+        // Python: compute_dynamic_shift(base_shift=3.0, audio_duration, num_steps)
+        float dur    = s.duration > 0.0f ? s.duration : 60.0f;
+        float dur_f  = 1.0f + 0.15f * ((dur - 60.0f) / 60.0f);
+        dur_f        = fmaxf(0.8f, fminf(1.4f, dur_f));
+        float step_f = 1.0f + 0.1f * ((30.0f - (float) s.num_steps) / 30.0f);
+        step_f       = fmaxf(0.8f, fminf(1.4f, step_f));
+        s.shift      = fmaxf(1.0f, fminf(6.0f, 3.0f * dur_f * step_f));
+        fprintf(stderr, "[Resolve-Params] Auto shift: duration=%.0fs, steps=%d → shift=%.3f\n",
+                dur, s.num_steps, s.shift);
+    } else if (s.shift <= 0.0f) {
         s.shift = ctx->is_turbo ? 3.0f : 1.0f;
     }
 
