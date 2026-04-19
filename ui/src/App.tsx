@@ -155,6 +155,17 @@ const App: React.FC = () => {
     if (selectedSong?.id === updatedSong.id) setSelectedSong(updatedSong);
   }, [currentSong, selectedSong]);
 
+  // Rename handler — PATCH title to server + update local state
+  const handleRename = useCallback(async (song: Song, newTitle: string) => {
+    try {
+      const { song: updated } = await songApi.update(song.id, { title: newTitle }, token!);
+      const normalized = { ...song, title: newTitle, ...updated };
+      handleSongUpdate(normalized);
+    } catch (err: any) {
+      showToast(`Rename failed: ${err.message}`, 'error');
+    }
+  }, [token, handleSongUpdate]);
+
   // ── Player Logic ──────────────────────────────────────────
   const playSong = useCallback((song: Song) => {
     const audio = audioRef.current;
@@ -326,6 +337,7 @@ const App: React.FC = () => {
             onSelect={(s) => { setSelectedSong(s); setShowRightSidebar(true); }}
             onReuse={handleReuse}
             onDownload={setDownloadSong}
+            onRename={handleRename}
           />
         </div>
       );
@@ -388,6 +400,7 @@ const App: React.FC = () => {
             onSelect={(s) => { setSelectedSong(s); setShowRightSidebar(true); }}
             onReuse={handleReuse}
             onDownload={setDownloadSong}
+            onRename={handleRename}
           />
         </div>
 

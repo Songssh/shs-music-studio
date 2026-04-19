@@ -4,7 +4,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   Play, Pause, Trash2, RotateCcw, Music, MoreHorizontal,
-  Download, CheckSquare, Square, MinusSquare, X,
+  Download, CheckSquare, Square, MinusSquare, X, Pencil,
 } from 'lucide-react';
 import type { Song } from '../../types';
 
@@ -17,10 +17,11 @@ interface SongListProps {
   onSelect?: (song: Song) => void;
   onReuse?: (song: Song) => void;
   onDownload?: (song: Song) => void;
+  onRename?: (song: Song, newTitle: string) => void;
 }
 
 export const SongList: React.FC<SongListProps> = ({
-  songs, currentSongId, onPlay, onDelete, onBulkDelete, onSelect, onReuse, onDownload,
+  songs, currentSongId, onPlay, onDelete, onBulkDelete, onSelect, onReuse, onDownload, onRename,
 }) => {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -145,6 +146,7 @@ export const SongList: React.FC<SongListProps> = ({
             onDelete={() => onDelete(song)}
             onReuse={() => onReuse?.(song)}
             onDownload={() => onDownload?.(song)}
+            onRename={onRename ? (newTitle) => onRename(song, newTitle) : undefined}
           />
         ))}
       </div>
@@ -163,13 +165,32 @@ interface SongItemProps {
   onDelete: () => void;
   onReuse?: () => void;
   onDownload?: () => void;
+  onRename?: (newTitle: string) => void;
 }
 
 const SongItem: React.FC<SongItemProps> = ({
   song, isActive, selectionMode, isSelected, onToggleSelect,
-  onPlay, onSelect, onDelete, onReuse, onDownload,
+  onPlay, onSelect, onDelete, onReuse, onDownload, onRename,
 }) => {
   const [showMenu, setShowMenu] = React.useState(false);
+  const [editing, setEditing] = React.useState(false);
+  const [editTitle, setEditTitle] = React.useState(song.title || '');
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  const commitRename = () => {
+    const trimmed = editTitle.trim();
+    if (trimmed && trimmed !== (song.title || '')) {
+      onRename?.(trimmed);
+    }
+    setEditing(false);
+  };
 
   const formatDuration = (val: string | number | undefined) => {
     if (!val) return '--:--';
@@ -232,9 +253,35 @@ const SongItem: React.FC<SongItemProps> = ({
 
       {/* Song Info */}
       <div className="flex-1 min-w-0">
-        <div className={`text-sm font-medium truncate ${isActive ? 'text-pink-400' : 'text-zinc-200'}`}>
-          {song.title || 'Untitled'}
-        </div>
+        {editing ? (
+          <input
+            ref={inputRef}
+            className="w-full text-sm font-medium bg-zinc-800 border border-pink-500/40 rounded-lg px-2 py-0.5 text-zinc-200 outline-none focus:border-pink-500"
+            value={editTitle}
+            onChange={e => setEditTitle(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={e => {
+              if (e.key === 'Enter') commitRename();
+              if (e.key === 'Escape') { setEditTitle(song.title || ''); setEditing(false); }
+            }}
+            onClick={e => e.stopPropagation()}
+          />
+        ) : (
+          <div className="flex items-center gap-1 group/title">
+            <div className={`text-sm font-medium truncate ${isActive ? 'text-pink-400' : 'text-zinc-200'}`}>
+              {song.title || 'Untitled'}
+            </div>
+            {onRename && !selectionMode && (
+              <button
+                onClick={e => { e.stopPropagation(); setEditTitle(song.title || ''); setEditing(true); }}
+                className="flex-shrink-0 p-0.5 rounded text-zinc-600 hover:text-zinc-300 opacity-0 group-hover/title:opacity-100 transition-opacity"
+                title="Rename"
+              >
+                <Pencil size={11} />
+              </button>
+            )}
+          </div>
+        )}
         <div className="text-xs text-zinc-500 truncate mt-0.5">
           {song.caption || song.style || 'No description'}
         </div>

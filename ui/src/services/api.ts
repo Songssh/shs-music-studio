@@ -120,8 +120,10 @@ export const songApi = {
     return { song: normalizeSong(data.song) };
   },
   create: (song: Partial<Song>, token: string) => post<{ song: Song }>('/songs', song, token),
-  update: (id: string, data: Partial<Song>, token: string) =>
-    patch<{ song: Song }>(`/songs/${id}`, data, token),
+  update: async (id: string, data: Partial<Song>, token: string) => {
+    const resp = await patch<{ song: any }>(`/songs/${id}`, data, token);
+    return { song: normalizeSong(resp.song) };
+  },
   delete: (id: string, token: string) => del<{ success: boolean }>(`/songs/${id}`, token),
   deleteAll: (token: string) => del<{ success: boolean; deletedCount: number }>('/songs', token),
   bulkDelete: (ids: string[], token: string) =>
