@@ -2,6 +2,10 @@
 //
 // Mirrors ace-server stderr output in the app. Supports search filtering,
 // auto-scroll, and color-coded log lines.
+//
+// Performance: memoized line components + content-visibility: auto to skip
+// layout/paint for offscreen lines. Combined with batched SSE updates in
+// useEventSource, this keeps the UI responsive even during heavy logging.
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Search, X, Trash2, Cpu, ArrowDown, Wifi, WifiOff } from 'lucide-react';
@@ -31,6 +35,50 @@ function getLineColor(text: string): string {
   if (/WARNING|WARN/i.test(text)) return 'text-yellow-400';
   return 'text-zinc-300';
 }
+
+/** Format timestamp once at line creation time, not on every render */
+function formatTimestamp(ts: number): string {
+  const d = new Date(ts);
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const s = String(d.getSeconds()).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+
+/** Highlight search matches in a log line */
+function highlightMatch(text: string, search: string): React.ReactNode {
+  if (!search) return text;
+  const idx = text.toLowerCase().indexOf(search.toLowerCase());
+  if (idx < 0) return text;
+  return (
+    <>
+      {text.substring(0, idx)}
+      <span className="bg-yellow-500/30 text-yellow-200 rounded-sm px-0.5">
+        {text.substring(idx, idx + search.length)}
+      </span>
+      {text.substring(idx + search.length)}
+    </>
+  );
+}
+
+/** Memoized log line — only re-renders when its own id or the search term changes */
+const LogLineItem = React.memo<{
+  line: LogLine;
+  search: string;
+}>(({ line, search }) => (
+  <div
+    className={`whitespace-pre-wrap break-all hover:bg-white/[0.02] px-1 rounded ${getLineColor(line.text)}`}
+    style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 18px' }}
+  >
+    <span className="text-zinc-600 select-none">
+      {formatTimestamp(line.ts)}
+    </span>
+    {' '}
+    {search ? highlightMatch(line.text, search) : line.text}
+  </div>
+), (prev, next) => prev.line.id === next.line.id && prev.search === next.search);
+
+LogLineItem.displayName = 'LogLineItem';
 
 export const TerminalPanel: React.FC<TerminalPanelProps> = ({ onClose }) => {
   const { lines, connected, clear } = useEventSource('/api/logs', true);
@@ -190,34 +238,9 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({ onClose }) => {
                    scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent"
       >
         {filteredLines.map((line) => (
-          <div
-            key={line.id}
-            className={`whitespace-pre-wrap break-all hover:bg-white/[0.02] px-1 rounded ${getLineColor(line.text)}`}
-          >
-            <span className="text-zinc-600 select-none">
-              {new Date(line.ts).toLocaleTimeString('en-GB', { hour12: false })}
-            </span>
-            {' '}
-            {search ? highlightMatch(line.text, search) : line.text}
-          </div>
+          <LogLineItem key={line.id} line={line} search={search} />
         ))}
       </div>
     </div>
   );
 };
-
-/** Highlight search matches in a log line */
-function highlightMatch(text: string, search: string): React.ReactNode {
-  if (!search) return text;
-  const idx = text.toLowerCase().indexOf(search.toLowerCase());
-  if (idx < 0) return text;
-  return (
-    <>
-      {text.substring(0, idx)}
-      <span className="bg-yellow-500/30 text-yellow-200 rounded-sm px-0.5">
-        {text.substring(idx, idx + search.length)}
-      </span>
-      {text.substring(idx + search.length)}
-    </>
-  );
-}

@@ -2,6 +2,9 @@
 //
 // Connects to the server's SSE endpoint, buffers lines,
 // and auto-reconnects on disconnect.
+//
+// Performance: batches incoming messages and flushes at ~100ms intervals
+// to avoid per-message React re-renders during heavy logging.
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 
@@ -12,13 +15,30 @@ export interface LogLine {
   source: 'engine' | 'server';
 }
 
-const MAX_CLIENT_LINES = 2000;
+const MAX_CLIENT_LINES = 500;
+const BATCH_INTERVAL_MS = 100;
 
 export function useEventSource(url: string, enabled: boolean) {
   const [lines, setLines] = useState<LogLine[]>([]);
   const [connected, setConnected] = useState(false);
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
+  const batchRef = useRef<LogLine[]>([]);
+  const flushTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  // Flush batched lines into React state
+  const flush = useCallback(() => {
+    flushTimer.current = undefined;
+    if (batchRef.current.length === 0) return;
+    const batch = batchRef.current;
+    batchRef.current = [];
+    setLines(prev => {
+      const next = [...prev, ...batch];
+      return next.length > MAX_CLIENT_LINES
+        ? next.slice(next.length - MAX_CLIENT_LINES)
+        : next;
+    });
+  }, []);
 
   const connect = useCallback(() => {
     if (!enabled) return;
@@ -36,12 +56,11 @@ export function useEventSource(url: string, enabled: boolean) {
     es.onmessage = (event) => {
       try {
         const line: LogLine = JSON.parse(event.data);
-        setLines(prev => {
-          const next = [...prev, line];
-          return next.length > MAX_CLIENT_LINES
-            ? next.slice(next.length - MAX_CLIENT_LINES)
-            : next;
-        });
+        batchRef.current.push(line);
+        // Schedule a flush if one isn't already pending
+        if (!flushTimer.current) {
+          flushTimer.current = setTimeout(flush, BATCH_INTERVAL_MS);
+        }
       } catch {
         // Ignore malformed data
       }
@@ -54,7 +73,7 @@ export function useEventSource(url: string, enabled: boolean) {
       // Auto-reconnect after 3 seconds
       reconnectTimer.current = setTimeout(connect, 3000);
     };
-  }, [url, enabled]);
+  }, [url, enabled, flush]);
 
   useEffect(() => {
     if (enabled) {
@@ -75,10 +94,14 @@ export function useEventSource(url: string, enabled: boolean) {
       if (reconnectTimer.current) {
         clearTimeout(reconnectTimer.current);
       }
+      if (flushTimer.current) {
+        clearTimeout(flushTimer.current);
+      }
     };
   }, [enabled, connect]);
 
   const clear = useCallback(() => {
+    batchRef.current = [];
     setLines([]);
   }, []);
 
