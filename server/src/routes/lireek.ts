@@ -131,7 +131,7 @@ router.get('/lyrics-sets/:id/full-detail', (req: Request, res: Response) => {
     const profiles = db.getProfiles(id);
     const generations = db.getGenerations(undefined, id);
     const preset = db.getPreset(id);
-    res.json({ ...set, profiles, generations, preset });
+    res.json({ lyrics_set: set, profiles, generations, preset });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
