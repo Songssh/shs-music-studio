@@ -33,6 +33,8 @@ function mergeCreatePanelSettings(params: Record<string, any>): void {
     ['ace-guidanceMode', 'guidanceMode'],
     ['ace-randomSeed', 'randomSeed'],
     ['ace-vocalLanguage', 'vocalLanguage'],
+    ['hs-skipLm', 'skipLm'],
+    ['hs-useCotCaption', 'useCotCaption'],
   ];
   for (const [storageKey, paramKey] of map) {
     const val = readPersisted(storageKey);

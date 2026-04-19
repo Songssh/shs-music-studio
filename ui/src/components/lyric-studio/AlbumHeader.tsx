@@ -27,8 +27,10 @@ export const AlbumHeader: React.FC<AlbumHeaderProps> = ({
   const [imageError, setImageError] = React.useState(false);
   const [modelSelections, setModelSelections] = React.useState<ModelSelections>(loadSelections);
   const [llmExpanded, setLlmExpanded] = React.useState(false);
-  // Synced with CreatePanel via same localStorage key
-  const [thinking, setThinking] = usePersistedState('ace-thinking', false);
+  // Synced with CreatePanel — same localStorage key, inverted (skipLm=false → thinking=true)
+  const [skipLm, setSkipLm] = usePersistedState('hs-skipLm', false);
+  const thinking = !skipLm;
+  const setThinking = (val: boolean) => setSkipLm(!val);
   const songs = parseSongs(album.songs);
 
   const gradient = (name: string) => {
