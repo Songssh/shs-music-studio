@@ -46,4 +46,30 @@ export const config = {
       return path.join(this.dir, 'audio');
     },
   },
+
+  // Lyric Studio / Lireek
+  lireek: {
+    geniusAccessToken: process.env.GENIUS_ACCESS_TOKEN || '',
+    geminiApiKey: process.env.GEMINI_API_KEY || '',
+    openaiApiKey: process.env.OPENAI_API_KEY || '',
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+    ollamaBaseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
+    lmstudioBaseUrl: process.env.LMSTUDIO_BASE_URL || 'http://localhost:1234/v1',
+    unslothBaseUrl: process.env.UNSLOTH_BASE_URL || 'http://127.0.0.1:8888',
+    unslothUsername: process.env.UNSLOTH_USERNAME || '',
+    unslothPassword: process.env.UNSLOTH_PASSWORD || '',
+    defaultProvider: process.env.DEFAULT_LLM_PROVIDER || 'gemini',
+    geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+    openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    anthropicModel: process.env.ANTHROPIC_MODEL || 'claude-3-5-haiku-20241022',
+    ollamaModel: process.env.OLLAMA_MODEL || 'llama3',
+    lmstudioModel: process.env.LMSTUDIO_MODEL || '',
+    unslothModel: process.env.UNSLOTH_MODEL || '',
+    get dbPath() {
+      return path.join(config.data.dir, 'lireek.db');
+    },
+    get exportDir() {
+      return process.env.LYRICS_EXPORT_DIR || path.join(config.data.dir, 'lyrics');
+    },
+  },
 };

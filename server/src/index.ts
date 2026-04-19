@@ -17,6 +17,7 @@ import { execSync } from 'child_process';
 import { config } from './config.js';
 import { initLogger, logEngine, closeLogger } from './services/logger.js';
 import { initDb, closeDb } from './db/database.js';
+import { initLireekDb, closeLireekDb } from './db/lireekDb.js';
 import authRoutes from './routes/auth.js';
 import songRoutes from './routes/songs.js';
 import generateRoutes from './routes/generate.js';
@@ -27,6 +28,7 @@ import masteringRoutes from './routes/mastering.js';
 import downloadRoutes from './routes/download.js';
 import adapterRoutes from './routes/adapters.js';
 import logsRoutes, { pushLog } from './routes/logs.js';
+import lireekRoutes from './routes/lireek.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -41,8 +43,9 @@ console.log(`
 `);
 console.log(`[Logger] Session logs: ${logDir}`);
 
-// Initialize database
+// Initialize databases
 initDb();
+initLireekDb();
 
 // Create Express app
 const app = express();
@@ -63,6 +66,7 @@ app.use('/api/mastering', masteringRoutes);
 app.use('/api/download', downloadRoutes);
 app.use('/api/adapters', adapterRoutes);
 app.use('/api/logs', logsRoutes);
+app.use('/api/lireek', lireekRoutes);
 
 // Serve audio files from data/audio/
 app.use('/audio', express.static(config.data.audioDir, {
