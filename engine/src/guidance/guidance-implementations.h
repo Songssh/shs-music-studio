@@ -74,7 +74,9 @@ static void guidance_dynamic_cfg(const float *       pred_cond,
                                  float               norm_threshold) {
     const float power = 0.5f;
     float progress = (float) ctx.step_idx / fmaxf((float) (ctx.total_steps - 1), 1.0f);
-    float decay    = powf(cosf((float) M_PI / 2.0f * progress), power);
+    // cosf(π/2) in float32 can return a tiny negative (-4e-8) due to precision.
+    // powf(negative, 0.5) = NaN, so clamp to 0.
+    float decay    = powf(fmaxf(cosf((float) M_PI / 2.0f * progress), 0.0f), power);
     float effective_scale = 1.0f + (guidance_scale - 1.0f) * decay;
 
     // ── Diagnostic: input magnitudes before APG ──
