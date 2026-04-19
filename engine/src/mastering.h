@@ -335,6 +335,8 @@ static std::vector<float> mg_fftconvolve(const float * signal, int n_sig,
 // ─── Spectral Analysis & FIR Design ────────────────────────────────
 
 // Compute average magnitude spectrum of pieces
+// Uses boxcar (rectangular) window with no overlap, matching Python matchering's
+// scipy.signal.stft(window='boxcar', noverlap=0).
 static std::vector<float> mg_avg_spectrum(const float * pieces, int piece_size,
                                            int n_pieces, int fft_size) {
     size_t n_cpx = fft_size / 2 + 1;
@@ -347,21 +349,17 @@ static std::vector<float> mg_avg_spectrum(const float * pieces, int piece_size,
     std::vector<double> padded(fft_size, 0.0);
     std::vector<std::complex<double>> freq(n_cpx);
 
-    // Hann window
-    std::vector<double> window(fft_size);
-    for (int i = 0; i < fft_size; i++) {
-        window[i] = 0.5 * (1.0 - std::cos(2.0 * M_PI * i / (fft_size - 1)));
-    }
+    // Boxcar (rectangular) window — no windowing applied
+    // Hop = fft_size (no overlap), matching Python's noverlap=0
 
     int n_frames = 0;
-    int hop = fft_size / 2;
+    int hop = fft_size;  // no overlap
 
     for (int p = 0; p < n_pieces; p++) {
         const float * piece = pieces + p * piece_size;
-        // Slide the FFT window across the piece
         for (int start = 0; start + fft_size <= piece_size; start += hop) {
             for (int i = 0; i < fft_size; i++) {
-                padded[i] = piece[start + i] * window[i];
+                padded[i] = piece[start + i];  // boxcar: no window multiplication
             }
             pocketfft::r2c(shape, stride_in, stride_out, {0},
                            pocketfft::FORWARD, padded.data(), freq.data(), 1.0);
@@ -430,6 +428,12 @@ static std::vector<float> mg_get_fir(const float * target_pieces, int target_pie
         int   hi    = std::min(lo + 1, n_log - 1);
         float frac  = log_i - lo;
         correction_smooth[i] = smoothed[lo] * (1.0f - frac) + smoothed[hi] * frac;
+    }
+
+    // Match Python matchering: zero DC bin, preserve raw bin[1]
+    correction_smooth[0] = 0.0f;
+    if (n_cpx > 1) {
+        correction_smooth[1] = correction[1];
     }
 
     // Build symmetric frequency response and IFFT to get FIR
