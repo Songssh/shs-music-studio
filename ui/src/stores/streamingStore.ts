@@ -8,7 +8,7 @@
  */
 
 import { useSyncExternalStore } from 'react';
-import { lireekApi } from '../../services/lireekApi';
+import { lireekApi } from '../services/lireekApi';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
