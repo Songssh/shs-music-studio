@@ -114,8 +114,8 @@ router.get('/:id', async (req, res) => {
       const sourcePath = path.join(config.data.audioDir, filename);
       if (fs.existsSync(sourcePath)) {
         // Clean up parsed parameters just in case DB doesn't have standard naming
-        const badPrefixes = /^_(XL|STD)(\s*\(CPP\))?(\s*-\s*_)?\s*-?\s*/i;
-        const cleanPrepend = prepend.replace(badPrefixes, '').trim();
+        const badPrefixes = /^_?(XL|STD)(\s*\(CPP\))?_?\s*-?\s*/i;
+        const cleanPrepend = prepend.replace(/^_+|_+$/g, '').replace(badPrefixes, '').trim();
         const cleanArtist = artistName.replace(badPrefixes, '').trim();
         const titleSuffix = version === 'original' ? ' - Unmastered' : '';
         const titleParts = [cleanPrepend, cleanArtist, 'Untitled'].filter(Boolean);
@@ -169,17 +169,19 @@ router.get('/:id', async (req, res) => {
   }
 
   // Build download filename: Prepend - Artist - Title_suffix.format
-  const badPrefixes = /^_(XL|STD)(\s*\(CPP\))?(\s*-\s*_)?\s*-?\s*/i;
+  // Strip leading/trailing underscores and the old backend-injected prefix patterns
+  const badPrefixes = /^_?(XL|STD)(\s*\(CPP\))?_?\s*-?\s*/i;
   
   let rawTitle = song.title || 'Untitled';
   // Strip backend-generated prefix strings if they accidentally got committed to the DB
   rawTitle = rawTitle.replace(badPrefixes, '');
   rawTitle = rawTitle.replace(/_mastered/g, ''); // User wants mastered as default, so explicitly strip it out just in case
-  const songTitle = rawTitle.replace(/[^a-zA-Z0-9 _-]/g, '');
+  const songTitle = rawTitle.replace(/[^a-zA-Z0-9 _()-]/g, '').trim();
 
   const suffix = version === 'original' ? ' - Unmastered' : '';
-  const resolvedArtist = artistName || (song.artist || '').replace(badPrefixes, '').replace(/[^a-zA-Z0-9 _-]/g, '');
-  const cleanPrepend = prepend.replace(badPrefixes, '').trim();
+  const resolvedArtist = artistName || (song.artist || '').replace(badPrefixes, '').replace(/[^a-zA-Z0-9 _()-]/g, '').trim();
+  // Clean prepend: strip wrapping underscores, collapse internal whitespace
+  const cleanPrepend = prepend.replace(/^_+|_+$/g, '').replace(badPrefixes, '').trim();
   const parts = [cleanPrepend, resolvedArtist, `${songTitle}${suffix}`].filter(Boolean);
   const downloadFilename = `${parts.join(' - ')}.${format}`;
 
