@@ -10,7 +10,9 @@ import { ContentSection } from './ContentSection';
 import { MetadataSection } from './MetadataSection';
 import { GenerationSettings } from './GenerationSettings';
 import { ModelSelector } from './ModelSelector';
+import { AdaptersAccordion } from './AdaptersAccordion';
 import { MasteringSection } from './MasteringSection';
+import { DEFAULT_SETTINGS, type AppSettings } from '../settings/SettingsPanel';
 import type { GenerationParams, Song } from '../../types';
 
 interface CreatePanelProps {
@@ -65,6 +67,14 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   });
   const [adapterMode, setAdapterMode] = usePersistedState('hs-adapterMode', 'runtime');
 
+  // Adapter accordion state
+  const [advancedAdapters, setAdvancedAdapters] = usePersistedState('hs-advancedAdapters', false);
+  const [adapterFolder, setAdapterFolder] = usePersistedState('hs-adapterFolder', '');
+  const [adaptersOpen, setAdaptersOpen] = usePersistedState('hs-adaptersOpen', false);
+
+  // Trigger word settings — read from shared settings (same key as App.tsx)
+  const [settings] = usePersistedState<AppSettings>('ace-settings', DEFAULT_SETTINGS);
+
   // Mastering
   const [masteringEnabled, setMasteringEnabled] = usePersistedState('hs-masteringEnabled', false);
   const [masteringReference, setMasteringReference] = usePersistedState('hs-masteringReference', '');
@@ -88,6 +98,11 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   }, [reuseData?.timestamp]);
 
   const handleGenerate = () => {
+    // Compute trigger word from adapter filename
+    const triggerWord = settings.triggerUseFilename && adapter
+      ? (adapter.split(/[\\/]/).pop()?.replace(/\.safetensors$/i, '') || '')
+      : '';
+
     const params: GenerationParams = {
       caption,
       lyrics: instrumental ? '[Instrumental]' : lyrics,
@@ -120,6 +135,8 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
       loraScale: adapterScale,
       adapterGroupScales: adapter ? adapterGroupScales : undefined,
       adapterMode: adapter ? adapterMode : 'merge',
+      triggerWord: triggerWord || undefined,
+      triggerPlacement: triggerWord ? settings.triggerPlacement : undefined,
       taskType: 'text2music',
       masteringEnabled,
       masteringReference: masteringEnabled ? masteringReference : undefined,
@@ -155,10 +172,25 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
           ditModel={ditModel} onDitModelChange={setDitModel}
           lmModel={lmModel} onLmModelChange={setLmModel}
           vaeModel={vaeModel} onVaeModelChange={setVaeModel}
-          adapter={adapter} onAdapterChange={setAdapter}
-          adapterScale={adapterScale} onAdapterScaleChange={setAdapterScale}
-          adapterGroupScales={adapterGroupScales} onAdapterGroupScalesChange={setAdapterGroupScales}
-          adapterMode={adapterMode} onAdapterModeChange={setAdapterMode}
+        />
+
+        <AdaptersAccordion
+          isOpen={adaptersOpen}
+          onToggle={() => setAdaptersOpen(!adaptersOpen)}
+          advancedAdapters={advancedAdapters}
+          onAdvancedAdaptersChange={setAdvancedAdapters}
+          adapter={adapter}
+          onAdapterChange={setAdapter}
+          adapterScale={adapterScale}
+          onAdapterScaleChange={setAdapterScale}
+          adapterMode={adapterMode}
+          onAdapterModeChange={setAdapterMode}
+          adapterGroupScales={adapterGroupScales}
+          onAdapterGroupScalesChange={setAdapterGroupScales}
+          adapterFolder={adapterFolder}
+          onAdapterFolderChange={setAdapterFolder}
+          triggerUseFilename={settings.triggerUseFilename}
+          triggerPlacement={settings.triggerPlacement}
         />
 
         <GenerationSettings
