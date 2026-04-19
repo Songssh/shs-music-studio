@@ -96,9 +96,19 @@ app.use('/references', express.static(refsDir, {
 // Serve React frontend (production only — in dev, Vite handles this)
 const uiDistPath = path.resolve(__dirname, '../../ui/dist');
 if (fs.existsSync(uiDistPath)) {
-  app.use(express.static(uiDistPath));
+  // Assets with content hashes get long cache; index.html always revalidates
+  app.use(express.static(uiDistPath, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      } else {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  }));
   // SPA fallback: serve index.html for all unmatched routes
   app.get('/{*splat}', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(uiDistPath, 'index.html'));
   });
   console.log(`[Server] Serving UI from ${uiDistPath}`);
