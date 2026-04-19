@@ -269,6 +269,16 @@ const App: React.FC = () => {
     // Volume swap happens reactively via the useEffect above
     setPlayMastered(wantMastered);
 
+    // Ensure both tracks are playing (the inactive one may have been
+    // paused by the browser or never started)
+    const newActiveWs = wantMastered ? wsAlt : wsOrig;
+    const newActiveMedia = newActiveWs.getMediaElement();
+    if (newActiveMedia?.paused) newActiveWs.play();
+    // Keep the shadow track running too (muted)
+    const newShadowWs = wantMastered ? wsOrig : wsAlt;
+    const newShadowMedia = newShadowWs.getMediaElement();
+    if (newShadowMedia?.paused) newShadowWs.play();
+
     // Swap spectrum analyzer to the newly-active track
     const newActiveEl = wantMastered
       ? wavesurferAltRef.current?.getMediaElement()
