@@ -238,20 +238,25 @@ function saveTrackList(tl: PersistedTrackList): void {
 
 // ── WaveSurfer Handle Registration ───────────────────────────────────────────
 
-let _wsOriginal: WaveformPlayerHandle | null = null;
-let _wsAlt: WaveformPlayerHandle | null = null;
+// Store ref OBJECTS (not .current values) so we always dereference at call time.
+// This is critical because useImperativeHandle may not have committed yet when
+// the useEffect in App.tsx runs registerPlayers.
+type WsRef = { current: WaveformPlayerHandle | null };
+
+let _wsOriginalRef: WsRef = { current: null };
+let _wsAltRef: WsRef = { current: null };
 
 export function registerPlayers(
-  orig: WaveformPlayerHandle | null,
-  alt: WaveformPlayerHandle | null
+  orig: WsRef,
+  alt: WsRef
 ): void {
-  _wsOriginal = orig;
-  _wsAlt = alt;
+  _wsOriginalRef = orig;
+  _wsAltRef = alt;
 }
 
 export function getActiveMediaElement(): HTMLMediaElement | null {
-  if (_state.playMastered && _wsAlt) return _wsAlt.getMediaElement();
-  if (_wsOriginal) return _wsOriginal.getMediaElement();
+  if (_state.playMastered && _wsAltRef.current) return _wsAltRef.current.getMediaElement();
+  if (_wsOriginalRef.current) return _wsOriginalRef.current.getMediaElement();
   return null;
 }
 
@@ -316,19 +321,21 @@ function startBothPlayers(): void {
   if (_retryTimer) { clearTimeout(_retryTimer); _retryTimer = null; }
 
   let started = false;
+  const wsOrig = _wsOriginalRef.current;
+  const wsAlt = _wsAltRef.current;
 
-  if (_wsOriginal) {
-    const m = _wsOriginal.getMediaElement();
+  if (wsOrig) {
+    const m = wsOrig.getMediaElement();
     if (m && m.readyState >= 2) {
-      if (m.paused) _wsOriginal.play();
+      if (m.paused) wsOrig.play();
       started = true;
     }
   }
 
-  if (_wsAlt && _state.hasMastered) {
-    const m = _wsAlt.getMediaElement();
+  if (wsAlt && _state.hasMastered) {
+    const m = wsAlt.getMediaElement();
     if (m && m.readyState >= 2 && m.paused) {
-      _wsAlt.play();
+      wsAlt.play();
     }
   }
 
@@ -352,13 +359,13 @@ function startBothPlayers(): void {
 }
 
 function applyVolumes(): void {
-  if (_wsOriginal) _wsOriginal.setVolume(_state.playMastered ? 0 : _state.volume);
-  if (_wsAlt) _wsAlt.setVolume(_state.playMastered ? _state.volume : 0);
+  _wsOriginalRef.current?.setVolume(_state.playMastered ? 0 : _state.volume);
+  _wsAltRef.current?.setVolume(_state.playMastered ? _state.volume : 0);
 }
 
 function applyPlaybackRate(): void {
-  if (_wsOriginal) _wsOriginal.setPlaybackRate(_state.playbackRate);
-  if (_wsAlt) _wsAlt.setPlaybackRate(_state.playbackRate);
+  _wsOriginalRef.current?.setPlaybackRate(_state.playbackRate);
+  _wsAltRef.current?.setPlaybackRate(_state.playbackRate);
 }
 
 function persistTrackList(): void {
@@ -404,8 +411,8 @@ function loadTrack(track: PlaybackTrack): void {
   });
 
   // Load into WaveSurfer
-  if (_wsOriginal) _wsOriginal.loadUrl(track.audioUrl);
-  if (_wsAlt && hasMastered) _wsAlt.loadUrl(track.masteredAudioUrl!);
+  _wsOriginalRef.current?.loadUrl(track.audioUrl);
+  if (_wsAltRef.current && hasMastered) _wsAltRef.current.loadUrl(track.masteredAudioUrl!);
 
   applyVolumes();
   applyPlaybackRate();
@@ -443,19 +450,21 @@ export function playFromList(
 /** Toggle play/pause on both WaveSurfer instances */
 export function togglePlay(): void {
   if (!_state.currentTrack) return;
-  _wsOriginal?.playPause();
-  if (_state.hasMastered) _wsAlt?.playPause();
+  _wsOriginalRef.current?.playPause();
+  if (_state.hasMastered) _wsAltRef.current?.playPause();
 }
 
 /** Seek both WaveSurfer instances to a time in seconds */
 export function seek(time: number): void {
-  if (_wsOriginal) {
-    const d = _wsOriginal.getDuration();
-    if (d > 0) _wsOriginal.seekTo(time / d);
+  const wsOrig = _wsOriginalRef.current;
+  const wsAlt = _wsAltRef.current;
+  if (wsOrig) {
+    const d = wsOrig.getDuration();
+    if (d > 0) wsOrig.seekTo(time / d);
   }
-  if (_wsAlt) {
-    const d = _wsAlt.getDuration();
-    if (d > 0) _wsAlt.seekTo(time / d);
+  if (wsAlt) {
+    const d = wsAlt.getDuration();
+    if (d > 0) wsAlt.seekTo(time / d);
   }
 }
 
@@ -523,13 +532,15 @@ export function previous(): void {
 
 /** Toggle between mastered and original audio */
 export function toggleMastered(): void {
-  if (!_state.hasMastered || !_wsOriginal || !_wsAlt || !_state.currentTrack) return;
+  const wsOrig = _wsOriginalRef.current;
+  const wsAlt = _wsAltRef.current;
+  if (!_state.hasMastered || !wsOrig || !wsAlt || !_state.currentTrack) return;
 
   const wantMastered = !_state.playMastered;
 
   // Sync position from active → inactive
-  const activeWs = _state.playMastered ? _wsAlt : _wsOriginal;
-  const inactiveWs = _state.playMastered ? _wsOriginal : _wsAlt;
+  const activeWs = _state.playMastered ? wsAlt : wsOrig;
+  const inactiveWs = _state.playMastered ? wsOrig : wsAlt;
   const activeDur = activeWs.getDuration();
   const activeTime = activeWs.getCurrentTime();
   if (activeDur > 0) {
@@ -538,8 +549,8 @@ export function toggleMastered(): void {
   }
 
   // Ensure both tracks are actually playing (browser may have paused the shadow)
-  const newActiveWs = wantMastered ? _wsAlt : _wsOriginal;
-  const newShadowWs = wantMastered ? _wsOriginal : _wsAlt;
+  const newActiveWs = wantMastered ? wsAlt : wsOrig;
+  const newShadowWs = wantMastered ? wsOrig : wsAlt;
   const newActiveMedia = newActiveWs.getMediaElement();
   if (newActiveMedia?.paused) newActiveWs.play();
   const newShadowMedia = newShadowWs.getMediaElement();
@@ -571,11 +582,13 @@ export function handleOriginalReady(duration: number): void {
 export function handleAltReady(duration: number): void {
   if (_loadingTrackId && _state.currentTrack && _loadingTrackId !== _state.currentTrack.id) return;
   // Sync alt position with original
-  if (_wsAlt && _wsOriginal) {
-    const origDur = _wsOriginal.getDuration();
-    const origTime = _wsOriginal.getCurrentTime();
+  const wsOrig = _wsOriginalRef.current;
+  const wsAlt = _wsAltRef.current;
+  if (wsAlt && wsOrig) {
+    const origDur = wsOrig.getDuration();
+    const origTime = wsOrig.getCurrentTime();
     if (origDur > 0 && duration > 0) {
-      _wsAlt.seekTo(origTime / duration);
+      wsAlt.seekTo(origTime / duration);
     }
   }
   startBothPlayers();
@@ -601,11 +614,11 @@ export function setIsPlaying(playing: boolean): void {
 export function handleFinish(): void {
   if (_state.repeat === 'one') {
     // Repeat current track
-    _wsOriginal?.seekTo(0);
-    _wsOriginal?.play();
-    if (_state.hasMastered && _wsAlt) {
-      _wsAlt.seekTo(0);
-      _wsAlt.play();
+    _wsOriginalRef.current?.seekTo(0);
+    _wsOriginalRef.current?.play();
+    if (_state.hasMastered && _wsAltRef.current) {
+      _wsAltRef.current.seekTo(0);
+      _wsAltRef.current.play();
     }
     return;
   }

@@ -90,9 +90,11 @@ const App: React.FC = () => {
   const wavesurferRef = useRef<WaveformPlayerHandle>(null);
   const wavesurferAltRef = useRef<WaveformPlayerHandle>(null);
 
-  // Register WaveSurfer handles with playback store
+  // Register WaveSurfer ref objects with playback store.
+  // We pass the refs themselves (not .current) so the store always gets
+  // the latest handle even if useImperativeHandle hasn't committed yet.
   useEffect(() => {
-    registerPlayers(wavesurferRef.current, wavesurferAltRef.current);
+    registerPlayers(wavesurferRef, wavesurferAltRef);
   }, []);
 
   // Track spectrum analyzer media element — updates on mastered toggle
