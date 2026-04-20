@@ -101,22 +101,31 @@ async function acePost(path, body, timeoutMs = 30000) {
   return res;
 }
 
-/** Poll job until done/failed, with timeout */
+/** Poll job until done/failed, tracking peak VRAM */
 async function pollJob(jobId, maxWaitMs = 600000) {
   const start = Date.now();
+  let peakVramMB = 0;
   while (Date.now() - start < maxWaitMs) {
+    // Sample VRAM while waiting
+    try {
+      const vram = await getVram();
+      if (vram?.used_mb && vram.used_mb > peakVramMB) {
+        peakVramMB = vram.used_mb;
+      }
+    } catch { /* ignore */ }
+
     try {
       const res = await aceGet(`/job?id=${jobId}`, 120000);
       const status = await res.json();
-      if (status.status === 'done') return 'done';
-      if (status.status === 'failed') return 'failed';
-      if (status.status === 'cancelled') return 'cancelled';
+      if (status.status === 'done') return { status: 'done', peakVramMB };
+      if (status.status === 'failed') return { status: 'failed', peakVramMB };
+      if (status.status === 'cancelled') return { status: 'cancelled', peakVramMB };
     } catch (e) {
       // ace-server might be busy computing — retry after delay
     }
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => setTimeout(r, 2000));
   }
-  return 'timeout';
+  return { status: 'timeout', peakVramMB };
 }
 
 /** Check VRAM usage */
@@ -131,21 +140,33 @@ async function getVram() {
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
+// ─── Log file helper ─────────────────────────────────────────────────────────
+const LOG_FILE = path.join(OUT_DIR, 'benchmark.log');
+
+function log(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}`;
+  console.log(msg);
+  fs.appendFileSync(LOG_FILE, line + '\n');
+}
+
 async function main() {
-  console.log('╔══════════════════════════════════════════════════════════╗');
-  console.log('║  ACE-Step Quantization Benchmark                       ║');
-  console.log('║  Fixed: seed=42, 30s, 60 steps, euler, apg, linear     ║');
-  console.log(`║  Server: ${ACE_URL.padEnd(46)}║`);
-  console.log('╚══════════════════════════════════════════════════════════╝');
-  console.log();
+  // Clear log file
+  fs.writeFileSync(LOG_FILE, '');
+
+  log('╔══════════════════════════════════════════════════════════╗');
+  log('║  ACE-Step Quantization Benchmark                       ║');
+  log('║  Fixed: seed=42, 30s, 60 steps, euler, apg, linear     ║');
+  log(`║  Server: ${ACE_URL.padEnd(46)}║`);
+  log('╚══════════════════════════════════════════════════════════╝');
+  log('');
 
   // Verify server is alive
   try {
     await aceGet('/health');
-    console.log('[✓] ace-server is reachable\n');
+    log('[✓] ace-server is reachable');
   } catch (e) {
-    console.error('[✗] Cannot reach ace-server at', ACE_URL);
-    console.error('    Start ace-server first, then re-run this script.');
+    log('[✗] Cannot reach ace-server at ' + ACE_URL);
+    log('    Start ace-server first, then re-run this script.');
     process.exit(1);
   }
 
@@ -153,7 +174,8 @@ async function main() {
   const propsRes = await aceGet('/props');
   const props = await propsRes.json();
   const availableDit = new Set(props.models?.dit || []);
-  console.log(`[i] Server has ${availableDit.size} DiT models loaded/available\n`);
+  log(`[i] Server has ${availableDit.size} DiT models loaded/available`);
+  log('');
 
   const results = [];
 
@@ -162,12 +184,12 @@ async function main() {
     const shortName = modelName.replace('acestep-v15-merge-base-turbo-xl-ta-0.5-', '').replace('.gguf', '');
     const audioPath = path.join(OUT_DIR, `benchmark_${shortName}.wav`);
 
-    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-    console.log(`[${i + 1}/${MODELS.length}] Testing: ${shortName}`);
+    log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    log(`[${i + 1}/${MODELS.length}] Testing: ${shortName}`);
 
     // Check if model is available
     if (!availableDit.has(modelName)) {
-      console.log(`  ⚠ Model not found on server — SKIPPED`);
+      log(`  ⚠ Model not found on server — SKIPPED`);
       results.push({
         model: shortName,
         file: modelName,
@@ -179,7 +201,7 @@ async function main() {
 
     // Skip if already tested
     if (fs.existsSync(audioPath)) {
-      console.log(`  ⏭ Already tested — skipping (delete ${path.basename(audioPath)} to re-run)`);
+      log(`  ⏭ Already tested — skipping (delete ${path.basename(audioPath)} to re-run)`);
       results.push({
         model: shortName,
         file: modelName,
@@ -195,29 +217,24 @@ async function main() {
       synth_model: modelName,
     };
 
-    let jobId, submitTime, genTime, status, vramBefore, vramAfter, audioSize;
+    let jobId, submitTime, genTime, pollResult, audioSize, peakVramMB = 0;
 
     try {
-      // Get VRAM before
-      vramBefore = await getVram();
-
       submitTime = Date.now();
-      console.log(`  ▶ Submitting synth job...`);
+      log(`  ▶ Submitting synth job...`);
       const res = await acePost('/synth?format=wav16', request);
       const data = await res.json();
       jobId = data.id;
-      console.log(`  ▶ Job ID: ${jobId} — polling...`);
+      log(`  ▶ Job ID: ${jobId} — polling (tracking VRAM)...`);
 
-      // Poll until done
-      status = await pollJob(jobId, 600000); // 10 min max per model
+      // Poll until done — also tracks peak VRAM during generation
+      pollResult = await pollJob(jobId, 600000); // 10 min max per model
       genTime = ((Date.now() - submitTime) / 1000).toFixed(1);
+      peakVramMB = pollResult.peakVramMB || 0;
 
-      // Get VRAM after
-      vramAfter = await getVram();
-
-      if (status === 'done') {
+      if (pollResult.status === 'done') {
         // Fetch result
-        console.log(`  ▶ Downloading audio...`);
+        log(`  ▶ Downloading audio...`);
         const audioRes = await fetch(`${ACE_URL}/job?id=${jobId}&result=1`, {
           signal: AbortSignal.timeout(60000),
         });
@@ -226,28 +243,27 @@ async function main() {
           const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
           fs.writeFileSync(audioPath, audioBuffer);
           audioSize = audioBuffer.length;
-          console.log(`  ✅ SUCCESS — ${genTime}s — ${(audioSize / 1024).toFixed(0)} KB — ${audioPath}`);
+          log(`  ✅ SUCCESS — ${genTime}s — peak VRAM: ${peakVramMB} MB — ${(audioSize / 1024).toFixed(0)} KB`);
         } else {
-          console.log(`  ❌ Result fetch failed (${audioRes.status})`);
-          status = 'result_fetch_failed';
+          log(`  ❌ Result fetch failed (${audioRes.status})`);
+          pollResult.status = 'result_fetch_failed';
         }
       } else {
-        console.log(`  ❌ ${status.toUpperCase()} after ${genTime}s`);
+        log(`  ❌ ${pollResult.status.toUpperCase()} after ${genTime}s`);
       }
     } catch (e) {
       genTime = ((Date.now() - (submitTime || Date.now())) / 1000).toFixed(1);
-      status = 'error';
-      console.log(`  ❌ ERROR: ${e.message}`);
+      pollResult = { status: 'error', peakVramMB: 0 };
+      log(`  ❌ ERROR: ${e.message}`);
     }
 
     results.push({
       model: shortName,
       file: modelName,
-      status,
+      status: pollResult.status,
       genTimeSec: parseFloat(genTime || '0'),
+      peakVramMB,
       audioSizeBytes: audioSize || 0,
-      vramBeforeMB: vramBefore?.used_mb || null,
-      vramAfterMB: vramAfter?.used_mb || null,
       timestamp: new Date().toISOString(),
     });
 
@@ -260,37 +276,41 @@ async function main() {
   }
 
   // ─── Summary ─────────────────────────────────────────────────────────────
-  console.log('\n╔══════════════════════════════════════════════════════════╗');
-  console.log('║  BENCHMARK RESULTS                                     ║');
-  console.log('╚══════════════════════════════════════════════════════════╝\n');
+  log('');
+  log('╔══════════════════════════════════════════════════════════════════════════╗');
+  log('║  BENCHMARK RESULTS                                                    ║');
+  log('╚══════════════════════════════════════════════════════════════════════════╝');
+  log('');
 
   const successful = results.filter(r => r.status === 'done');
   const failed = results.filter(r => r.status !== 'done' && r.status !== 'skipped');
 
-  console.log('Successful:');
-  console.log('─'.repeat(70));
-  console.log('Model'.padEnd(15) + 'Time(s)'.padStart(10) + 'Audio(KB)'.padStart(12) + 'VRAM(MB)'.padStart(12));
-  console.log('─'.repeat(70));
+  log('Successful:');
+  log('─'.repeat(75));
+  log('Model'.padEnd(15) + 'Time(s)'.padStart(10) + 'Peak VRAM(MB)'.padStart(16) + 'Audio(KB)'.padStart(12));
+  log('─'.repeat(75));
   for (const r of successful) {
-    const vram = r.vramAfterMB ? `${r.vramAfterMB}` : 'N/A';
-    console.log(
+    log(
       r.model.padEnd(15) +
       `${r.genTimeSec}`.padStart(10) +
-      `${(r.audioSizeBytes / 1024).toFixed(0)}`.padStart(12) +
-      vram.padStart(12)
+      `${r.peakVramMB || 'N/A'}`.padStart(16) +
+      `${(r.audioSizeBytes / 1024).toFixed(0)}`.padStart(12)
     );
   }
 
   if (failed.length > 0) {
-    console.log('\nFailed/Errored:');
-    console.log('─'.repeat(70));
+    log('');
+    log('Failed/Errored:');
+    log('─'.repeat(75));
     for (const r of failed) {
-      console.log(`  ${r.model}: ${r.status} (${r.genTimeSec}s)`);
+      log(`  ${r.model}: ${r.status} (${r.genTimeSec}s)`);
     }
   }
 
-  console.log(`\nResults saved to: ${path.join(OUT_DIR, 'results.json')}`);
-  console.log(`Audio files saved to: ${OUT_DIR}`);
+  log('');
+  log(`Results JSON: ${path.join(OUT_DIR, 'results.json')}`);
+  log(`Audio files:  ${OUT_DIR}`);
+  log(`Full log:     ${LOG_FILE}`);
 }
 
 main().catch(console.error);
