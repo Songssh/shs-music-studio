@@ -2,6 +2,9 @@
 //
 // Ported from hot-step-9000: 3-panel resizable layout with
 // Sidebar | CreatePanel | SongList | RightSidebar | Player.
+//
+// Playback is managed by playbackStore — App.tsx just renders WaveSurfer
+// DOM hosts and wires their callbacks to the store.
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from './context/AuthContext';
@@ -23,7 +26,28 @@ import { DownloadModal } from './components/shared/DownloadModal';
 import { SettingsPanel, type AppSettings, DEFAULT_SETTINGS } from './components/settings/SettingsPanel';
 import { TerminalPanel } from './components/terminal/TerminalPanel';
 import { LyricStudioV2 } from './components/lyric-studio/LyricStudioV2';
-import { getPlaylist } from './components/lyric-studio/playlistStore';
+import {
+  usePlayback,
+  registerPlayers,
+  getActiveMediaElement,
+  handleOriginalReady,
+  handleAltReady,
+  handleFinish as pbHandleFinish,
+  setCurrentTime as pbSetCurrentTime,
+  setIsPlaying as pbSetIsPlaying,
+  togglePlay as pbTogglePlay,
+  seek as pbSeek,
+  next as pbNext,
+  previous as pbPrevious,
+  setVolume as pbSetVolume,
+  setPlaybackRate as pbSetPlaybackRate,
+  setShuffle as pbSetShuffle,
+  cycleRepeat as pbCycleRepeat,
+  setSpectrumEnabled as pbSetSpectrumEnabled,
+  toggleMastered as pbToggleMastered,
+  songToTrack,
+  playFromList,
+} from './stores/playbackStore';
 import type { Song, GenerationParams } from './types';
 
 /** Derive top-level view from the browser URL */
@@ -46,7 +70,6 @@ const App: React.FC = () => {
   const { token, isLoading } = useAuth();
   const [activeView, setActiveView] = useState(() => viewFromUrl());
   const [songs, setSongs] = useState<Song[]>([]);
-  const [currentSong, setCurrentSong] = useState<Song | null>(null);
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
 
   // Resizable panel widths (persisted)
@@ -61,26 +84,23 @@ const App: React.FC = () => {
   // Settings state (persisted)
   const [settings, setSettings] = usePersistedState<AppSettings>('ace-settings', DEFAULT_SETTINGS);
 
-  // Player state
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(() => {
-    const stored = localStorage.getItem('volume');
-    return stored ? parseFloat(stored) : 0.8;
-  });
-  const [playbackRate, setPlaybackRate] = useState(1.0);
-  const [isShuffle, setIsShuffle] = useState(false);
-  const [repeatMode, setRepeatMode] = useState<'none' | 'all' | 'one'>('none');
+  // ── Playback (from unified store) ──
+  const pb = usePlayback();
+  const currentSong = pb.currentTrack as (Song | null);  // PlaybackTrack is Song-compatible for rendering
   const wavesurferRef = useRef<WaveformPlayerHandle>(null);
   const wavesurferAltRef = useRef<WaveformPlayerHandle>(null);
-  const currentSongIdRef = useRef<string | null>(null);
-  const [playMastered, setPlayMastered] = useState(false);
-  const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
 
-  // Spectrum analyzer state (persisted)
-  const [spectrumEnabled, setSpectrumEnabled] = usePersistedState('ace-spectrum-enabled', false);
+  // Register WaveSurfer handles with playback store
+  useEffect(() => {
+    registerPlayers(wavesurferRef.current, wavesurferAltRef.current);
+  }, []);
+
+  // Track spectrum analyzer media element — updates on mastered toggle
   const [spectrumMediaEl, setSpectrumMediaEl] = useState<HTMLMediaElement | null>(null);
+  useEffect(() => {
+    const el = getActiveMediaElement();
+    if (el) setSpectrumMediaEl(el);
+  }, [pb.playMastered, pb.currentTrack]);
 
   // Toast state
   const [toast, setToast] = useState<{ message: string; type: ToastType; isVisible: boolean }>({
@@ -122,6 +142,13 @@ const App: React.FC = () => {
     setSongs(prev => [song, ...prev.filter(s => s.id !== song.id)]);
   }, []);
 
+  // Play a song from the library (used by SongList, RightSidebar)
+  const playSong = useCallback((song: Song) => {
+    setSelectedSong(song);
+    setShowRightSidebar(true);
+    playFromList(songToTrack(song), songs.map(songToTrack), 'library');
+  }, [songs]);
+
   // Generation store
   const genStore = useGenerationStore(handleSongCreated);
 
@@ -160,10 +187,9 @@ const App: React.FC = () => {
     if (!token) return;
     await songApi.delete(song.id, token);
     setSongs(prev => prev.filter(s => s.id !== song.id));
-    if (currentSong?.id === song.id) setCurrentSong(null);
     if (selectedSong?.id === song.id) setSelectedSong(null);
     showToast(`Deleted "${song.title}"`, 'success');
-  }, [token, currentSong, selectedSong]);
+  }, [token, selectedSong]);
 
   // Handle bulk delete
   const handleBulkDelete = useCallback((ids: string[]) => {
@@ -179,7 +205,6 @@ const App: React.FC = () => {
           await songApi.bulkDelete(ids, token);
           const idSet = new Set(ids);
           setSongs(prev => prev.filter(s => !idSet.has(s.id)));
-          if (currentSong && idSet.has(currentSong.id)) setCurrentSong(null);
           if (selectedSong && idSet.has(selectedSong.id)) setSelectedSong(null);
           showToast(`Deleted ${ids.length} track${ids.length !== 1 ? 's' : ''}`, 'success');
         } catch (err: any) {
@@ -187,7 +212,7 @@ const App: React.FC = () => {
         }
       },
     });
-  }, [token, currentSong, selectedSong]);
+  }, [token, selectedSong]);
 
   // Reuse handler
   const [reuseData, setReuseData] = useState<{ song: Song; timestamp: number } | null>(null);
@@ -199,9 +224,8 @@ const App: React.FC = () => {
   // Song update handler
   const handleSongUpdate = useCallback((updatedSong: Song) => {
     setSongs(prev => prev.map(s => s.id === updatedSong.id ? updatedSong : s));
-    if (currentSong?.id === updatedSong.id) setCurrentSong(updatedSong);
     if (selectedSong?.id === updatedSong.id) setSelectedSong(updatedSong);
-  }, [currentSong, selectedSong]);
+  }, [selectedSong]);
 
   // Rename handler — PATCH title to server + update local state
   const handleRename = useCallback(async (song: Song, newTitle: string) => {
@@ -214,205 +238,10 @@ const App: React.FC = () => {
     }
   }, [token, handleSongUpdate]);
 
-  // ── Player Logic (dual wavesurfer for instant mastered toggle) ────
-  // wavesurferRef    = ORIGINAL track (always)
-  // wavesurferAltRef = MASTERED track (always, loaded when available)
-  // playMastered determines which gets volume and is visible via CSS.
-
-  const playSong = useCallback((song: Song) => {
-    const wsOrig = wavesurferRef.current;
-    if (!wsOrig) return;
-
-    setSelectedSong(song);
-    setShowRightSidebar(true);
-
-    if (currentSongIdRef.current === song.id) {
-      wsOrig.playPause();
-      wavesurferAltRef.current?.playPause();
-      return;
-    }
-
-    currentSongIdRef.current = song.id;
-    setCurrentSong(song);
-
-    const hasMastered = !!song.masteredAudioUrl;
-    const useMastered = hasMastered;
-    setPlayMastered(useMastered);
-
-    // Load original — muted if mastered is preferred
-    wsOrig.loadUrl(song.audioUrl);
-
-    // Load mastered into alt (if available)
-    if (hasMastered && wavesurferAltRef.current) {
-      wavesurferAltRef.current.loadUrl(song.masteredAudioUrl!);
-    }
-
-    setCurrentAudioUrl(useMastered ? song.masteredAudioUrl! : song.audioUrl);
-  }, []);
-
-  // Either track became ready — start both (whichever is loaded)
-  const startBothPlayers = useCallback(() => {
-    const wsOrig = wavesurferRef.current;
-    const wsAlt = wavesurferAltRef.current;
-
-    // Start original if loaded
-    if (wsOrig) {
-      const m = wsOrig.getMediaElement();
-      if (m && m.readyState >= 2 && m.paused) wsOrig.play();
-    }
-    // Start alt if loaded
-    if (wsAlt) {
-      const m = wsAlt.getMediaElement();
-      if (m && m.readyState >= 2 && m.paused) wsAlt.play();
-    }
-    setIsPlaying(true);
-  }, []);
-
-  // Original track ready
-  const handleWaveformReady = useCallback((_dur: number) => {
-    startBothPlayers();
-  }, [startBothPlayers]);
-
-  // Mastered track ready — sync position then start
-  const handleAltReady = useCallback((_dur: number) => {
-    const wsAlt = wavesurferAltRef.current;
-    const wsOrig = wavesurferRef.current;
-    if (wsAlt && wsOrig) {
-      const dur = wsOrig.getDuration();
-      const pos = wsOrig.getCurrentTime();
-      if (dur > 0) wsAlt.seekTo(pos / dur);
-    }
-    startBothPlayers();
-  }, [startBothPlayers]);
-
-  // Keep volumes in sync with playMastered state
-  useEffect(() => {
-    if (wavesurferRef.current) {
-      wavesurferRef.current.setVolume(playMastered ? 0 : volume);
-    }
-    if (wavesurferAltRef.current) {
-      wavesurferAltRef.current.setVolume(playMastered ? volume : 0);
-    }
-  }, [playMastered, volume]);
-
-  const toggleMastered = useCallback(() => {
-    const wsOrig = wavesurferRef.current;
-    const wsAlt = wavesurferAltRef.current;
-    if (!wsOrig || !wsAlt || !currentSong) return;
-
-    const wantMastered = !playMastered;
-
-    // Sync position: from currently-audible to the other
-    const activeWs = playMastered ? wsAlt : wsOrig;
-    const inactiveWs = playMastered ? wsOrig : wsAlt;
-    const dur = activeWs.getDuration();
-    const pos = activeWs.getCurrentTime();
-    if (dur > 0) {
-      const inactiveDur = inactiveWs.getDuration();
-      if (inactiveDur > 0) inactiveWs.seekTo(pos / inactiveDur);
-    }
-
-    // Volume swap happens reactively via the useEffect above
-    setPlayMastered(wantMastered);
-
-    // Ensure both tracks are playing (the inactive one may have been
-    // paused by the browser or never started)
-    const newActiveWs = wantMastered ? wsAlt : wsOrig;
-    const newActiveMedia = newActiveWs.getMediaElement();
-    if (newActiveMedia?.paused) newActiveWs.play();
-    // Keep the shadow track running too (muted)
-    const newShadowWs = wantMastered ? wsOrig : wsAlt;
-    const newShadowMedia = newShadowWs.getMediaElement();
-    if (newShadowMedia?.paused) newShadowWs.play();
-
-    // Swap spectrum analyzer to the newly-active track
-    const newActiveEl = wantMastered
-      ? wavesurferAltRef.current?.getMediaElement()
-      : wavesurferRef.current?.getMediaElement();
-    if (newActiveEl) setSpectrumMediaEl(newActiveEl);
-
-    setCurrentAudioUrl(
-      wantMastered && currentSong.masteredAudioUrl
-        ? currentSong.masteredAudioUrl
-        : currentSong.audioUrl
-    );
-  }, [currentSong, playMastered]);
-
-  const togglePlay = useCallback(() => {
-    if (!currentSong) return;
-    wavesurferRef.current?.playPause();
-    wavesurferAltRef.current?.playPause();
-  }, [currentSong]);
-
-  const handleSeek = useCallback((time: number) => {
-    const wsOrig = wavesurferRef.current;
-    const wsAlt = wavesurferAltRef.current;
-    const durOrig = wsOrig?.getDuration() ?? 0;
-    if (wsOrig && durOrig > 0) wsOrig.seekTo(time / durOrig);
-    const durAlt = wsAlt?.getDuration() ?? 0;
-    if (wsAlt && durAlt > 0) wsAlt.seekTo(time / durAlt);
-  }, []);
-
-  const playNext = useCallback(() => {
-    if (!currentSong) return;
-    // Check playlist first
-    const pl = getPlaylist();
-    const plIdx = pl.findIndex(p => p.id === currentSong.id);
-    if (plIdx >= 0 && pl.length > 1) {
-      const nextPl = isShuffle
-        ? pl[Math.floor(Math.random() * pl.length)]
-        : pl[(plIdx + 1) % pl.length];
-      if (nextPl) {
-        playSong({ id: nextPl.id, title: nextPl.title, audioUrl: nextPl.audioUrl, coverUrl: nextPl.coverUrl || '', artistName: nextPl.artistName || '', duration: nextPl.duration || 0, tags: [], style: nextPl.style || '', lyrics: '', caption: '' });
-        return;
-      }
-    }
-    // Fall back to song library
-    if (songs.length === 0) return;
-    const idx = songs.findIndex(s => s.id === currentSong.id);
-    const next = isShuffle
-      ? songs[Math.floor(Math.random() * songs.length)]
-      : songs[(idx + 1) % songs.length];
-    if (next) playSong(next);
-  }, [currentSong, songs, isShuffle, playSong]);
-
-  const playPrevious = useCallback(() => {
-    if (!currentSong) return;
-    // Check playlist first
-    const pl = getPlaylist();
-    const plIdx = pl.findIndex(p => p.id === currentSong.id);
-    if (plIdx >= 0 && pl.length > 1) {
-      const prevPl = pl[(plIdx - 1 + pl.length) % pl.length];
-      if (prevPl) {
-        playSong({ id: prevPl.id, title: prevPl.title, audioUrl: prevPl.audioUrl, coverUrl: prevPl.coverUrl || '', artistName: prevPl.artistName || '', duration: prevPl.duration || 0, tags: [], style: prevPl.style || '', lyrics: '', caption: '' });
-        return;
-      }
-    }
-    // Fall back to song library
-    if (songs.length === 0) return;
-    const idx = songs.findIndex(s => s.id === currentSong.id);
-    const prev = songs[(idx - 1 + songs.length) % songs.length];
-    if (prev) playSong(prev);
-  }, [currentSong, songs, playSong]);
-
-  // Handle wavesurfer finish (replaces 'ended' event)
-  const handleWaveformFinish = useCallback(() => {
-    if (repeatMode === 'one') {
-      wavesurferRef.current?.seekTo(0);
-      wavesurferRef.current?.play();
-      wavesurferAltRef.current?.seekTo(0);
-      wavesurferAltRef.current?.play();
-    } else if (repeatMode === 'all' || songs.length > 1 || getPlaylist().length > 1) {
-      playNext();
-    } else {
-      setIsPlaying(false);
-    }
-  }, [repeatMode, playNext, songs.length]);
-
-  // Sync volume to localStorage
-  useEffect(() => {
-    localStorage.setItem('volume', String(volume));
-  }, [volume]);
+  // ── Player Logic ──
+  // All playback state and logic lives in playbackStore.
+  // App.tsx just wires WaveSurfer DOM callbacks to the store.
+  // (No inline playSong/playNext/playPrevious/toggleMastered etc.)
 
   // ── Render ────────────────────────────────────────────────
 
@@ -453,12 +282,7 @@ const App: React.FC = () => {
     if (activeView === 'lyric-studio') {
       return (
         <div className="flex-1 overflow-hidden">
-          <LyricStudioV2
-            onPlaySong={(song, list) => playSong(song)}
-            isPlaying={isPlaying}
-            currentSong={currentSong}
-            currentTime={currentTime}
-          />
+          <LyricStudioV2 />
         </div>
       );
     }
@@ -579,8 +403,8 @@ const App: React.FC = () => {
                 onClose={() => setShowRightSidebar(false)}
                 onReuse={handleReuse}
                 onDelete={handleDelete}
-                onPlay={playSong}
-                isPlaying={isPlaying && currentSong?.id === selectedSong?.id}
+                onPlay={(song) => playFromList(songToTrack(song), songs.map(songToTrack), 'library')}
+                isPlaying={pb.isPlaying && pb.currentTrack?.id === selectedSong?.id}
                 onDownload={setDownloadSong}
               />
             </div>
@@ -656,31 +480,31 @@ const App: React.FC = () => {
 
       {/* ── Bottom Player Area: Markers → Waveform → Transport ── */}
       <div className="flex-shrink-0 bg-zinc-950 border-t border-white/5">
-        <SectionMarkers audioUrl={currentAudioUrl ?? undefined} duration={duration} />
+        <SectionMarkers audioUrl={pb.currentAudioUrl ?? undefined} duration={pb.duration} />
         <SpectrumAnalyzer
           mediaElement={spectrumMediaEl}
-          visible={spectrumEnabled}
-          isPlaying={isPlaying}
+          visible={pb.spectrumEnabled}
+          isPlaying={pb.isPlaying}
         />
         {/* Dual waveform: original + mastered stacked, opacity-switched */}
         <div className="relative" style={{ height: 56 }}>
           <div style={{
             position: 'absolute', inset: 0,
-            opacity: playMastered ? 0 : 1,
-            pointerEvents: playMastered ? 'none' : 'auto',
+            opacity: pb.playMastered ? 0 : 1,
+            pointerEvents: pb.playMastered ? 'none' : 'auto',
             transition: 'opacity 0.15s ease',
           }}>
             <WaveformPlayer
               ref={wavesurferRef}
-              volume={playMastered ? 0 : volume}
-              playbackRate={playbackRate}
-              onTimeUpdate={setCurrentTime}
-              onDurationChange={setDuration}
-              onPlayChange={setIsPlaying}
-              onFinish={handleWaveformFinish}
+              volume={pb.playMastered ? 0 : pb.volume}
+              playbackRate={pb.playbackRate}
+              onTimeUpdate={pbSetCurrentTime}
+              onDurationChange={() => {}}
+              onPlayChange={pbSetIsPlaying}
+              onFinish={pbHandleFinish}
               onReady={(dur) => {
-                handleWaveformReady(dur);
-                if (!playMastered) {
+                handleOriginalReady(dur);
+                if (!pb.playMastered) {
                   setSpectrumMediaEl(wavesurferRef.current?.getMediaElement() ?? null);
                 }
               }}
@@ -688,21 +512,21 @@ const App: React.FC = () => {
           </div>
           <div style={{
             position: 'absolute', inset: 0,
-            opacity: playMastered ? 1 : 0,
-            pointerEvents: playMastered ? 'auto' : 'none',
+            opacity: pb.playMastered ? 1 : 0,
+            pointerEvents: pb.playMastered ? 'auto' : 'none',
             transition: 'opacity 0.15s ease',
           }}>
             <WaveformPlayer
               ref={wavesurferAltRef}
-              volume={playMastered ? volume : 0}
-              playbackRate={playbackRate}
-              onTimeUpdate={setCurrentTime}
-              onDurationChange={setDuration}
-              onPlayChange={setIsPlaying}
-              onFinish={handleWaveformFinish}
+              volume={pb.playMastered ? pb.volume : 0}
+              playbackRate={pb.playbackRate}
+              onTimeUpdate={pbSetCurrentTime}
+              onDurationChange={() => {}}
+              onPlayChange={pbSetIsPlaying}
+              onFinish={pbHandleFinish}
               onReady={(dur) => {
                 handleAltReady(dur);
-                if (playMastered) {
+                if (pb.playMastered) {
                   setSpectrumMediaEl(wavesurferAltRef.current?.getMediaElement() ?? null);
                 }
               }}
@@ -711,29 +535,29 @@ const App: React.FC = () => {
         </div>
         <Player
           currentSong={currentSong}
-          isPlaying={isPlaying}
-          onTogglePlay={togglePlay}
-          currentTime={currentTime}
-          duration={duration}
-          onSeek={handleSeek}
-          onNext={playNext}
-          onPrevious={playPrevious}
-          volume={volume}
-          onVolumeChange={setVolume}
-          playbackRate={playbackRate}
-          onPlaybackRateChange={setPlaybackRate}
+          isPlaying={pb.isPlaying}
+          onTogglePlay={pbTogglePlay}
+          currentTime={pb.currentTime}
+          duration={pb.duration}
+          onSeek={pbSeek}
+          onNext={pbNext}
+          onPrevious={pbPrevious}
+          volume={pb.volume}
+          onVolumeChange={pbSetVolume}
+          playbackRate={pb.playbackRate}
+          onPlaybackRateChange={pbSetPlaybackRate}
           audioRef={wavesurferRef as any}
-          isShuffle={isShuffle}
-          onToggleShuffle={() => setIsShuffle(!isShuffle)}
-          repeatMode={repeatMode}
-          onToggleRepeat={() => setRepeatMode(prev => prev === 'none' ? 'all' : prev === 'all' ? 'one' : 'none')}
-          onReusePrompt={() => currentSong && handleReuse(currentSong)}
-          onDelete={() => currentSong && handleDelete(currentSong)}
-          onDownload={() => currentSong && setDownloadSong(currentSong)}
-          playMastered={playMastered}
-          onToggleMastered={toggleMastered}
-          spectrumEnabled={spectrumEnabled}
-          onToggleSpectrum={() => setSpectrumEnabled(!spectrumEnabled)}
+          isShuffle={pb.shuffle}
+          onToggleShuffle={() => pbSetShuffle(!pb.shuffle)}
+          repeatMode={pb.repeat}
+          onToggleRepeat={pbCycleRepeat}
+          onReusePrompt={() => currentSong && handleReuse(currentSong as Song)}
+          onDelete={() => currentSong && handleDelete(currentSong as Song)}
+          onDownload={() => currentSong && setDownloadSong(currentSong as Song)}
+          playMastered={pb.playMastered}
+          onToggleMastered={pbToggleMastered}
+          spectrumEnabled={pb.spectrumEnabled}
+          onToggleSpectrum={() => pbSetSpectrumEnabled(!pb.spectrumEnabled)}
         />
       </div>
 
