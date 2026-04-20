@@ -180,26 +180,43 @@ export function useAudioGeneration({ profiles, showToast, onJobLinked }: UseAudi
       } catch { /* ignore */ }
     }
 
-    const importData: Record<string, any> = {
-      title: gen.title || '',
-      prompt: gen.lyrics || '',
-      style: gen.caption || '',
-      instrumental: false,
+    // Write directly to the hs-* localStorage keys that CreatePanel reads via usePersistedState.
+    // On navigation, CreatePanel remounts and picks up the fresh values.
+    const write = (key: string, value: any) => {
+      localStorage.setItem(key, JSON.stringify(value));
     };
-    if (gen.bpm) importData.bpm = gen.bpm;
-    if (gen.key) importData.keyScale = gen.key;
-    if (gen.duration) importData.duration = gen.duration;
+
+    // Content
+    write('hs-caption', gen.caption || '');
+    write('hs-lyrics', gen.lyrics || '');
+    write('hs-instrumental', false);
+
+    // Metadata
+    if (gen.bpm) write('hs-bpm', gen.bpm);
+    if (gen.key) write('hs-keyScale', gen.key);
+    if (gen.duration) write('hs-duration', gen.duration);
+
+    // Adapter from album preset
     if (preset?.adapter_path) {
-      importData.loraPath = preset.adapter_path;
-      importData.loraScale = preset.adapter_scale ?? 1.0;
-    }
-    if (preset?.reference_track_path) {
-      importData.masteringEnabled = true;
-      importData.masteringReference = preset.reference_track_path;
+      write('hs-adapter', preset.adapter_path);
+      write('hs-adapterScale', preset.adapter_scale ?? 1.0);
+      write('hs-adaptersOpen', true);
+      if (preset.adapter_group_scales) {
+        write('hs-adapterGroupScales', preset.adapter_group_scales);
+      }
     }
 
-    localStorage.setItem('hotstep_lireek_import', JSON.stringify(importData));
-    window.history.pushState({}, '', '/create');
+    // Mastering from album preset
+    if (preset?.reference_track_path) {
+      write('hs-masteringEnabled', true);
+      write('hs-masteringReference', preset.reference_track_path);
+      write('hs-timbreReference', true);
+    }
+
+    console.log(`[LyricStudioV2] Send to Create: "${gen.title}" (adapter: ${preset?.adapter_path || 'none'}, mastering: ${preset?.reference_track_path || 'none'})`);
+
+    // Navigate to Create page
+    window.history.pushState({}, '', '/');
     window.dispatchEvent(new PopStateEvent('popstate'));
   }, [profiles]);
 
