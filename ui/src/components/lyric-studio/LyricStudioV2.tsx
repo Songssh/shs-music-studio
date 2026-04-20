@@ -34,6 +34,7 @@ import { WrittenSongsTab } from './WrittenSongsTab';
 import { RightSidebarPanel } from './RightSidebarPanel';
 import { useAudioGeneration } from './useAudioGeneration';
 import { enqueueAudioGen, useAudioGenQueue } from '../../stores/audioGenQueueStore';
+import { usePlayback } from '../../stores/playbackStore';
 import { useAuth } from '../../context/AuthContext';
 import { QueuePanel } from './QueuePanel';
 import { PromptEditor } from './PromptEditor';
@@ -125,6 +126,9 @@ export const LyricStudioV2: React.FC = () => {
   const [allLyricsSets, setAllLyricsSets] = useState<LyricsSet[]>([]);
   const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
   const stream = useStreamingStore();
+
+  // ── Playback (for backdrop effect) ──
+  const { isPlaying, currentTrack: currentPlaybackTrack } = usePlayback();
 
   // ── Audio generation ──
   const audioQueue = useAudioGenQueue(token || undefined);
@@ -615,7 +619,7 @@ export const LyricStudioV2: React.FC = () => {
               {/* Middle: tabbed content */}
               <div className="flex-1 overflow-hidden relative">
                 {/* Cover art backdrop when playing */}
-                {isPlaying && currentSong?.coverUrl && (
+                {isPlaying && currentPlaybackTrack?.coverUrl && (
                   <>
                     <style>{`
                       @keyframes ls-random-zoom { 0%, 100% { scale: 1.4; } 50% { scale: 1.6; } }
@@ -624,7 +628,7 @@ export const LyricStudioV2: React.FC = () => {
                       .ls-dynamic-backdrop { animation: ls-random-zoom 47s ease-in-out infinite, ls-random-rotate 61s ease-in-out infinite, ls-random-pan 53s ease-in-out infinite; }
                     `}</style>
                     <div className="absolute inset-0 z-0 pointer-events-none transition-[background-image] duration-700 ls-dynamic-backdrop"
-                      style={{ backgroundImage: `url(${currentSong.coverUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'brightness(0.15) blur(2px) saturate(1.4)' }} />
+                      style={{ backgroundImage: `url(${currentPlaybackTrack!.coverUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'brightness(0.15) blur(2px) saturate(1.4)' }} />
                   </>
                 )}
                 <div className="relative z-[1] h-full">
