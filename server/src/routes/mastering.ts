@@ -68,7 +68,7 @@ async function convertToWav(inputPath: string, outputWavPath: string): Promise<v
   try {
     await execFileAsync('ffmpeg', [
       '-y', '-i', inputPath,
-      '-ac', '2', '-sample_fmt', 's16',
+      '-ac', '2', '-ar', '48000', '-c:a', 'pcm_f32le',
       outputWavPath,
     ], { timeout: 120_000 });
   } catch {
