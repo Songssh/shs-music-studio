@@ -618,8 +618,12 @@ export function setIsPlaying(playing: boolean): void {
   }
 }
 
-/** Called by WaveSurfer onFinish */
+/** Called by WaveSurfer onFinish — debounced because both original and mastered fire */
+let _finishGuardUntil = 0;
 export function handleFinish(): void {
+  const now = Date.now();
+  if (now < _finishGuardUntil) return;  // Ignore duplicate from other WaveSurfer
+  _finishGuardUntil = now + 100;        // 100ms debounce
   if (_state.repeat === 'one') {
     // Repeat current track
     _wsOriginalRef.current?.seekTo(0);
