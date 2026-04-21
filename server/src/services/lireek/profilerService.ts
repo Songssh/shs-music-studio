@@ -408,7 +408,7 @@ function analyseVocabulary(allSongs: SongLyrics[]): Record<string, any> {
   let contractions = 0;
   let profanity = 0;
 
-  const contRe = /\\b(?:i'm|i've|i'll|i'd|don't|doesn't|didn't|won't|wouldn't|can't|couldn't|shouldn't|isn't|aren't|wasn't|weren't|haven't|hasn't|hadn't|ain't|it's|that's|what's|there's|here's|who's|let's|you're|you've|you'll|you'd|we're|we've|we'll|we'd|they're|they've|they'll|they'd|he's|she's|gonna|wanna|gotta|kinda|sorta|nothin'|somethin'|burnin'|growin'|draggin'|shaggin'|feelin'|whinin')\\b/gi;
+  const contRe = /\b(?:i[''']m|i[''']ve|i[''']ll|i[''']d|don[''']t|doesn[''']t|didn[''']t|won[''']t|wouldn[''']t|can[''']t|couldn[''']t|shouldn[''']t|isn[''']t|aren[''']t|wasn[''']t|weren[''']t|haven[''']t|hasn[''']t|hadn[''']t|ain[''']t|it[''']s|that[''']s|what[''']s|there[''']s|here[''']s|who[''']s|let[''']s|you[''']re|you[''']ve|you[''']ll|you[''']d|we[''']re|we[''']ve|we[''']ll|we[''']d|they[''']re|they[''']ve|they[''']ll|they[''']d|he[''']s|she[''']s|gonna|wanna|gotta|kinda|sorta|nothin[''']|somethin[''']|burnin[''']|growin[''']|draggin[''']|shaggin[''']|feelin[''']|whinin['''])\b/gi;
   const profRe = new Set("shit fuck fucking fucked damn damn ass hell bitch bastard crap piss dick".split(' '));
 
   for (const song of allSongs) {
