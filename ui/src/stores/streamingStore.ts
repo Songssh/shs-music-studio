@@ -120,11 +120,18 @@ async function consumeSSE(url: string, body: any, callbacks: StreamCallbacks): P
       if (line.startsWith('data: ')) {
         try {
           const data = JSON.parse(line.slice(6));
+          if (data.error) {
+            // Server-side errors must surface — throw so the queue item fails visibly.
+            callbacks.onError?.(data.error);
+            throw new Error(data.error);
+          }
           if (data.phase) callbacks.onPhase(data.phase);
-          else if (data.chunk) callbacks.onChunk(data.chunk);
+          else if (data.text || data.chunk) callbacks.onChunk(data.text || data.chunk);
           else if (data.result) callbacks.onResult?.(data.result);
-          else if (data.error) callbacks.onError?.(data.error);
-        } catch { /* ignore parse errors */ }
+        } catch (e) {
+          // Re-throw server errors, only swallow JSON parse failures
+          if (e instanceof Error && !e.message.includes('JSON')) throw e;
+        }
       }
     }
   }
