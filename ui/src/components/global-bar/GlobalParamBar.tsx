@@ -12,6 +12,7 @@ import { AdaptersDropdown, AdaptersBadge } from './AdaptersDropdown';
 import { GenerationDropdown, GenerationBadge } from './GenerationDropdown';
 import { LmThinkingDropdown, LmThinkingBadge } from './LmThinkingDropdown';
 import { MasteringDropdown, MasteringBadge } from './MasteringDropdown';
+import { VramIndicator } from '../shared/VramIndicator';
 
 type SectionId = 'models' | 'adapters' | 'generation' | 'lm' | 'mastering' | null;
 
@@ -110,8 +111,10 @@ export const GlobalParamBar: React.FC = () => {
           </BarSection>
         </div>
 
-        {/* Right spacer — matches logo width for visual symmetry */}
-        <div className="flex-shrink-0 px-4 border-l border-white/5" style={{ width: '172px' }} />
+        {/* Right — VRAM indicator (matches logo width for symmetry) */}
+        <div className="flex items-center justify-center flex-shrink-0 px-4 border-l border-white/5" style={{ width: '172px' }}>
+          <VramIndicator compact />
+        </div>
       </div>
     </div>
   );
