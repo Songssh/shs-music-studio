@@ -39,10 +39,7 @@ export const GlobalParamBar: React.FC = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </div>
-          <div className="flex flex-col leading-tight">
-            <span className="text-sm font-bold text-white whitespace-nowrap">HOT-Step</span>
-            <span className="text-[9px] font-semibold tracking-[0.2em] text-zinc-500">CPP ⚡</span>
-          </div>
+          <span className="text-sm font-bold text-white whitespace-nowrap">HOT-Step CPP</span>
         </div>
 
         {/* Sections — separated by dividers */}
@@ -112,6 +109,9 @@ export const GlobalParamBar: React.FC = () => {
             <MasteringDropdown />
           </BarSection>
         </div>
+
+        {/* Right spacer — matches logo width for visual symmetry */}
+        <div className="flex-shrink-0 px-4 border-l border-white/5" style={{ width: '172px' }} />
       </div>
     </div>
   );
