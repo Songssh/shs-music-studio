@@ -671,7 +671,15 @@ static int dit_ggml_generate(DiTGGML *           model,
                 }
 
                 const std::string & dcw_mode = g_hotstep_params.dcw_mode;
-                float eff_scaler = t_curr * g_hotstep_params.dcw_scaler;
+                
+                // Normalization: DCW correction applies an absolute shift per-step.
+                // If num_steps increases (dt shrinks), we MUST scale down the per-step
+                // application to maintain an identical cumulative correction integral.
+                // We normalize dt against the baseline tuning of 20 steps (dt = 0.05).
+                float dt = t_curr - t_next;
+                float step_norm = dt * 20.0f;
+
+                float eff_scaler = t_curr * g_hotstep_params.dcw_scaler * step_norm;
 
                 if (dcw_mode == "pix") {
                     dcw_correct_pix(xt.data(), denoised.data(), eff_scaler, n_total);
@@ -680,7 +688,7 @@ static int dit_ggml_generate(DiTGGML *           model,
                 } else if (dcw_mode == "high") {
                     dcw_correct_high(xt.data(), denoised.data(), eff_scaler, T, Oc, N);
                 } else if (dcw_mode == "double") {
-                    float eff_high = (1.0f - t_curr) * g_hotstep_params.dcw_high_scaler;
+                    float eff_high = (1.0f - t_curr) * g_hotstep_params.dcw_high_scaler * step_norm;
                     dcw_correct_double(xt.data(), denoised.data(), eff_scaler, eff_high, T, Oc, N);
                 }
 

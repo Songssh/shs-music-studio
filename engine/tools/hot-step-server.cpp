@@ -707,7 +707,8 @@ static void synth_worker(std::shared_ptr<Job>    job,
                          int                     ref_len,
                          bool                    output_wav,
                          WavFormat               wav_fmt,
-                         int                     peak_clip) {
+                         int                     peak_clip,
+                         bool                    req_keep_loaded) {
     // Generate every request in one DiT batch. synth_batch_size expands each
     // request into per-seed variants. Total clamped to DiT max 9.
     const int batch_n     = (int) ace_reqs.size();
@@ -786,8 +787,17 @@ static void synth_worker(std::shared_ptr<Job>    job,
             p.adapter_scale = ace_reqs[0].adapter_scale;
         }
     }
-    fprintf(stderr, "[Server] Loading synth: DiT=%s%s%s\n", dit_name.c_str(),
-            ace_reqs[0].adapter.empty() ? "" : " Adapter=", ace_reqs[0].adapter.c_str());
+    fprintf(stderr, "[Server] Loading synth: DiT=%s%s%s%s\n", dit_name.c_str(),
+            ace_reqs[0].adapter.empty() ? "" : " Adapter=", ace_reqs[0].adapter.c_str(),
+            (g_keep_loaded || req_keep_loaded) ? " [keep-loaded]" : "");
+
+    // HOT-STEP: per-request co-resident mode. Once flipped to NEVER, stays
+    // that way until restart (going back to STRICT would need a full eviction
+    // pass and is not safe mid-flight).
+    if (req_keep_loaded && !g_keep_loaded) {
+        g_keep_loaded = true;
+        store_set_policy(g_store, EVICT_NEVER);
+    }
 
     AceSynth * ctx = ace_synth_load(g_store, &p);
     if (!ctx) {
@@ -1086,10 +1096,13 @@ static void handle_synth(const httplib::Request & req, httplib::Response & res) 
     auto job = job_create();
     fprintf(stderr, "[Server] Job %s created (%d requests)\n", job->id.c_str(), (int) ace_reqs.size());
 
+    // per-request co-resident mode: ?keep_loaded=1
+    const bool req_keep_loaded = req.has_param("keep_loaded") && req.get_param_value("keep_loaded") == "1";
+
     work_push([job, reqs = std::move(ace_reqs), sf, src_interleaved, src_len, ref_interleaved, ref_len, output_wav,
-               wav_fmt, peak_clip]() mutable {
+               wav_fmt, peak_clip, req_keep_loaded]() mutable {
         synth_worker(job, std::move(reqs), sf, src_interleaved, src_len, ref_interleaved, ref_len, output_wav, wav_fmt,
-                     peak_clip);
+                     peak_clip, req_keep_loaded);
     });
 
     // return job ID immediately

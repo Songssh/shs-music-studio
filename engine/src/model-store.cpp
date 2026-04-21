@@ -166,6 +166,16 @@ ModelStore * store_create(EvictPolicy policy) {
     return s;
 }
 
+void store_set_policy(ModelStore * s, EvictPolicy policy) {
+    if (!s) return;
+    std::lock_guard<std::mutex> lock(s->mtx);
+    if (s->policy == policy) return;
+    fprintf(stderr, "[Store] Policy changed: %s -> %s\n",
+            s->policy == EVICT_STRICT ? "STRICT" : "NEVER",
+            policy    == EVICT_STRICT ? "STRICT" : "NEVER");
+    s->policy = policy;
+}
+
 void store_free(ModelStore * s) {
     if (!s) {
         return;

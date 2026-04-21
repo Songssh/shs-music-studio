@@ -364,10 +364,10 @@ export const GenerationSettings: React.FC<GenerationSettingsProps> = (props) => 
                   </select>
                 </div>
                 <Slider label="Correction Scaler" value={props.dcwScaler}
-                  onChange={props.onDcwScalerChange} min={0} max={5} step={0.01} showInput />
+                  onChange={props.onDcwScalerChange} min={0} max={1} step={0.01} showInput />
                 {props.dcwMode === 'double' && (
                   <Slider label="High-Freq Scaler" value={props.dcwHighScaler}
-                    onChange={props.onDcwHighScalerChange} min={0} max={5} step={0.01} showInput />
+                    onChange={props.onDcwHighScalerChange} min={0} max={1} step={0.01} showInput />
                 )}
                 <p className="text-[10px] text-zinc-500">
                   Wavelet-domain SNR-t bias correction (CVPR 2026). Scaler is dynamically modulated by timestep.

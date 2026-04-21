@@ -89,9 +89,7 @@ static inline void dcw_correct_low(float * x_next, const float * denoised,
 
             // Forward DWT
             haar_dwt_1d(sig_x.data(), xl.data(), xh.data(), T_even);
-            haar_dwt_1d(sig_y.data(), yl.data(), nullptr, T_even);
-            // (we only need yl for low-freq correction; yh is unused)
-            // Fix: we need a temporary for yl's high-freq too
+            // We only need yl for low-freq correction, but haar_dwt_1d requires valid pointers.
             std::vector<float> yh_tmp(half_T);
             haar_dwt_1d(sig_y.data(), yl.data(), yh_tmp.data(), T_even);
 

@@ -176,8 +176,13 @@ export const aceClient = {
     srcAudio?: Buffer,
     refAudio?: Buffer,
     format: string = 'wav16',
+    keepLoaded = false,
   ): Promise<string> {
-    const path = format !== 'mp3' ? `/synth?format=${format}` : '/synth';
+    const params = new URLSearchParams();
+    if (format !== 'mp3') params.set('format', format);
+    if (keepLoaded) params.set('keep_loaded', '1');
+    const qs = params.toString();
+    const path = qs ? `/synth?${qs}` : '/synth';
     const boundary = '----HotStepBoundary' + Date.now();
 
     const parts: Buffer[] = [];

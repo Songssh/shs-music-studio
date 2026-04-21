@@ -59,7 +59,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   // DCW (Differential Correction in Wavelet domain)
   const [dcwEnabled, setDcwEnabled] = usePersistedState('hs-dcwEnabled', false);
   const [dcwMode, setDcwMode] = usePersistedState('hs-dcwMode', 'low');
-  const [dcwScaler, setDcwScaler] = usePersistedState('hs-dcwScaler', 0.1);
+  const [dcwScaler, setDcwScaler] = usePersistedState('hs-dcwScaler', 1.0);
   const [dcwHighScaler, setDcwHighScaler] = usePersistedState('hs-dcwHighScaler', 0.0);
 
   // LM toggle
@@ -206,8 +206,8 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
         // DCW
         if (p.dcwEnabled !== undefined) setDcwEnabled(p.dcwEnabled);
         if (p.dcwMode !== undefined) setDcwMode(p.dcwMode);
-        if (p.dcwScaler !== undefined) setDcwScaler(p.dcwScaler);
-        if (p.dcwHighScaler !== undefined) setDcwHighScaler(p.dcwHighScaler);
+        if (p.dcwScaler !== undefined) setDcwScaler(p.dcwScaler / 0.02);
+        if (p.dcwHighScaler !== undefined) setDcwHighScaler(p.dcwHighScaler / 0.02);
       } catch (err) {
         console.error('[Preset Import] Invalid JSON:', err);
       }
@@ -272,8 +272,8 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
       // DCW params
       dcwEnabled,
       dcwMode: dcwEnabled ? dcwMode : undefined,
-      dcwScaler: dcwEnabled ? dcwScaler : undefined,
-      dcwHighScaler: (dcwEnabled && dcwMode === 'double') ? dcwHighScaler : undefined,
+      dcwScaler: dcwEnabled ? dcwScaler * 0.02 : undefined,
+      dcwHighScaler: (dcwEnabled && dcwMode === 'double') ? dcwHighScaler * 0.02 : undefined,
     };
     onGenerate(params);
   };
