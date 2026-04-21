@@ -132,8 +132,10 @@ add_custom_command(
 )
 set_source_files_properties(${WEBUI_OUTPUT} PROPERTIES GENERATED TRUE)
 
-# ace-server: HTTP server (LM + synth endpoints + embedded webui)
-add_executable(ace-server tools/ace-server.cpp ${WEBUI_OUTPUT})
+# hot-step-server: HOT-Step HTTP server (LM + synth endpoints + embedded webui)
+# NOTE: upstream ace-server.cpp is kept as reference but NOT compiled.
+#       Our server binary is hot-step-server.cpp with extension layer support.
+add_executable(ace-server tools/hot-step-server.cpp ${WEBUI_OUTPUT})
 target_include_directories(ace-server PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(ace-server PRIVATE acestep-core httplib)
 link_ggml_backends(ace-server)
