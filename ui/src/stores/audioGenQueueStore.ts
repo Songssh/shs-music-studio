@@ -95,6 +95,8 @@ function mergeCreatePanelSettings(params: Record<string, any>): void {
     ['hs-apgNormThreshold', 'apgNormThreshold'],
     // Language
     ['hs-vocalLanguage', 'vocalLanguage'],
+    // Time signature
+    ['hs-timeSignature', 'timeSignature'],
     // Adapter mode (runtime vs merge — engine setting, not preset)
     ['hs-adapterMode', 'adapterMode'],
     // DCW (Differential Correction in Wavelet domain)
@@ -374,6 +376,7 @@ async function _executeItem(item: AudioQueueItem, token: string): Promise<void> 
   }
 
   // 5) Submit generation
+  params.taskType = 'text2music';
   params.source = 'lyric-studio';
   item.status = 'generating';
   item.stage = 'Submitting to audio engine…';
