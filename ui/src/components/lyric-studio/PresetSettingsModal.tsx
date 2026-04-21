@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, ChevronDown, ChevronRight, Zap, Music } from 'lucide-react';
+import { X, Save, Loader2, ChevronDown, ChevronRight, Zap, Music, FolderSearch } from 'lucide-react';
 import { lireekApi } from '../../services/lireekApi';
+import { FileBrowserModal } from '../shared/FileBrowserModal';
 
 interface PresetForm {
   adapter_path: string;
@@ -57,6 +58,8 @@ export const PresetSettingsModal: React.FC<PresetSettingsModalProps> = ({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [groupsExpanded, setGroupsExpanded] = useState(false);
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [browserTarget, setBrowserTarget] = useState<'adapter' | 'reference'>('adapter');
 
   // Load existing preset
   useEffect(() => {
@@ -153,11 +156,17 @@ export const PresetSettingsModal: React.FC<PresetSettingsModalProps> = ({
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-zinc-400">Adapter Path</label>
-                    <input type="text" value={form.adapter_path}
-                      onChange={e => setForm(p => ({ ...p, adapter_path: e.target.value }))}
-                      placeholder="Path to .safetensors file or adapter folder"
-                      className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-pink-500 transition-colors"
-                    />
+                    <div className="flex gap-2">
+                      <input type="text" value={form.adapter_path}
+                        onChange={e => setForm(p => ({ ...p, adapter_path: e.target.value }))}
+                        placeholder="Path to .safetensors file or adapter folder"
+                        className="flex-1 bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-pink-500 transition-colors"
+                      />
+                      <button onClick={() => { setBrowserTarget('adapter'); setBrowserOpen(true); }}
+                        className="px-2.5 py-2 rounded-lg text-xs font-semibold bg-pink-900/20 text-pink-400 hover:bg-pink-900/30 transition-colors flex items-center gap-1 flex-shrink-0">
+                        <FolderSearch size={12} /> Browse
+                      </button>
+                    </div>
                     {form.adapter_path && (
                       <span className="text-[10px] text-zinc-500 truncate block" title={form.adapter_path}>{adapterFileName}</span>
                     )}
@@ -199,11 +208,17 @@ export const PresetSettingsModal: React.FC<PresetSettingsModalProps> = ({
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-zinc-400">Reference Audio</label>
-                    <input type="text" value={form.reference_track_path}
-                      onChange={e => setForm(p => ({ ...p, reference_track_path: e.target.value }))}
-                      placeholder="Path to reference audio (.wav, .mp3, .flac)"
-                      className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors"
-                    />
+                    <div className="flex gap-2">
+                      <input type="text" value={form.reference_track_path}
+                        onChange={e => setForm(p => ({ ...p, reference_track_path: e.target.value }))}
+                        placeholder="Path to reference audio (.wav, .mp3, .flac)"
+                        className="flex-1 bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors"
+                      />
+                      <button onClick={() => { setBrowserTarget('reference'); setBrowserOpen(true); }}
+                        className="px-2.5 py-2 rounded-lg text-xs font-semibold bg-amber-900/20 text-amber-400 hover:bg-amber-900/30 transition-colors flex items-center gap-1 flex-shrink-0">
+                        <FolderSearch size={12} /> Browse
+                      </button>
+                    </div>
                     {form.reference_track_path && (
                       <span className="text-[10px] text-zinc-500 truncate block" title={form.reference_track_path}>{matchFileName}</span>
                     )}
@@ -241,6 +256,20 @@ export const PresetSettingsModal: React.FC<PresetSettingsModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* File Browser sub-modal */}
+      <FileBrowserModal
+        open={browserOpen}
+        onClose={() => setBrowserOpen(false)}
+        onSelect={(path) => {
+          if (browserTarget === 'adapter') setForm(p => ({ ...p, adapter_path: path }));
+          else setForm(p => ({ ...p, reference_track_path: path }));
+          setBrowserOpen(false);
+        }}
+        mode="file"
+        filter={browserTarget === 'reference' ? 'audio' : 'adapters'}
+        title={browserTarget === 'reference' ? 'Select Reference Audio' : 'Select Adapter File'}
+      />
     </>
   );
 };
