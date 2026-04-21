@@ -79,6 +79,8 @@ export const QueuePanel: React.FC<QueuePanelProps> = ({
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [mode, setMode] = useState<QueueMode>('profile');
   const [genCount, setGenCount] = useState(4);
+  const [genFillMode, setGenFillMode] = useState(false);
+  const [genFillTarget, setGenFillTarget] = useState(10);
 
   // Generation counts for the "generate" tab
   const [genCountsMap, setGenCountsMap] = useState<Map<number, number>>(new Map());
@@ -250,11 +252,15 @@ export const QueuePanel: React.FC<QueuePanelProps> = ({
         return { type: 'profile' as QueueItemType, targetId: lsId, label: `Profile: ${ls?.artist_name || '?'} — ${ls?.album || 'Unknown'}`, provider: profilingModel.provider, model: profilingModel.model };
       }));
     } else {
-      addBulkToQueue(Array.from(selected).map(profileId => {
+      const items = Array.from(selected).map(profileId => {
         const profile = profiles.find(p => p.id === profileId);
         const ls = lyricsSets.find(l => l.id === profile?.lyrics_set_id);
-        return { type: 'generate' as QueueItemType, targetId: profileId, label: `Generate: ${ls?.artist_name || '?'} — ${ls?.album || 'Unknown'}`, provider: generationModel.provider, model: generationModel.model, count: genCount };
-      }));
+        const existing = genCountsMap.get(profileId) || 0;
+        const count = genFillMode ? Math.max(0, genFillTarget - existing) : genCount;
+        return { type: 'generate' as QueueItemType, targetId: profileId, label: `Generate: ${ls?.artist_name || '?'} — ${ls?.album || 'Unknown'}`, provider: generationModel.provider, model: generationModel.model, count };
+      }).filter(item => item.count > 0);
+      if (items.length === 0) { showToast?.('All selected profiles already at or above target'); return; }
+      addBulkToQueue(items);
     }
     setSelected(new Set());
   };
@@ -515,6 +521,12 @@ export const QueuePanel: React.FC<QueuePanelProps> = ({
                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${genCt === 0 ? 'bg-red-900/30 text-red-400' : genCt < 3 ? 'bg-amber-900/30 text-amber-400' : 'bg-green-900/30 text-green-400'}`}>
                             {genCt} gen{genCt !== 1 ? 's' : ''}
                           </span>
+                          {genFillMode && selected.has(profile.id) && (() => {
+                            const need = Math.max(0, genFillTarget - genCt);
+                            return need > 0
+                              ? <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-green-900/30 text-green-400 flex-shrink-0">+{need}</span>
+                              : <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 flex-shrink-0">✓ full</span>;
+                          })()}
                         </div>
                         <span className="text-[10px] text-zinc-500">{profile.provider}/{profile.model} · {new Date(profile.created_at).toLocaleDateString()}</span>
                       </div>
@@ -588,10 +600,25 @@ export const QueuePanel: React.FC<QueuePanelProps> = ({
           {mode === 'generate' && (
             <div className="px-6 py-2 space-y-2">
               <div className="flex items-center gap-3">
-                <span className="text-xs text-zinc-400">Generations per profile:</span>
-                <input type="number" min={1} max={20} value={genCount}
-                  onChange={e => setGenCount(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
-                  className="w-16 px-2 py-1 rounded-lg bg-zinc-800 border border-white/10 text-sm text-white text-center focus:outline-none focus:border-green-500/50" />
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={genFillMode} onChange={e => setGenFillMode(e.target.checked)} className="accent-green-500" />
+                  <span className="text-xs text-zinc-400">Fill to target</span>
+                </label>
+                {genFillMode ? (
+                  <>
+                    <input type="number" min={1} max={100} value={genFillTarget}
+                      onChange={e => setGenFillTarget(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                      className="w-16 px-2 py-1 rounded-lg bg-zinc-800 border border-white/10 text-sm text-white text-center focus:outline-none focus:border-green-500/50" />
+                    <span className="text-[10px] text-zinc-500">each profile gets enough gens to reach this total</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-xs text-zinc-400">Per profile:</span>
+                    <input type="number" min={1} max={20} value={genCount}
+                      onChange={e => setGenCount(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+                      className="w-16 px-2 py-1 rounded-lg bg-zinc-800 border border-white/10 text-sm text-white text-center focus:outline-none focus:border-green-500/50" />
+                  </>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-xs text-zinc-400">Hide profiles with ≥</span>
