@@ -78,7 +78,7 @@ Return ONLY a JSON object with exactly this format:
   "bpm": 120,
   "key": "C Major",
   "caption": "genre, instruments, emotion, atmosphere, timbre, vocal characteristics, production style",
-  "duration": 210
+  "duration": 217
 }
 
 Rules for each field:
@@ -110,7 +110,7 @@ CAPTION:
 - Example: "indie rock, driving electric guitars, male vocal, raw and energetic, garage production, anthemic chorus, 2010s alternative"
 
 DURATION:
-- Estimate the total track duration in seconds, rounded to the nearest 5
+- Estimate the total track duration in seconds (any integer value is fine — do NOT round to multiples of 5)
 - Consider: the BPM, the number of lyric sections the artist typically writes, and typical intro/outro/instrumental break lengths
 - At the chosen BPM, estimate how long each section takes (a bar of 4/4 = 240/BPM seconds)
 - Include typical intro (4-8 bars), instrumental breaks between sections, and an outro
