@@ -64,6 +64,9 @@ struct HotStepParams {
 
     // Per-group adapter scales
     AdapterGroupScales adapter_group_scales;
+
+    // Adapter loading mode: "merge" (default) or "runtime"
+    std::string adapter_mode = "merge";
 };
 
 // Single-worker-thread global. Set in hot-step-server.cpp before

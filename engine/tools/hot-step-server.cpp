@@ -470,6 +470,7 @@ struct ServerFields {
     float       frequency_damping  = 0.4f;
     float       temporal_smoothing = 0.13f;
     AdapterGroupScales group_scales;  // per-group adapter scale multipliers
+    std::string adapter_mode;         // "merge" (default) or "runtime"
 };
 
 static void parse_server_fields(const char * json, ServerFields * sf) {
@@ -477,6 +478,7 @@ static void parse_server_fields(const char * json, ServerFields * sf) {
     sf->solver_name     = "euler";
     sf->scheduler       = "";
     sf->guidance_mode   = "apg";
+    sf->adapter_mode    = "merge";
     sf->apg_momentum       = 0.75f;
     sf->apg_norm_threshold = 2.5f;
     sf->stork_substeps     = 10;
@@ -507,6 +509,9 @@ static void parse_server_fields(const char * json, ServerFields * sf) {
     }
     if ((v = yyjson_obj_get(obj, "guidance_mode")) && yyjson_is_str(v)) {
         sf->guidance_mode = yyjson_get_str(v);
+    }
+    if ((v = yyjson_obj_get(obj, "adapter_mode")) && yyjson_is_str(v)) {
+        sf->adapter_mode = yyjson_get_str(v);
     }
     // APG tuning
     if ((v = yyjson_obj_get(obj, "apg_momentum")) && yyjson_is_num(v)) {
@@ -837,6 +842,7 @@ static void synth_worker(std::shared_ptr<Job>    job,
     g_hotstep_params.frequency_damping   = sf.frequency_damping;
     g_hotstep_params.temporal_smoothing  = sf.temporal_smoothing;
     g_hotstep_params.adapter_group_scales = sf.group_scales;
+    g_hotstep_params.adapter_mode         = sf.adapter_mode;
     fprintf(stderr, "[Server] HOT-Step params: solver=%s, guidance=%s, scheduler=%s\n",
             sf.solver_name.c_str(), sf.guidance_mode.c_str(),
             sf.scheduler.empty() ? "(default)" : sf.scheduler.c_str());
