@@ -263,8 +263,8 @@ export async function startStreamGenerate(
   resetStream('Generating lyrics…');
   try {
     await consumeSSE(
-      `/api/lireek/generate-stream`,
-      { profile_id: req.profile_id, provider_name: req.provider, model: req.model, extra_instructions: req.extra_instructions },
+      `/api/lireek/profiles/${req.profile_id}/generate-stream`,
+      { provider_name: req.provider, model: req.model, extra_instructions: req.extra_instructions },
       makeCallbacks(() => onComplete?.(), (msg) => { _state.text += `\n⚠ Error: ${msg}`; _emit(); }),
     );
   } catch (err) {
