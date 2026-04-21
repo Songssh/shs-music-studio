@@ -723,13 +723,11 @@ static void synth_worker(std::shared_ptr<Job>    job,
             // (e.g. user provides a full path to a safetensors file)
             static std::string abs_path_buf;
             abs_path_buf = ace_reqs[0].adapter;
-            struct { std::string path; } abs_fallback;
-            abs_fallback.path = abs_path_buf;
             FILE * test = fopen(abs_path_buf.c_str(), "rb");
             if (test) {
                 fclose(test);
                 fprintf(stderr, "[Server] Adapter absolute path: %s\n", abs_path_buf.c_str());
-                p.adapter_path  = abs_fallback.path.c_str();
+                p.adapter_path  = abs_path_buf.c_str();
                 p.adapter_scale = ace_reqs[0].adapter_scale;
             } else {
                 fprintf(stderr, "[Server] Adapter not found: %s\n", ace_reqs[0].adapter.c_str());
