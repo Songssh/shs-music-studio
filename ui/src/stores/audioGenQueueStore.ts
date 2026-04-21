@@ -350,8 +350,19 @@ async function _executeItem(item: AudioQueueItem, token: string): Promise<void> 
       params.adapterGroupScales = effectiveGroupScales;
     }
 
-    // Trigger word
-    applyTriggerWord(params, preset.adapter_path);
+    // Trigger word — send as params so the server injects it AFTER CoT
+    // rewrites the caption (matching CreatePanel's approach).
+    // Client-side injection via applyTriggerWord gets lost when CoT replaces the caption.
+    const useFilename = localStorage.getItem('ace-globalTriggerUseFilename') === 'true';
+    const placement = (localStorage.getItem('ace-globalTriggerPlacement') as 'prepend' | 'append' | 'replace') || 'prepend';
+    if (useFilename) {
+      const fileName = preset.adapter_path.replace(/\\/g, '/').split('/').pop() || '';
+      const triggerWord = fileName.replace(/\.safetensors$/i, '');
+      if (triggerWord) {
+        params.triggerWord = triggerWord;
+        params.triggerPlacement = placement;
+      }
+    }
   }
 
   // 4) Reference Track — mastering + optional timbre conditioning

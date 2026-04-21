@@ -136,8 +136,17 @@ export function useAudioGeneration({ profiles, showToast, onJobLinked }: UseAudi
         if (preset.adapter_group_scales) {
           params.adapterGroupScales = preset.adapter_group_scales;
         }
-        // 5) Trigger word
-        applyTriggerWord(params, preset.adapter_path);
+        // Trigger word — send as server-side params so it's injected AFTER CoT
+        const useFilename = localStorage.getItem('ace-globalTriggerUseFilename') === 'true';
+        const placement = (localStorage.getItem('ace-globalTriggerPlacement') as 'prepend' | 'append' | 'replace') || 'prepend';
+        if (useFilename) {
+          const fileName = preset.adapter_path.replace(/\\/g, '/').split('/').pop() || '';
+          const triggerWord = fileName.replace(/\.safetensors$/i, '');
+          if (triggerWord) {
+            params.triggerWord = triggerWord;
+            params.triggerPlacement = placement;
+          }
+        }
       }
 
       // 6) Reference Track — mastering + optional timbre conditioning
