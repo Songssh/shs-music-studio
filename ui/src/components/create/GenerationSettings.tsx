@@ -37,6 +37,11 @@ interface GenerationSettingsProps {
   // Guidance sub-params
   apgMomentum: number; onApgMomentumChange: (v: number) => void;
   apgNormThreshold: number; onApgNormThresholdChange: (v: number) => void;
+  // DCW (Differential Correction in Wavelet domain)
+  dcwEnabled: boolean; onDcwEnabledChange: (v: boolean) => void;
+  dcwMode: string; onDcwModeChange: (v: string) => void;
+  dcwScaler: number; onDcwScalerChange: (v: number) => void;
+  dcwHighScaler: number; onDcwHighScalerChange: (v: number) => void;
 }
 
 export const GenerationSettings: React.FC<GenerationSettingsProps> = (props) => {
@@ -319,6 +324,58 @@ export const GenerationSettings: React.FC<GenerationSettingsProps> = (props) => 
               <p className="text-[10px] text-zinc-500">Momentum smooths guidance across steps. Norm threshold clips gradient magnitude per channel.</p>
             </div>
           )}
+
+          {/* ── DCW (Differential Correction in Wavelet domain) ── */}
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-3 transition-all">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" checked={props.dcwEnabled}
+                    onChange={e => props.onDcwEnabledChange(e.target.checked)}
+                    className="rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/20" />
+                  <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">DCW Correction</span>
+                </label>
+                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                  props.dcwEnabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-700 text-zinc-500'
+                }`}>
+                  {props.dcwEnabled ? 'ON' : 'OFF'}
+                </span>
+              </div>
+              {props.dcwEnabled && (
+                <button type="button" onClick={() => {
+                  props.onDcwModeChange('low');
+                  props.onDcwScalerChange(0.1);
+                  props.onDcwHighScalerChange(0.0);
+                }} className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 transition-colors">
+                  <RotateCcw size={10} /> Reset
+                </button>
+              )}
+            </div>
+            {props.dcwEnabled && (
+              <>
+                <div>
+                  <label className="block text-[10px] text-emerald-400 mb-1">Correction Mode</label>
+                  <select className={selectClasses} value={props.dcwMode}
+                    onChange={e => props.onDcwModeChange(e.target.value)}>
+                    <option value="low">Low-Frequency (Recommended)</option>
+                    <option value="high">High-Frequency</option>
+                    <option value="double">Both (Low + High)</option>
+                    <option value="pix">Pixel-Space (No Wavelets)</option>
+                  </select>
+                </div>
+                <Slider label="Correction Scaler" value={props.dcwScaler}
+                  onChange={props.onDcwScalerChange} min={0} max={5} step={0.01} showInput />
+                {props.dcwMode === 'double' && (
+                  <Slider label="High-Freq Scaler" value={props.dcwHighScaler}
+                    onChange={props.onDcwHighScalerChange} min={0} max={5} step={0.01} showInput />
+                )}
+                <p className="text-[10px] text-zinc-500">
+                  Wavelet-domain SNR-t bias correction (CVPR 2026). Scaler is dynamically modulated by timestep.
+                  Low-freq mode corrects structural drift, high-freq targets detail artifacts.
+                </p>
+              </>
+            )}
+          </div>
 
           {/* Seed */}
           <div>

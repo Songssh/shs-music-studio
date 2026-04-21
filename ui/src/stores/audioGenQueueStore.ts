@@ -97,6 +97,11 @@ function mergeCreatePanelSettings(params: Record<string, any>): void {
     ['hs-vocalLanguage', 'vocalLanguage'],
     // Adapter mode (runtime vs merge — engine setting, not preset)
     ['hs-adapterMode', 'adapterMode'],
+    // DCW (Differential Correction in Wavelet domain)
+    ['hs-dcwEnabled', 'dcwEnabled'],
+    ['hs-dcwMode', 'dcwMode'],
+    ['hs-dcwScaler', 'dcwScaler'],
+    ['hs-dcwHighScaler', 'dcwHighScaler'],
   ];
   for (const [storageKey, paramKey] of map) {
     const val = readPersisted(storageKey);

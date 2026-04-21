@@ -175,6 +175,12 @@ function translateParams(params: any): AceRequest {
   if (params.apgMomentum !== undefined) req.apg_momentum = params.apgMomentum;
   if (params.apgNormThreshold !== undefined) req.apg_norm_threshold = params.apgNormThreshold;
 
+  // DCW (Differential Correction in Wavelet domain)
+  if (params.dcwEnabled !== undefined) req.dcw_enabled = params.dcwEnabled;
+  if (params.dcwMode) req.dcw_mode = params.dcwMode;
+  if (params.dcwScaler !== undefined) req.dcw_scaler = params.dcwScaler;
+  if (params.dcwHighScaler !== undefined) req.dcw_high_scaler = params.dcwHighScaler;
+
   return req;
 }
 
@@ -332,6 +338,12 @@ async function runGeneration(job: GenerationJob): Promise<void> {
         if (aceReq.adapter_scale !== undefined) result.adapter_scale = aceReq.adapter_scale;
         if (aceReq.adapter_group_scales) result.adapter_group_scales = aceReq.adapter_group_scales;
         if (aceReq.adapter_mode) result.adapter_mode = aceReq.adapter_mode;
+
+        // DCW params (user can toggle between runs)
+        if (aceReq.dcw_enabled !== undefined) result.dcw_enabled = aceReq.dcw_enabled;
+        if (aceReq.dcw_mode) result.dcw_mode = aceReq.dcw_mode;
+        if (aceReq.dcw_scaler !== undefined) result.dcw_scaler = aceReq.dcw_scaler;
+        if (aceReq.dcw_high_scaler !== undefined) result.dcw_high_scaler = aceReq.dcw_high_scaler;
 
         // Re-inject trigger word — CoT caption replaces the original so the
         // trigger word that was injected into aceReq.caption gets lost.

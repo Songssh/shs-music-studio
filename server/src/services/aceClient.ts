@@ -87,6 +87,11 @@ export interface AceRequest {
   // Guidance sub-parameters
   apg_momentum?: number;
   apg_norm_threshold?: number;
+  // DCW (Differential Correction in Wavelet domain)
+  dcw_enabled?: boolean;
+  dcw_mode?: string;         // 'pix' | 'low' | 'high' | 'double'
+  dcw_scaler?: number;
+  dcw_high_scaler?: number;
 }
 
 /** Job status from ace-server */

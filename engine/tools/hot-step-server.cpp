@@ -471,6 +471,11 @@ struct ServerFields {
     float       temporal_smoothing = 0.13f;
     AdapterGroupScales group_scales;  // per-group adapter scale multipliers
     std::string adapter_mode;         // "merge" (default) or "runtime"
+    // DCW (Differential Correction in Wavelet domain)
+    bool        dcw_enabled      = false;
+    std::string dcw_mode         = "low";
+    float       dcw_scaler       = 0.1f;
+    float       dcw_high_scaler  = 0.0f;
 };
 
 static void parse_server_fields(const char * json, ServerFields * sf) {
@@ -549,6 +554,23 @@ static void parse_server_fields(const char * json, ServerFields * sf) {
             sf->group_scales.mlp = get_num(v);
         if ((v = yyjson_obj_get(gs_obj, "cond_embed")) && yyjson_is_num(v))
             sf->group_scales.cond_embed = get_num(v);
+    }
+    // DCW fields
+    if ((v = yyjson_obj_get(obj, "dcw_enabled"))) {
+        if (yyjson_is_bool(v)) {
+            sf->dcw_enabled = yyjson_get_bool(v);
+        } else if (yyjson_is_str(v)) {
+            sf->dcw_enabled = (strcmp(yyjson_get_str(v), "true") == 0);
+        }
+    }
+    if ((v = yyjson_obj_get(obj, "dcw_mode")) && yyjson_is_str(v)) {
+        sf->dcw_mode = yyjson_get_str(v);
+    }
+    if ((v = yyjson_obj_get(obj, "dcw_scaler")) && yyjson_is_num(v)) {
+        sf->dcw_scaler = (float) yyjson_get_real(v);
+    }
+    if ((v = yyjson_obj_get(obj, "dcw_high_scaler")) && yyjson_is_num(v)) {
+        sf->dcw_high_scaler = (float) yyjson_get_real(v);
     }
     yyjson_doc_free(doc);
 }
@@ -843,12 +865,20 @@ static void synth_worker(std::shared_ptr<Job>    job,
     g_hotstep_params.temporal_smoothing  = sf.temporal_smoothing;
     g_hotstep_params.adapter_group_scales = sf.group_scales;
     g_hotstep_params.adapter_mode         = sf.adapter_mode;
+    g_hotstep_params.dcw_enabled          = sf.dcw_enabled;
+    g_hotstep_params.dcw_mode             = sf.dcw_mode;
+    g_hotstep_params.dcw_scaler           = sf.dcw_scaler;
+    g_hotstep_params.dcw_high_scaler      = sf.dcw_high_scaler;
     fprintf(stderr, "[Server] HOT-Step params: solver=%s, guidance=%s, scheduler=%s\n",
             sf.solver_name.c_str(), sf.guidance_mode.c_str(),
             sf.scheduler.empty() ? "(default)" : sf.scheduler.c_str());
     fprintf(stderr, "[Server] Adapter group scales: self_attn=%.2f, cross_attn=%.2f, mlp=%.2f, cond_embed=%.2f\n",
             sf.group_scales.self_attn, sf.group_scales.cross_attn,
             sf.group_scales.mlp, sf.group_scales.cond_embed);
+    if (sf.dcw_enabled) {
+        fprintf(stderr, "[Server] DCW: mode=%s scaler=%.3f high_scaler=%.3f\n",
+                sf.dcw_mode.c_str(), sf.dcw_scaler, sf.dcw_high_scaler);
+    }
 
     // Two-phase run. The store acquires and releases GPU modules around each
     // op (STRICT) or keeps them across ops (NEVER). The synth ctx is always

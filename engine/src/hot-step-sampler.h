@@ -6,6 +6,7 @@
 // Guidance modes are resolved by name via guidance/guidance-registry.h.
 // Matches Python ACE-Step-1.5 acestep/models/base/apg_guidance.py
 
+#include "dcw.h"
 #include "debug.h"
 #include "dit-graph.h"
 #include "dit.h"
@@ -657,6 +658,37 @@ static int dit_ggml_generate(DiTGGML *           model,
                 xt.data(), vt.data(), t_curr, t_next, n_total,
                 solver_state, evaluate_velocity, vt.data()
             );
+
+            // ── DCW correction (Differential Correction in Wavelet domain) ──
+            // Apply frequency-domain correction after the solver step.
+            // Scaler is modulated by t_curr: larger corrections early, decaying.
+            if (g_hotstep_params.dcw_enabled) {
+                // Compute denoised (predicted x0) = xt - vt * t_curr
+                // We use vt from the last model evaluation (still valid after solver step).
+                std::vector<float> denoised(n_total);
+                for (int i = 0; i < n_total; i++) {
+                    denoised[i] = xt[i] - vt[i] * t_curr;
+                }
+
+                const std::string & dcw_mode = g_hotstep_params.dcw_mode;
+                float eff_scaler = t_curr * g_hotstep_params.dcw_scaler;
+
+                if (dcw_mode == "pix") {
+                    dcw_correct_pix(xt.data(), denoised.data(), eff_scaler, n_total);
+                } else if (dcw_mode == "low") {
+                    dcw_correct_low(xt.data(), denoised.data(), eff_scaler, T, Oc, N);
+                } else if (dcw_mode == "high") {
+                    dcw_correct_high(xt.data(), denoised.data(), eff_scaler, T, Oc, N);
+                } else if (dcw_mode == "double") {
+                    float eff_high = (1.0f - t_curr) * g_hotstep_params.dcw_high_scaler;
+                    dcw_correct_double(xt.data(), denoised.data(), eff_scaler, eff_high, T, Oc, N);
+                }
+
+                if (step == 0) {
+                    fprintf(stderr, "[DCW] mode=%s scaler=%.3f (eff=%.4f at t=%.3f)\n",
+                            dcw_mode.c_str(), g_hotstep_params.dcw_scaler, eff_scaler, t_curr);
+                }
+            }
 
             // repaint injection: replace preserved regions with noised source.
             if (repaint_src && repaint_t1 > repaint_t0) {

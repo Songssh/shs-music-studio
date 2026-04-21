@@ -56,6 +56,12 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   const [apgMomentum, setApgMomentum] = usePersistedState('hs-apgMomentum', 0.75);
   const [apgNormThreshold, setApgNormThreshold] = usePersistedState('hs-apgNormThreshold', 2.5);
 
+  // DCW (Differential Correction in Wavelet domain)
+  const [dcwEnabled, setDcwEnabled] = usePersistedState('hs-dcwEnabled', false);
+  const [dcwMode, setDcwMode] = usePersistedState('hs-dcwMode', 'low');
+  const [dcwScaler, setDcwScaler] = usePersistedState('hs-dcwScaler', 0.1);
+  const [dcwHighScaler, setDcwHighScaler] = usePersistedState('hs-dcwHighScaler', 0.0);
+
   // LM toggle
   const [skipLm, setSkipLm] = usePersistedState('hs-skipLm', false);
 
@@ -129,6 +135,8 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
       storkSubsteps, beatStability, frequencyDamping, temporalSmoothing,
       // Guidance sub-params
       apgMomentum, apgNormThreshold,
+      // DCW
+      dcwEnabled, dcwMode, dcwScaler, dcwHighScaler,
     };
     const blob = new Blob([JSON.stringify(preset, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -195,6 +203,11 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
         // Guidance sub-params
         if (p.apgMomentum !== undefined) setApgMomentum(p.apgMomentum);
         if (p.apgNormThreshold !== undefined) setApgNormThreshold(p.apgNormThreshold);
+        // DCW
+        if (p.dcwEnabled !== undefined) setDcwEnabled(p.dcwEnabled);
+        if (p.dcwMode !== undefined) setDcwMode(p.dcwMode);
+        if (p.dcwScaler !== undefined) setDcwScaler(p.dcwScaler);
+        if (p.dcwHighScaler !== undefined) setDcwHighScaler(p.dcwHighScaler);
       } catch (err) {
         console.error('[Preset Import] Invalid JSON:', err);
       }
@@ -256,6 +269,11 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
       // Guidance sub-params (only when APG is active)
       apgMomentum: guidanceMode === 'apg' ? apgMomentum : undefined,
       apgNormThreshold: guidanceMode === 'apg' ? apgNormThreshold : undefined,
+      // DCW params
+      dcwEnabled,
+      dcwMode: dcwEnabled ? dcwMode : undefined,
+      dcwScaler: dcwEnabled ? dcwScaler : undefined,
+      dcwHighScaler: (dcwEnabled && dcwMode === 'double') ? dcwHighScaler : undefined,
     };
     onGenerate(params);
   };
@@ -344,6 +362,10 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
           temporalSmoothing={temporalSmoothing} onTemporalSmoothingChange={setTemporalSmoothing}
           apgMomentum={apgMomentum} onApgMomentumChange={setApgMomentum}
           apgNormThreshold={apgNormThreshold} onApgNormThresholdChange={setApgNormThreshold}
+          dcwEnabled={dcwEnabled} onDcwEnabledChange={setDcwEnabled}
+          dcwMode={dcwMode} onDcwModeChange={setDcwMode}
+          dcwScaler={dcwScaler} onDcwScalerChange={setDcwScaler}
+          dcwHighScaler={dcwHighScaler} onDcwHighScalerChange={setDcwHighScaler}
         />
 
         <MasteringSection

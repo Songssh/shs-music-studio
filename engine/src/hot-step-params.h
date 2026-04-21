@@ -67,6 +67,13 @@ struct HotStepParams {
 
     // Adapter loading mode: "merge" (default) or "runtime"
     std::string adapter_mode = "merge";
+
+    // DCW (Differential Correction in Wavelet domain) — CVPR 2026
+    // Training-free sampler-side correction that mitigates SNR-t bias.
+    bool        dcw_enabled      = false;
+    std::string dcw_mode         = "low";     // "pix", "low", "high", "double"
+    float       dcw_scaler       = 0.1f;
+    float       dcw_high_scaler  = 0.0f;      // only used in "double" mode
 };
 
 // Single-worker-thread global. Set in hot-step-server.cpp before
