@@ -759,7 +759,7 @@ export async function buildProfile(
 export function recalculateProfileStats(songs: SongLyrics[], profileData: any): any {
   const vocab = analyseVocabulary(songs);
   const meter = analyseMeter(songs);
-  const rhyme = analyseRhymeSchemes(songs);
+  const rhyme = analyseRhymes(songs);
   const rep = analyseRepetition(songs);
   const lineVar = analyseLineLengthVariation(songs);
   const perspective = analysePerspective(songs);
