@@ -524,8 +524,14 @@ export async function listProviders(): Promise<ProviderInfo[]> {
 // ── Orchestration Functions ─────────────────────────────────────────────────
 
 export function stripThinkingBlocks(text: string): string {
-  // Removes <think>...</think> blocks from text
-  return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  // Remove standard <think>...</think> blocks
+  let result = text.replace(/<think>[\s\S]*?<\/think>/g, '');
+  // Remove LM Studio channel-based thinking: <|channel>thought...<channel|>
+  result = result.replace(/<\|channel>thought[\s\S]*?<channel\|>/g, '');
+  // Handle unclosed thinking blocks (model stopped mid-thought)
+  result = result.replace(/<think>[\s\S]*/g, '');
+  result = result.replace(/<\|channel>thought[\s\S]*/g, '');
+  return result.trim();
 }
 
 /**
