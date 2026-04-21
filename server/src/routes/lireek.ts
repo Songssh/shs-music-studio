@@ -671,6 +671,27 @@ router.post('/lyrics-sets/:id/build-profile-stream', async (req: Request, res: R
   }
 });
 
+// ── Recalculate Stats (no LLM) ──────────────────────────────────────────────
+
+router.post('/profiles/recalculate-stats', async (_req: Request, res: Response) => {
+  try {
+    const profiles = db.getProfiles();
+    let updated = 0;
+    for (const profile of profiles) {
+      const lyricsSet = db.getLyricsSet(profile.lyrics_set_id);
+      if (!lyricsSet) continue;
+      const songs = (lyricsSet.songs || []) as { title: string; album?: string; lyrics: string }[];
+      if (!songs.length) continue;
+      const patched = profilerService.recalculateProfileStats(songs, profile.profile_data);
+      db.updateProfileData(profile.id, patched);
+      updated++;
+    }
+    res.json({ updated, total: profiles.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Generate Lyrics ─────────────────────────────────────────────────────────
 
 router.post('/profiles/:id/generate', async (req: Request, res: Response) => {

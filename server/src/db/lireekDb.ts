@@ -285,6 +285,10 @@ export function deleteProfile(id: number): boolean {
   return db.prepare('DELETE FROM profiles WHERE id = ?').run(id).changes > 0;
 }
 
+export function updateProfileData(id: number, profileData: any): void {
+  db.prepare('UPDATE profiles SET profile_data = ? WHERE id = ?').run(JSON.stringify(profileData), id);
+}
+
 
 // ── Generations ─────────────────────────────────────────────────────────────
 

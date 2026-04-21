@@ -751,3 +751,30 @@ export async function buildProfile(
     repetition_stats: rep as any,
   };
 }
+
+/**
+ * Re-runs all local (non-LLM) statistical analysis on an existing profile's
+ * lyrics set and patches the profile_data in place. This is fast — no LLM calls.
+ */
+export function recalculateProfileStats(songs: SongLyrics[], profileData: any): any {
+  const vocab = analyseVocabulary(songs);
+  const meter = analyseMeter(songs);
+  const rhyme = analyseRhymeSchemes(songs);
+  const rep = analyseRepetition(songs);
+  const lineVar = analyseLineLengthVariation(songs);
+  const perspective = analysePerspective(songs);
+
+  return {
+    ...profileData,
+    // Overwrite computed stats
+    vocabulary_stats: vocab,
+    meter_stats: meter,
+    rhyme_schemes: rhyme.schemes,
+    rhyme_quality: rhyme.quality as any,
+    avg_verse_lines: rhyme.avg_verse_lines,
+    avg_chorus_lines: rhyme.avg_chorus_lines,
+    repetition_stats: rep as any,
+    line_length_variation: lineVar,
+    perspective,
+  };
+}
