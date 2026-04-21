@@ -97,9 +97,8 @@ export const BarSection: React.FC<BarSectionProps> = ({
       {isOpen && (
         <div
           className="absolute top-full left-0 z-50 min-w-[340px] max-w-[480px] max-h-[calc(100vh-120px)] overflow-y-auto
-                     bg-zinc-900/98 border border-white/10 border-t-0 rounded-b-xl shadow-2xl shadow-black/40
+                     bg-zinc-900 border border-white/10 border-t-0 rounded-b-xl shadow-2xl shadow-black/60
                      global-bar-dropdown-enter hide-scrollbar"
-          style={{ backdropFilter: 'blur(20px)' }}
         >
           <div className="p-4 space-y-3">
             {children}

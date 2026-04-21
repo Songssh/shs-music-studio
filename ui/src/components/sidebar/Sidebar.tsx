@@ -27,25 +27,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
       flex flex-col h-full bg-white dark:bg-suno-sidebar border-r border-zinc-200 dark:border-white/5 flex-shrink-0 py-4 overflow-y-auto hide-scrollbar transition-all duration-300
       ${isOpen ? 'w-[200px]' : 'w-[72px]'}
     `}>
-      {/* Logo & Brand */}
-      <div className={`mb-8 flex items-center ${isOpen ? 'px-3' : 'justify-center'}`}>
-        <div className="flex items-center gap-3">
-          <button
-            className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center shadow-lg hover:scale-105 transition-transform flex-shrink-0"
-            onClick={() => setIsOpen(!isOpen)}
-            title={isOpen ? 'Collapse' : 'HOT-Step CPP'}
-          >
-            <svg className={`w-5 h-5 text-white transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-          {isOpen && (
-            <div className="flex flex-col items-center leading-tight">
-              <span className="text-lg font-bold text-zinc-900 dark:text-white whitespace-nowrap">HOT-Step</span>
-              <span className="text-xs font-semibold tracking-[0.25em] text-zinc-500 dark:text-zinc-400">CPP ⚡</span>
-            </div>
-          )}
-        </div>
+      {/* Collapse / Expand toggle (logo moved to GlobalParamBar) */}
+      <div className={`mb-6 flex items-center ${isOpen ? 'px-3' : 'justify-center'}`}>
+        <button
+          className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all flex-shrink-0"
+          onClick={() => setIsOpen(!isOpen)}
+          title={isOpen ? 'Collapse' : 'Expand'}
+        >
+          <svg className={`w-4 h-4 text-zinc-400 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
       </div>
 
       <nav className="flex-1 flex flex-col gap-2 w-full px-3">
