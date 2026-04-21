@@ -207,8 +207,8 @@ async function _executeQueueItem(item: QueueItem): Promise<void> {
         break;
       case 'generate':
         await consumeSSE(
-          `/api/lireek/generate-stream`,
-          { profile_id: item.targetId, provider_name: item.provider, model: item.model },
+          `/api/lireek/profiles/${item.targetId}/generate-stream`,
+          { provider_name: item.provider, model: item.model },
           makeCallbacks(),
         );
         break;
