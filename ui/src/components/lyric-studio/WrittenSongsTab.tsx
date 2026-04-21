@@ -1,8 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { Trash2, Pencil, Music2, Wand2, Play, Loader2, ChevronDown, ChevronRight, Send, FileText, Headphones, Sparkles } from 'lucide-react';
-import { lireekApi, streamGenerate, streamRefine, skipThinking } from '../../services/lireekApi';
+import { lireekApi, streamRefine, skipThinking } from '../../services/lireekApi';
 import type { Generation, Profile } from '../../services/lireekApi';
 import { StreamingPanel } from './StreamingPanel';
+import { useStreamingStore, startStreamGenerate } from '../../stores/streamingStore';
 
 interface WrittenSongsTabProps {
   generations: Generation[];
@@ -25,11 +26,14 @@ export const WrittenSongsTab: React.FC<WrittenSongsTabProps> = ({
   const [refiningId, setRefiningId] = useState<number | null>(null);
   const [genCount, setGenCount] = useState(1);
 
-  // Inline streaming state
-  const [streamVisible, setStreamVisible] = useState(false);
-  const [streamText, setStreamText] = useState('');
-  const [streamPhase, setStreamPhase] = useState('');
-  const [streamDone, setStreamDone] = useState(false);
+  // Persistent streaming state — survives tab navigation
+  const streaming = useStreamingStore();
+
+  // Local streaming state for refine (one-off, doesn't need persistence)
+  const [refineStreamVisible, setRefineStreamVisible] = useState(false);
+  const [refineStreamText, setRefineStreamText] = useState('');
+  const [refineStreamPhase, setRefineStreamPhase] = useState('');
+  const [refineStreamDone, setRefineStreamDone] = useState(false);
 
   const handleQuickGenerate = useCallback(async () => {
     if (profiles.length === 0) {
@@ -37,39 +41,23 @@ export const WrittenSongsTab: React.FC<WrittenSongsTabProps> = ({
       return;
     }
     setGenerating(true);
-    setStreamVisible(true);
-    setStreamText('');
-    setStreamPhase('');
-    setStreamDone(false);
 
     const profile = profiles[0];
     try {
       for (let i = 0; i < genCount; i++) {
-        setStreamText('');
-        setStreamPhase('');
-        setStreamDone(false);
-        await streamGenerate(
+        await startStreamGenerate(
           profile.id,
           {
             profile_id: profile.id,
             provider: generationModel.provider,
             model: generationModel.model,
           },
-          {
-            onChunk: (text) => setStreamText(prev => prev + text),
-            onPhase: (phase) => setStreamPhase(phase),
-            onResult: () => {
-              onRefresh();
-            },
-            onError: (err) => showToast(`Generation failed: ${err}`),
-          },
+          () => onRefresh(),
         );
       }
-      setStreamDone(true);
       showToast(`Generated ${genCount} new song${genCount > 1 ? 's' : ''}`);
     } catch (err: any) {
       showToast(`Failed: ${err.message}`);
-      setStreamDone(true);
     } finally {
       setGenerating(false);
     }
@@ -82,17 +70,17 @@ export const WrittenSongsTab: React.FC<WrittenSongsTabProps> = ({
       return;
     }
     setRefiningId(gen.id);
-    setStreamVisible(true);
-    setStreamText('');
-    setStreamPhase('');
-    setStreamDone(false);
+    setRefineStreamVisible(true);
+    setRefineStreamText('');
+    setRefineStreamPhase('');
+    setRefineStreamDone(false);
     try {
       await streamRefine(
         gen.id,
         { provider, model },
         {
-          onChunk: (text) => setStreamText(prev => prev + text),
-          onPhase: (phase) => setStreamPhase(phase),
+          onChunk: (text) => setRefineStreamText(prev => prev + text),
+          onPhase: (phase) => setRefineStreamPhase(phase),
           onResult: () => {
             showToast(`Refined: ${gen.title || 'Untitled'}`);
             onRefresh();
@@ -100,10 +88,10 @@ export const WrittenSongsTab: React.FC<WrittenSongsTabProps> = ({
           onError: (err) => showToast(`Refinement failed: ${err}`),
         },
       );
-      setStreamDone(true);
+      setRefineStreamDone(true);
     } catch (err: any) {
       showToast(`Refinement failed: ${err.message}`);
-      setStreamDone(true);
+      setRefineStreamDone(true);
     } finally {
       setRefiningId(null);
     }
@@ -128,6 +116,9 @@ export const WrittenSongsTab: React.FC<WrittenSongsTabProps> = ({
       showToast(`Failed to save: ${err.message}`);
     }
   };
+
+  // Show streaming panel if either generation or refinement is active
+  const showGenerationStream = streaming.visible || generating;
 
   return (
     <div className="p-4 space-y-4">
@@ -167,14 +158,27 @@ export const WrittenSongsTab: React.FC<WrittenSongsTabProps> = ({
         )}
       </div>
 
-      {/* Streaming panel */}
-      {streamVisible && (
+      {/* Generation streaming panel — persists across tab navigation */}
+      {showGenerationStream && (
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 overflow-hidden">
           <StreamingPanel
-            visible={streamVisible}
-            streamText={streamText}
-            phase={streamPhase}
-            done={streamDone}
+            visible={true}
+            streamText={streaming.text}
+            phase={streaming.phase}
+            done={streaming.done}
+            onSkipThinking={() => skipThinking()}
+          />
+        </div>
+      )}
+
+      {/* Refine streaming panel — local, only shown during active refinement */}
+      {refineStreamVisible && (
+        <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 overflow-hidden">
+          <StreamingPanel
+            visible={refineStreamVisible}
+            streamText={refineStreamText}
+            phase={refineStreamPhase}
+            done={refineStreamDone}
             onSkipThinking={() => skipThinking()}
           />
         </div>
