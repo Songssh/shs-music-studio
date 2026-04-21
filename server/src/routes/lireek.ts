@@ -681,14 +681,19 @@ router.post('/profiles/:id/generate', async (req: Request, res: Response) => {
     
     const { provider_name, model, extra_instructions, auto_save = true } = req.body;
     
-    const pastGenerations = db.getAllGenerationsWithContext().filter((g: any) => g.artist_id === profile.artist_id);
+    // Resolve artist_id via the lyrics_set (profiles table doesn't have artist_id)
+    const lyricsSet = db.getLyricsSet(profile.lyrics_set_id);
+    const artistId = lyricsSet?.artist_id;
+    const pastGenerations = artistId
+      ? db.getAllGenerationsWithContext().filter((g: any) => g.artist_id === artistId)
+      : [];
     const usedSubjects = pastGenerations.map((g: any) => g.song_subject).filter(Boolean);
     const usedBpms = pastGenerations.map((g: any) => g.bpm).filter((b: any): b is number => b !== null && b > 0);
     const usedKeys = pastGenerations.map((g: any) => g.song_key).filter(Boolean);
     const usedTitles = pastGenerations.map((g: any) => g.title).filter(Boolean);
 
     const generated = await llmService.generateLyricsStreaming(
-      profile as any, provider_name, model, extra_instructions, 
+      profile.profile_data, provider_name, model, extra_instructions, 
       usedSubjects as string[], usedBpms as number[], usedKeys as string[], usedTitles as string[]
     );
     
@@ -734,14 +739,19 @@ router.post('/profiles/:id/generate-stream', async (req: Request, res: Response)
 
     llmService.resetSkipThinking();
 
-    const pastGenerations = db.getAllGenerationsWithContext().filter((g: any) => g.artist_id === profile.artist_id);
+    // Resolve artist_id via the lyrics_set (profiles table doesn't have artist_id)
+    const lyricsSet = db.getLyricsSet(profile.lyrics_set_id);
+    const artistId = lyricsSet?.artist_id;
+    const pastGenerations = artistId
+      ? db.getAllGenerationsWithContext().filter((g: any) => g.artist_id === artistId)
+      : [];
     const usedSubjects = pastGenerations.map((g: any) => g.song_subject).filter(Boolean);
     const usedBpms = pastGenerations.map((g: any) => g.bpm).filter((b: any): b is number => b !== null && b > 0);
     const usedKeys = pastGenerations.map((g: any) => g.song_key).filter(Boolean);
     const usedTitles = pastGenerations.map((g: any) => g.title).filter(Boolean);
 
     const generated = await llmService.generateLyricsStreaming(
-      profile as any, provider_name, model, extra_instructions,
+      profile.profile_data, provider_name, model, extra_instructions,
       usedSubjects as string[], usedBpms as number[], usedKeys as string[], usedTitles as string[],
       (chunk) => sendSse('chunk', { text: chunk }),
       (phase) => sendSse('phase', { phase })
@@ -783,10 +793,11 @@ router.post('/generations/:id/refine', async (req: Request, res: Response) => {
     
     const { provider_name, model, auto_save = true } = req.body;
     const profile = db.getProfile(existing.profile_id);
-    const artist = profile ? db.getArtist(profile.artist_id) : undefined;
+    const lyricsSet = profile ? db.getLyricsSet(profile.lyrics_set_id) : null;
+    const artist = lyricsSet ? db.getArtist(lyricsSet.artist_id) : undefined;
 
     const refined = await llmService.refineLyricsStreaming(
-      existing.lyrics, artist?.name || 'Unknown', existing.title, provider_name, model, (profile as any) || undefined
+      existing.lyrics, artist?.name || 'Unknown', existing.title, provider_name, model, profile?.profile_data || undefined
     );
 
     if (auto_save) {
@@ -822,7 +833,8 @@ router.post('/generations/:id/refine-stream', async (req: Request, res: Response
     
     const { provider_name, model, auto_save = true } = req.body;
     const profile = db.getProfile(existing.profile_id);
-    const artist = profile ? db.getArtist(profile.artist_id) : undefined;
+    const lyricsSet = profile ? db.getLyricsSet(profile.lyrics_set_id) : null;
+    const artist = lyricsSet ? db.getArtist(lyricsSet.artist_id) : undefined;
     
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -835,7 +847,7 @@ router.post('/generations/:id/refine-stream', async (req: Request, res: Response
     llmService.resetSkipThinking();
 
     const refined = await llmService.refineLyricsStreaming(
-      existing.lyrics, artist?.name || 'Unknown', existing.title, provider_name, model, (profile as any) || undefined,
+      existing.lyrics, artist?.name || 'Unknown', existing.title, provider_name, model, profile?.profile_data || undefined,
       (chunk) => sendSse('chunk', { text: chunk })
     );
 
