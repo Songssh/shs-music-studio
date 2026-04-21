@@ -95,10 +95,26 @@ async function readSSE(response: Response, onChunk: ChunkCallback, extractText: 
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const dataStr = line.slice(6).trim();
-          if (dataStr === '[DONE]') continue;
+          if (dataStr === '[DONE]') {
+            reader.cancel();
+            return fullText;
+          }
           
           try {
             const parsed = JSON.parse(dataStr);
+
+            // Break on finish_reason (OpenAI-compatible sentinel)
+            if (parsed.choices?.[0]?.finish_reason) {
+              // There might still be final content in this chunk
+              const lastText = extractText(parsed);
+              if (lastText) {
+                fullText += lastText;
+                onChunk(lastText);
+              }
+              // Don't return yet — wait for [DONE] or stream close
+              continue;
+            }
+
             const text = extractText(parsed);
             if (text) {
               fullText += text;
