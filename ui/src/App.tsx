@@ -28,6 +28,7 @@ import { SettingsPanel, type AppSettings, DEFAULT_SETTINGS } from './components/
 import { TerminalPanel } from './components/terminal/TerminalPanel';
 import { LyricStudioV2 } from './components/lyric-studio/LyricStudioV2';
 import { GlobalParamBar } from './components/global-bar/GlobalParamBar';
+import { PlaylistSidebar } from './components/playlist/PlaylistSidebar';
 import {
   usePlayback,
   registerPlayers,
@@ -51,6 +52,7 @@ import {
   playFromList,
 } from './stores/playbackStore';
 import type { Song, GenerationParams } from './types';
+import { usePlaylist } from './components/lyric-studio/playlistStore';
 
 /** Derive top-level view from the browser URL */
 function viewFromUrl(path = window.location.pathname): string {
@@ -93,6 +95,10 @@ const AppContent: React.FC = () => {
 
   // Settings state (persisted)
   const [settings, setSettings] = usePersistedState<AppSettings>('ace-settings', DEFAULT_SETTINGS);
+
+  // Playlist sidebar (persisted)
+  const [showPlaylist, setShowPlaylist] = usePersistedState('ace-showPlaylist', false);
+  const playlistData = usePlaylist();
 
   // ── Playback (from unified store) ──
   const pb = usePlayback();
@@ -465,6 +471,23 @@ const AppContent: React.FC = () => {
           {renderContent()}
         </main>
 
+        {/* Playlist Sidebar — right of main, left of terminal */}
+        {showPlaylist && (
+          <>
+            <div
+              className="flex-shrink-0 w-1.5 h-full cursor-col-resize group z-20 flex items-center hover:bg-pink-500/20 active:bg-pink-500/30 transition-colors"
+            >
+              <div className="w-0.5 h-8 rounded-full bg-zinc-600 group-hover:bg-pink-400 transition-colors" />
+            </div>
+            <div
+              className="flex-shrink-0 h-full border-l border-white/5"
+              style={{ width: 300 }}
+            >
+              <PlaylistSidebar onClose={() => setShowPlaylist(false)} />
+            </div>
+          </>
+        )}
+
         {/* Terminal Panel — far right, resizable */}
         {showTerminal && (
           <>
@@ -597,6 +620,9 @@ const AppContent: React.FC = () => {
           onToggleMastered={pbToggleMastered}
           spectrumEnabled={pb.spectrumEnabled}
           onToggleSpectrum={() => pbSetSpectrumEnabled(!pb.spectrumEnabled)}
+          showPlaylist={showPlaylist}
+          playlistCount={playlistData.items.length}
+          onTogglePlaylist={() => setShowPlaylist(prev => !prev)}
         />
       </div>
 

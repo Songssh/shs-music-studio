@@ -7,7 +7,7 @@ import {
   Shuffle, Repeat, Repeat1,
   Volume2, VolumeX,
   RotateCcw, Trash2, Download,
-  Music, Sparkles, Activity,
+  Music, Sparkles, Activity, ListMusic,
 } from 'lucide-react';
 import type { Song } from '../../types';
 
@@ -36,6 +36,9 @@ interface PlayerProps {
   onToggleMastered: () => void;
   spectrumEnabled: boolean;
   onToggleSpectrum: () => void;
+  showPlaylist: boolean;
+  playlistCount: number;
+  onTogglePlaylist: () => void;
 }
 
 const formatTime = (s: number) => {
@@ -69,6 +72,9 @@ export const Player: React.FC<PlayerProps> = ({
   onToggleMastered,
   spectrumEnabled,
   onToggleSpectrum,
+  showPlaylist,
+  playlistCount,
+  onTogglePlaylist,
 }) => {
 
 
@@ -142,7 +148,7 @@ export const Player: React.FC<PlayerProps> = ({
       </div>
 
       {/* Right: Volume + Actions */}
-      <div className="flex items-center gap-3 w-[240px] flex-shrink-0 justify-end">
+      <div className="flex items-center gap-3 w-[280px] flex-shrink-0 justify-end">
         {/* Playback Rate */}
         <button
           onClick={() => {
@@ -170,6 +176,24 @@ export const Player: React.FC<PlayerProps> = ({
             <Sparkles size={15} />
           </button>
         )}
+
+        {/* Playlist toggle */}
+        <button
+          onClick={onTogglePlaylist}
+          className={`p-1.5 rounded-lg transition-all relative ${
+            showPlaylist
+              ? 'text-pink-400 bg-pink-500/10'
+              : 'text-zinc-500 hover:text-pink-400 hover:bg-pink-500/5'
+          }`}
+          title={showPlaylist ? 'Hide Playlist' : 'Show Playlist'}
+        >
+          <ListMusic size={15} />
+          {playlistCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-pink-500 text-[8px] font-bold text-white flex items-center justify-center">
+              {playlistCount}
+            </span>
+          )}
+        </button>
 
         {/* Volume */}
         <div className="flex items-center gap-1.5 group">

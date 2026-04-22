@@ -40,7 +40,7 @@ import { QueuePanel } from './QueuePanel';
 import { PromptEditor } from './PromptEditor';
 import { useStreamingStore } from '../../stores/streamingStore';
 import { loadSelections } from './ProviderSelector';
-import { FloatingPlaylist } from './FloatingPlaylist';
+
 
 // ── URL helpers ──────────────────────────────────────────────────────────────
 
@@ -725,9 +725,6 @@ export const LyricStudioV2: React.FC = () => {
           artistId={nav.selectedArtist.id} artistName={nav.selectedArtist.name}
           albums={albums} showToast={showToast} onComplete={handleCuratedComplete} />
       )}
-
-      {/* Floating Winamp-style playlist */}
-      <FloatingPlaylist />
     </div>
   );
 };
