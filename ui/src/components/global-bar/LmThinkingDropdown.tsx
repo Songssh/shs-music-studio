@@ -47,19 +47,22 @@ export const LmThinkingDropdown: React.FC = () => {
           onChange={e => gp.setLmNegativePrompt(e.target.value)}
           placeholder="NO USER INPUT" />
       </div>
+
+      <Slider label="LM Codes Strength" value={gp.lmCodesStrength}
+        onChange={gp.setLmCodesStrength} min={0} max={1} step={0.05} showInput />
     </div>
   );
 };
 
 /** Summary badge for the LM / Thinking section */
 export const LmThinkingBadge: React.FC = () => {
-  const { skipLm, useCotCaption, lmTemperature, lmCfgScale } = useGlobalParams();
+  const { skipLm, useCotCaption, lmTemperature, lmCfgScale, lmCodesStrength } = useGlobalParams();
 
   if (skipLm) return null;
 
   return (
     <span className="text-[10px] text-zinc-500 font-mono truncate">
-      {useCotCaption ? 'CoT · ' : ''}T{lmTemperature.toFixed(2)} · CFG {lmCfgScale.toFixed(1)}
+      {useCotCaption ? 'CoT · ' : ''}T{lmTemperature.toFixed(2)} · CFG {lmCfgScale.toFixed(1)}{lmCodesStrength < 1.0 ? ` · CS ${lmCodesStrength.toFixed(2)}` : ''}
     </span>
   );
 };

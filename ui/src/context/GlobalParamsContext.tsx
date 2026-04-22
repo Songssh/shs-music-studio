@@ -106,6 +106,8 @@ export interface GlobalParams {
   setLmTopP: (v: number) => void;
   lmNegativePrompt: string;
   setLmNegativePrompt: (v: string) => void;
+  lmCodesStrength: number;
+  setLmCodesStrength: (v: number) => void;
 
   // ── Mastering ──
   masteringEnabled: boolean;
@@ -184,6 +186,7 @@ export const GlobalParamsProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [lmTopK, setLmTopK] = usePersistedState('hs-lmTopK', 0);
   const [lmTopP, setLmTopP] = usePersistedState('hs-lmTopP', 0.92);
   const [lmNegativePrompt, setLmNegativePrompt] = usePersistedState('hs-lmNegativePrompt', 'NO USER INPUT');
+  const [lmCodesStrength, setLmCodesStrength] = usePersistedState('hs-lmCodesStrength', 1.0);
 
   // Mastering
   const [masteringEnabled, setMasteringEnabled] = usePersistedState('hs-masteringEnabled', false);
@@ -246,6 +249,9 @@ export const GlobalParamsProvider: React.FC<{ children: React.ReactNode }> = ({ 
       lmTopP,
       lmNegativePrompt,
 
+      // LM Codes Strength — fraction of DiT steps guided by LM codes
+      audioCoverStrength: (!skipLm && lmCodesStrength < 1.0) ? lmCodesStrength : undefined,
+
       // Mastering
       masteringEnabled,
       masteringReference: masteringEnabled ? masteringReference : undefined,
@@ -265,7 +271,7 @@ export const GlobalParamsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     storkSubsteps, beatStability, frequencyDamping, temporalSmoothing,
     apgMomentum, apgNormThreshold,
     dcwEnabled, dcwMode, dcwScaler, dcwHighScaler,
-    skipLm, useCotCaption, lmTemperature, lmCfgScale, lmTopK, lmTopP, lmNegativePrompt,
+    skipLm, useCotCaption, lmTemperature, lmCfgScale, lmTopK, lmTopP, lmNegativePrompt, lmCodesStrength,
     masteringEnabled, masteringReference, timbreReference,
     settings,
   ]);
@@ -296,6 +302,7 @@ export const GlobalParamsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     lmTemperature, setLmTemperature, lmCfgScale, setLmCfgScale,
     lmTopK, setLmTopK, lmTopP, setLmTopP,
     lmNegativePrompt, setLmNegativePrompt,
+    lmCodesStrength, setLmCodesStrength,
     // Mastering
     masteringEnabled, setMasteringEnabled,
     masteringReference, setMasteringReference,
@@ -320,7 +327,7 @@ export const GlobalParamsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     skipLm, setSkipLm, useCotCaption, setUseCotCaption,
     lmTemperature, setLmTemperature, lmCfgScale, setLmCfgScale,
     lmTopK, setLmTopK, lmTopP, setLmTopP,
-    lmNegativePrompt, setLmNegativePrompt,
+    lmNegativePrompt, setLmNegativePrompt, lmCodesStrength, setLmCodesStrength,
     masteringEnabled, setMasteringEnabled,
     masteringReference, setMasteringReference,
     timbreReference, setTimbreReference,
