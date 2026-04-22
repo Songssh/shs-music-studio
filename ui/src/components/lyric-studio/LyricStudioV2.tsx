@@ -13,6 +13,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { usePersistedState } from '../../hooks/usePersistedState';
 import { lireekApi } from '../../services/lireekApi';
 import type { Artist, LyricsSet, Profile, Generation, SongLyric } from '../../services/lireekApi';
 import { ArtistGrid } from './ArtistGrid';
@@ -87,6 +88,30 @@ export const LyricStudioV2: React.FC = () => {
 
   // ── Navigation ──
   const [nav, setNav] = useState<NavState>({ level: 'artists', selectedArtist: null, selectedAlbum: null });
+
+  // ── Right panel width (persisted, pixel-based) ──
+  const [lsRightPanelWidth, setLsRightPanelWidth] = usePersistedState('ls-rightPanelWidth', 380);
+  const compactRight = lsRightPanelWidth < 380;
+
+  const handleRightPanelResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = lsRightPanelWidth;
+    const onMove = (ev: MouseEvent) => {
+      const newW = Math.min(700, Math.max(240, startW + startX - ev.clientX));
+      setLsRightPanelWidth(newW);
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [lsRightPanelWidth, setLsRightPanelWidth]);
 
   // ── Data ──
   const [artists, setArtists] = useState<Artist[]>([]);
@@ -575,9 +600,16 @@ export const LyricStudioV2: React.FC = () => {
                 onDelete={handleDeleteArtist} onRefreshImage={handleRefreshImage} onSetImage={handleSetImage}
               />
             </div>
-            <div className="w-[28%] min-w-[260px] h-full flex-shrink-0 border-l border-white/5 overflow-hidden">
+            {/* Resize handle */}
+            <div
+              className="flex-shrink-0 w-1.5 h-full cursor-col-resize group z-20 flex items-center hover:bg-pink-500/20 active:bg-pink-500/30 transition-colors"
+              onMouseDown={handleRightPanelResize}
+            >
+              <div className="w-0.5 h-8 rounded-full bg-zinc-600 group-hover:bg-pink-400 transition-colors" />
+            </div>
+            <div className="h-full flex-shrink-0 border-l border-white/5 overflow-hidden" style={{ width: lsRightPanelWidth }}>
               <RightSidebarPanel navLevel="artists" showToast={showToast}
-                recordingsRefreshKey={recordingsRefreshKey} />
+                recordingsRefreshKey={recordingsRefreshKey} compact={compactRight} />
             </div>
           </div>
         )}
@@ -601,9 +633,16 @@ export const LyricStudioV2: React.FC = () => {
                 onSetImage={handleSetAlbumImage} onCuratedProfile={() => setCuratedModalOpen(true)}
               />
             </div>
-            <div className="w-[28%] min-w-[260px] h-full flex-shrink-0 border-l border-white/5 overflow-hidden">
+            {/* Resize handle */}
+            <div
+              className="flex-shrink-0 w-1.5 h-full cursor-col-resize group z-20 flex items-center hover:bg-pink-500/20 active:bg-pink-500/30 transition-colors"
+              onMouseDown={handleRightPanelResize}
+            >
+              <div className="w-0.5 h-8 rounded-full bg-zinc-600 group-hover:bg-pink-400 transition-colors" />
+            </div>
+            <div className="h-full flex-shrink-0 border-l border-white/5 overflow-hidden" style={{ width: lsRightPanelWidth }}>
               <RightSidebarPanel navLevel="albums" showToast={showToast}
-                recordingsRefreshKey={recordingsRefreshKey} />
+                recordingsRefreshKey={recordingsRefreshKey} compact={compactRight} />
             </div>
           </div>
         )}
@@ -666,14 +705,22 @@ export const LyricStudioV2: React.FC = () => {
                 </div>
               </div>
 
+              {/* Resize handle */}
+              <div
+                className="flex-shrink-0 w-1.5 h-full cursor-col-resize group z-20 flex items-center hover:bg-pink-500/20 active:bg-pink-500/30 transition-colors"
+                onMouseDown={handleRightPanelResize}
+              >
+                <div className="w-0.5 h-8 rounded-full bg-zinc-600 group-hover:bg-pink-400 transition-colors" />
+              </div>
+
               {/* Right: sidebar panel */}
-              <div className="w-[30%] min-w-[280px] flex-shrink-0 border-l border-white/5 overflow-hidden flex flex-col relative">
+              <div className="flex-shrink-0 border-l border-white/5 overflow-hidden flex flex-col relative" style={{ width: lsRightPanelWidth }}>
                 <div className="relative z-[1] flex-1 min-h-0 overflow-hidden">
                   <RightSidebarPanel navLevel="album-detail" generations={generations}
                     showToast={showToast}
                     recordingsFilter={recordingsFilter} onClearRecordingsFilter={() => setRecordingsFilter(null)}
                     onSongCountChange={setSongCount} recordingsRefreshKey={recordingsRefreshKey}
-                    artistName={nav.selectedArtist?.name} />
+                    artistName={nav.selectedArtist?.name} compact={compactRight} />
                 </div>
               </div>
             </div>

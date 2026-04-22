@@ -28,6 +28,7 @@ interface RightSidebarPanelProps {
   onSongCountChange?: (count: number) => void;
   recordingsRefreshKey?: number;
   artistName?: string;
+  compact?: boolean;
 }
 
 interface SectionProps {
@@ -70,7 +71,7 @@ const Section: React.FC<SectionProps> = ({
 export const RightSidebarPanel: React.FC<RightSidebarPanelProps> = ({
   navLevel, generations, showToast,
   recordingsFilter, onClearRecordingsFilter, onSongCountChange,
-  recordingsRefreshKey = 0, artistName,
+  recordingsRefreshKey = 0, artistName, compact = false,
 }) => {
   const queue = useAudioGenQueue();
   const queueCount = queue.items.filter(i => i.status === 'pending' || i.status === 'loading-adapter' || i.status === 'generating').length;
@@ -105,6 +106,7 @@ export const RightSidebarPanel: React.FC<RightSidebarPanelProps> = ({
         <RecentSongsList
           showToast={showToast}
           refreshKey={recentRefreshKey}
+          compact={compact}
         />
       </Section>
 

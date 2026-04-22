@@ -98,6 +98,7 @@ const AppContent: React.FC = () => {
 
   // Playlist sidebar (persisted)
   const [showPlaylist, setShowPlaylist] = usePersistedState('ace-showPlaylist', false);
+  const [playlistWidth, setPlaylistWidth] = usePersistedState('ace-playlistWidth', 300);
   const playlistData = usePlaylist();
 
   // ── Playback (from unified store) ──
@@ -476,12 +477,31 @@ const AppContent: React.FC = () => {
           <>
             <div
               className="flex-shrink-0 w-1.5 h-full cursor-col-resize group z-20 flex items-center hover:bg-pink-500/20 active:bg-pink-500/30 transition-colors"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                const startX = e.clientX;
+                const startW = playlistWidth;
+                const onMove = (ev: MouseEvent) => {
+                  const newW = Math.min(600, Math.max(220, startW + startX - ev.clientX));
+                  setPlaylistWidth(newW);
+                };
+                const onUp = () => {
+                  document.removeEventListener('mousemove', onMove);
+                  document.removeEventListener('mouseup', onUp);
+                  document.body.style.cursor = '';
+                  document.body.style.userSelect = '';
+                };
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+              }}
             >
               <div className="w-0.5 h-8 rounded-full bg-zinc-600 group-hover:bg-pink-400 transition-colors" />
             </div>
             <div
               className="flex-shrink-0 h-full border-l border-white/5"
-              style={{ width: 300 }}
+              style={{ width: playlistWidth }}
             >
               <PlaylistSidebar onClose={() => setShowPlaylist(false)} />
             </div>

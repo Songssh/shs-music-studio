@@ -19,6 +19,7 @@ import { playFromList, recentSongToTrack } from '../../stores/playbackStore';
 interface RecentSongsListProps {
   showToast: (msg: string, type?: 'success' | 'error') => void;
   refreshKey?: number;
+  compact?: boolean;
 }
 
 // ── Module-level cache ───────────────────────────────────────────────────────
@@ -34,7 +35,7 @@ async function _loadRecentSongs(): Promise<RecentSong[]> {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export const RecentSongsList: React.FC<RecentSongsListProps> = ({ showToast, refreshKey = 0 }) => {
+export const RecentSongsList: React.FC<RecentSongsListProps> = ({ showToast, refreshKey = 0, compact = false }) => {
   const { token } = useAuth();
   const [songs, setSongs] = useState<RecentSong[]>(_cachedSongs);
   const [loading, setLoading] = useState(_cachedSongs.length === 0);
@@ -134,7 +135,7 @@ export const RecentSongsList: React.FC<RecentSongsListProps> = ({ showToast, ref
 
   return (
     <>
-      <div className="grid grid-cols-2 auto-rows-[4.5rem] gap-1 px-2 py-1.5 overflow-y-auto scrollbar-hide" style={{ maxHeight: '100%' }}>
+      <div className={`grid ${compact ? 'grid-cols-1' : 'grid-cols-2'} auto-rows-[4.5rem] gap-1 px-2 py-1.5 overflow-y-auto scrollbar-hide`} style={{ maxHeight: '100%' }}>
         {songs.slice(0, 50).map((rs) => {
           const dur = rs.duration || 0;
           const mins = Math.floor(dur / 60);
