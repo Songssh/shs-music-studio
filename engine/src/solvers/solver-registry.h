@@ -14,6 +14,7 @@
 #include "solver-jkass.h"
 #include "solver-stork.h"
 #include "solver-sde.h"
+#include "solver-gl2s.h"
 
 #include <cstring>
 
@@ -47,6 +48,7 @@ static const SolverInfo SOLVER_REGISTRY[] = {
     {"rk5",            "RK5 (6 NFE)",           solver_rk5_step,            6,  5, true,  false, false},
     {"dopri5",         "DOPRI5 (7+ NFE)",       solver_dopri5_step,         0,  5, true,  false, false},
     {"dop853",         "DOP853 (13 NFE)",       solver_dop853_step,        13,  8, true,  false, false},
+    {"gl2s",           "Gauss-Legendre 2s (6 NFE)", solver_gl2s_step,       6,  4, true,  false, false},
 };
 
 static const int SOLVER_REGISTRY_SIZE = (int) (sizeof(SOLVER_REGISTRY) / sizeof(SOLVER_REGISTRY[0]));
