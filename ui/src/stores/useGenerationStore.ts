@@ -75,6 +75,14 @@ export function useGenerationStore(
             }
           }
         }
+
+        // Auto-dismiss completed/cancelled jobs after a short delay —
+        // they already appear in the library, no need to clutter the queue.
+        if (status.status === 'succeeded' || status.status === 'cancelled') {
+          setTimeout(() => {
+            setJobs(prev => prev.filter(j => j.jobId !== jobId));
+          }, 3000);
+        }
       }
     } catch (err) {
       console.error('[Generation] Poll error:', err);
