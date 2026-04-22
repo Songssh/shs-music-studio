@@ -324,6 +324,15 @@ const SongItem: React.FC<SongItemProps> = ({
       {/* Actions (hidden in selection mode) */}
       {!selectionMode && (
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 relative">
+          {onAddToPlaylist && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onAddToPlaylist(); }}
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-pink-400 hover:bg-white/10 transition-colors"
+              title="Add to Playlist"
+            >
+              <ListPlus size={15} />
+            </button>
+          )}
           <button
             onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
@@ -336,14 +345,7 @@ const SongItem: React.FC<SongItemProps> = ({
             <>
               <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
               <div className="absolute right-0 top-full mt-1 z-50 bg-zinc-900 border border-white/10 rounded-xl shadow-xl py-1 min-w-[160px]">
-                {onAddToPlaylist && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onAddToPlaylist(); setShowMenu(false); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-white/5 hover:text-white transition-colors"
-                  >
-                    <ListPlus size={14} /> Add to Playlist
-                  </button>
-                )}
+
                 {onReuse && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onReuse(); setShowMenu(false); }}
