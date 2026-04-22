@@ -24,6 +24,11 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   const [lyrics, setLyrics] = usePersistedState('hs-lyrics', '');
   const [instrumental, setInstrumental] = usePersistedState('hs-instrumental', false);
 
+  // ── Song Info (optional, auto-populated from Lyric Studio Send to Create) ──
+  const [title, setTitle] = usePersistedState('hs-title', '');
+  const [artist, setArtist] = usePersistedState('hs-artist', '');
+  const [subject, setSubject] = usePersistedState('hs-subject', '');
+
   // ── Metadata (per-song) ──
   const [bpm, setBpm] = usePersistedState('hs-bpm', 0);
   const [keyScale, setKeyScale] = usePersistedState('hs-keyScale', '');
@@ -60,6 +65,10 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
       bpm, duration, keyScale, timeSignature, vocalLanguage,
       taskType: 'text2music',
     };
+    // Optional song info fields — only include if populated
+    if (title.trim()) params.title = title.trim();
+    if (artist.trim()) params.artist = artist.trim();
+    if (subject.trim()) params.subject = subject.trim();
     onGenerate(params);
   };
 
@@ -77,6 +86,9 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
           caption={caption} onCaptionChange={setCaption}
           lyrics={lyrics} onLyricsChange={setLyrics}
           instrumental={instrumental} onInstrumentalChange={setInstrumental}
+          title={title} onTitleChange={setTitle}
+          artist={artist} onArtistChange={setArtist}
+          subject={subject} onSubjectChange={setSubject}
         />
 
         <MetadataSection

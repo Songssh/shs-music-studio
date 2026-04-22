@@ -1,8 +1,8 @@
-// ContentSection.tsx — Caption + Lyrics input area
+// ContentSection.tsx — Caption + Lyrics input area with optional metadata fields
 // Ported to Tailwind styling matching hot-step-9000.
 
 import React from 'react';
-import { Music } from 'lucide-react';
+import { Music, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface ContentSectionProps {
   caption: string;
@@ -11,12 +11,28 @@ interface ContentSectionProps {
   onLyricsChange: (v: string) => void;
   instrumental: boolean;
   onInstrumentalChange: (v: boolean) => void;
+  // Optional metadata fields (auto-populated from Lyric Studio Send to Create)
+  title: string;
+  onTitleChange: (v: string) => void;
+  artist: string;
+  onArtistChange: (v: string) => void;
+  subject: string;
+  onSubjectChange: (v: string) => void;
 }
 
 export const ContentSection: React.FC<ContentSectionProps> = ({
   caption, onCaptionChange, lyrics, onLyricsChange,
   instrumental, onInstrumentalChange,
+  title, onTitleChange, artist, onArtistChange, subject, onSubjectChange,
 }) => {
+  const hasMetadata = !!(title || artist || subject);
+  const [showMetadata, setShowMetadata] = React.useState(hasMetadata);
+
+  // Auto-expand when metadata is populated (e.g. from Send to Create)
+  React.useEffect(() => {
+    if (hasMetadata && !showMetadata) setShowMetadata(true);
+  }, [hasMetadata]);
+
   return (
     <div className="space-y-3">
       {/* Style / Caption */}
@@ -31,6 +47,59 @@ export const ContentSection: React.FC<ContentSectionProps> = ({
           onChange={e => onCaptionChange(e.target.value)}
           rows={3}
         />
+      </div>
+
+      {/* Song Metadata (Title / Artist / Subject) — collapsible */}
+      <div>
+        <button
+          onClick={() => setShowMetadata(!showMetadata)}
+          className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 uppercase tracking-wider hover:text-zinc-300 transition-colors mb-1.5"
+        >
+          {showMetadata
+            ? <ChevronDown size={12} className="text-zinc-500" />
+            : <ChevronRight size={12} className="text-zinc-500" />}
+          Song Info
+          {hasMetadata && (
+            <span className="text-[9px] text-pink-400/80 font-normal normal-case ml-1">populated</span>
+          )}
+        </button>
+
+        {showMetadata && (
+          <div className="space-y-2 pl-0.5">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] text-zinc-600 mb-0.5">Artist</label>
+                <input
+                  type="text"
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-white/10 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-pink-500/50 focus:ring-1 focus:ring-pink-500/20 outline-none transition-colors"
+                  placeholder="Optional"
+                  value={artist}
+                  onChange={e => onArtistChange(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-zinc-600 mb-0.5">Title</label>
+                <input
+                  type="text"
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-white/10 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-pink-500/50 focus:ring-1 focus:ring-pink-500/20 outline-none transition-colors"
+                  placeholder="Optional"
+                  value={title}
+                  onChange={e => onTitleChange(e.target.value)}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] text-zinc-600 mb-0.5">Subject</label>
+              <input
+                type="text"
+                className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-white/10 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-pink-500/50 focus:ring-1 focus:ring-pink-500/20 outline-none transition-colors"
+                placeholder="Optional — what the song is about"
+                value={subject}
+                onChange={e => onSubjectChange(e.target.value)}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Instrumental toggle */}

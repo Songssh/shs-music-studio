@@ -44,6 +44,8 @@ export interface GenerationParams {
   lyrics: string;
   instrumental: boolean;
   title?: string;
+  artist?: string;
+  subject?: string;
 
   // Metadata
   bpm: number;

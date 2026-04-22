@@ -126,6 +126,10 @@ export function useAudioGeneration({ profiles, showToast, onJobLinked }: UseAudi
       if (gen.bpm) params.bpm = gen.bpm;
       if (gen.key) params.keyScale = gen.key;
 
+      // Pass artist name and subject for proper title/description formatting
+      if (gen.artist_name) params.artist = gen.artist_name;
+      if (gen.subject) params.subject = gen.subject;
+
       // 3) Merge persisted CreatePanel settings
       mergeCreatePanelSettings(params);
 
@@ -199,6 +203,11 @@ export function useAudioGeneration({ profiles, showToast, onJobLinked }: UseAudi
     write('hs-caption', gen.caption || '');
     write('hs-lyrics', gen.lyrics || '');
     write('hs-instrumental', false);
+
+    // Song info (Title / Artist / Subject)
+    write('hs-title', gen.title || '');
+    write('hs-artist', gen.artist_name || '');
+    write('hs-subject', gen.subject || '');
 
     // Metadata
     if (gen.bpm) write('hs-bpm', gen.bpm);

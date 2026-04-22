@@ -322,6 +322,10 @@ async function _executeItem(item: AudioQueueItem, token: string): Promise<void> 
   if (gen.bpm) params.bpm = gen.bpm;
   if (gen.key) params.keyScale = gen.key;
 
+  // Pass artist name and subject for proper title/description formatting
+  if (item.artistName) params.artist = item.artistName;
+  if (gen.subject) params.subject = gen.subject;
+
   // 2) Merge persisted CreatePanel settings
   mergeCreatePanelSettings(params);
 

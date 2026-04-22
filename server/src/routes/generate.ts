@@ -511,9 +511,14 @@ async function runGeneration(job: GenerationJob): Promise<void> {
 
     // Get metadata from LM results
     const firstResult = lmResults[0];
-    const title = job.params.title || firstResult.caption?.substring(0, 60) || 'Untitled';
+    const rawTitle = job.params.title || firstResult.caption?.substring(0, 60) || 'Untitled';
+    // Format title as "Artist - Song Title" when artist is provided
+    const title = job.params.artist
+      ? `${job.params.artist} - ${rawTitle}`
+      : rawTitle;
     const lyrics = firstResult.lyrics || job.params.lyrics || '';
-    const style = firstResult.caption || job.params.style || '';
+    // Use subject for style/description when available, otherwise fall back to caption
+    const style = job.params.subject || firstResult.caption || job.params.style || '';
     const bpm = firstResult.bpm || 0;
     const duration = firstResult.duration || 0;
     const keyScale = firstResult.keyscale || '';
