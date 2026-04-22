@@ -209,6 +209,9 @@ async function pollUntilDone(aceJobId: string, job: GenerationJob, signal: Abort
 
 /** Run the full generation pipeline */
 async function runGeneration(job: GenerationJob): Promise<void> {
+  // Bail out if cancelled while waiting in the queue
+  if (job.status === 'cancelled') return;
+
   const aceReq = translateParams(job.params);
   console.log(`[Generate] Job ${job.id} — ditModel=${job.params.ditModel || '(none)'}, synth_model=${aceReq.synth_model || '(none)'}, source=${job.params.source || 'create'}`);
   const abortController = new AbortController();
@@ -605,6 +608,38 @@ async function runGeneration(job: GenerationJob): Promise<void> {
   }
 }
 
+// ── Async generation queue ────────────────────────────────────────────
+// Serializes runGeneration calls so only one job runs at a time.
+// The C++ engine is single-GPU — concurrent runGeneration calls cause
+// log subscription callbacks to leak progress from one job into another
+// because subscribeLines() is a global pub/sub with no job tagging.
+const pendingQueue: (() => void)[] = [];
+let generationRunning = false;
+
+function enqueueGeneration(job: GenerationJob): void {
+  const execute = async () => {
+    generationRunning = true;
+    try {
+      await runGeneration(job);
+    } catch (err: any) {
+      console.error(`[Generate] Unhandled error in job ${job.id}:`, err);
+      job.status = 'failed';
+      job.error = err.message;
+    } finally {
+      generationRunning = false;
+      const next = pendingQueue.shift();
+      if (next) next();
+    }
+  };
+
+  if (generationRunning) {
+    console.log(`[Generate] Job ${job.id} queued (${pendingQueue.length + 1} waiting)`);
+    pendingQueue.push(execute);
+  } else {
+    execute();
+  }
+}
+
 // POST /api/generate — start a generation job
 router.post('/', (req, res) => {
   const userId = getUserId(req);
@@ -622,12 +657,9 @@ router.post('/', (req, res) => {
 
   jobs.set(job.id, job);
 
-  // Start generation in background
-  runGeneration(job).catch(err => {
-    console.error(`[Generate] Unhandled error in job ${job.id}:`, err);
-    job.status = 'failed';
-    job.error = err.message;
-  });
+  // Enqueue — runs immediately if nothing else is generating,
+  // otherwise waits until the current job finishes.
+  enqueueGeneration(job);
 
   res.json({
     jobId: job.id,
