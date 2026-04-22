@@ -85,6 +85,7 @@ export const GenerationDropdown: React.FC = () => {
             <option value="rk5">RK5 (6 NFE)</option>
             <option value="dopri5">DOPRI5 Adaptive (7+ NFE)</option>
             <option value="dop853">DOP853 (13 NFE)</option>
+                <option value="gl2s">Gauss-Legendre 2s (6 NFE)</option>
           </optgroup>
         </select>
       </div>
@@ -375,7 +376,7 @@ export const GenerationBadge: React.FC = () => {
     euler: 'Euler', heun: 'Heun', dpm2m: 'DPM++2M', dpm3m: 'DPM++3M',
     rk4: 'RK4', rk5: 'RK5', sde: 'SDE', jkass_fast: 'JKASS',
     jkass_quality: 'JKASSq', stork2: 'STORK2', stork4: 'STORK4',
-    dopri5: 'DOPRI5', dop853: 'DOP853', dpm2m_ada: 'DPM++A',
+    dopri5: 'DOPRI5', dop853: 'DOP853', dpm2m_ada: 'DPM++A', gl2s: 'GL2s',
   };
   const guidanceLabels: Record<string, string> = {
     apg: 'APG', cfg_pp: 'CFG++', dynamic_cfg: 'DynCFG', rescaled_cfg: 'rCFG',

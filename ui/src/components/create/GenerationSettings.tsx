@@ -126,6 +126,7 @@ export const GenerationSettings: React.FC<GenerationSettingsProps> = (props) => 
                 <option value="rk5">RK5 (6 NFE)</option>
                 <option value="dopri5">DOPRI5 Adaptive (7+ NFE)</option>
                 <option value="dop853">DOP853 (13 NFE)</option>
+                <option value="gl2s">Gauss-Legendre 2s (6 NFE)</option>
               </optgroup>
             </select>
           </div>
