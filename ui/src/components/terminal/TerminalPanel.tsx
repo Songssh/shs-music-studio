@@ -136,7 +136,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({ onClose }) => {
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#0d0d0f]">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/5 bg-zinc-900/80">
+      <div className="flex items-center justify-between px-3 py-3 border-b border-white/5 bg-zinc-900/80">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             {connected
