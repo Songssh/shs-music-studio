@@ -101,6 +101,11 @@ export const ArtistSidebar: React.FC<ArtistSidebarProps> = ({
           );
         })}
       </div>
+
+      {/* Artist count */}
+      <div className="px-4 py-2 border-t border-white/5 text-[10px] text-zinc-600 text-center">
+        {artists.length} artist{artists.length !== 1 ? 's' : ''}
+      </div>
     </div>
   );
 };
