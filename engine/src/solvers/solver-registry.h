@@ -15,6 +15,7 @@
 #include "solver-stork.h"
 #include "solver-sde.h"
 #include "solver-gl2s.h"
+#include "solver-rfsolver.h"
 
 #include <cstring>
 
@@ -49,6 +50,7 @@ static const SolverInfo SOLVER_REGISTRY[] = {
     {"dopri5",         "DOPRI5 (7+ NFE)",       solver_dopri5_step,         0,  5, true,  false, false},
     {"dop853",         "DOP853 (13 NFE)",       solver_dop853_step,        13,  8, true,  false, false},
     {"gl2s",           "Gauss-Legendre 2s (6 NFE)", solver_gl2s_step,       6,  4, true,  false, false},
+    {"rfsolver",       "RF-Solver (2 NFE)",         solver_rfsolver_step,   2,  2, true,  false, false},
 };
 
 static const int SOLVER_REGISTRY_SIZE = (int) (sizeof(SOLVER_REGISTRY) / sizeof(SOLVER_REGISTRY[0]));
