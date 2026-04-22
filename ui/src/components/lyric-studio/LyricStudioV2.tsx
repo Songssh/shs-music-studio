@@ -600,7 +600,7 @@ export const LyricStudioV2: React.FC = () => {
                 )}
               </div>
               <div className="flex-1 flex min-h-0">
-                <div className="w-60 flex-shrink-0 border-r border-white/5 overflow-hidden">
+                <div className="w-64 flex-shrink-0 border-r border-white/5 overflow-hidden">
                   <ArtistPageSidebar onOpenQueue={openQueuePanel} onOpenPromptEditor={() => setPromptEditorOpen(true)} />
                 </div>
                 <div className="flex-1 overflow-y-auto">
@@ -644,7 +644,7 @@ export const LyricStudioV2: React.FC = () => {
                 )}
               </div>
               <div className="flex-1 flex min-h-0">
-                <div className="w-60 flex-shrink-0 border-r border-white/5 overflow-hidden">
+                <div className="w-64 flex-shrink-0 border-r border-white/5 overflow-hidden">
                   <ArtistPageSidebar artist={nav.selectedArtist} albumCount={albums.length}
                     onOpenQueue={openQueuePanel} onOpenPromptEditor={() => setPromptEditorOpen(true)} />
                 </div>
