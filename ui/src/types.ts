@@ -123,6 +123,11 @@ export interface GenerationParams {
   // Guidance sub-parameters (conditional on guidance mode)
   apgMomentum?: number;
   apgNormThreshold?: number;
+
+  // Latent post-processing (applied after DiT, before VAE decode)
+  latentShift?: number;         // 0.0 = no bias
+  latentRescale?: number;       // 1.0 = no scaling
+  customTimesteps?: string;     // CSV of descending floats, overrides scheduler
 }
 
 /** Generation job status from the server */

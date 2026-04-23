@@ -86,6 +86,12 @@ struct AceRequest {
     // 10 = default (99.9990th percentile, clips top 0.001%).
     // 999 = max (99.9001th percentile, clips top 0.1%).
     int peak_clip;  // 10
+
+    // latent post-processing (applied after DiT, before VAE decode)
+    float       latent_shift;      // 0.0 (additive bias to DiT output latents)
+    float       latent_rescale;    // 1.0 (multiplicative scaling of DiT output latents)
+    // custom timestep schedule (CSV string of descending floats, overrides scheduler)
+    std::string custom_timesteps;  // "" = use normal scheduler
 };
 
 // Initialize all fields to defaults (matches Python GenerationParams defaults)

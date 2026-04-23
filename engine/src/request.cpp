@@ -51,6 +51,9 @@ void request_init(AceRequest * r) {
     r->adapter              = "";
     r->adapter_scale        = 1.0f;
     r->peak_clip            = 10;
+    r->latent_shift         = 0.0f;
+    r->latent_rescale       = 1.0f;
+    r->custom_timesteps     = "";
 }
 
 // helper: get yyjson string as std::string
@@ -165,6 +168,15 @@ static void request_parse_obj(yyjson_val * obj, AceRequest * r) {
     }
     if ((v = yyjson_obj_get(obj, "adapter_scale")) && yyjson_is_num(v)) {
         r->adapter_scale = (float) yyjson_get_num(v);
+    }
+    if ((v = yyjson_obj_get(obj, "latent_shift")) && yyjson_is_num(v)) {
+        r->latent_shift = (float) yyjson_get_num(v);
+    }
+    if ((v = yyjson_obj_get(obj, "latent_rescale")) && yyjson_is_num(v)) {
+        r->latent_rescale = (float) yyjson_get_num(v);
+    }
+    if ((v = yyjson_obj_get(obj, "custom_timesteps")) && yyjson_is_str(v)) {
+        r->custom_timesteps = yy_str(v);
     }
 
     // bool
@@ -398,6 +410,15 @@ static yyjson_mut_doc * request_build_doc(const AceRequest * r, bool sparse) {
     if (all || r->adapter_scale != def.adapter_scale) {
         yyjson_mut_obj_add_real(doc, root, "adapter_scale", r->adapter_scale);
     }
+    if (all || r->latent_shift != def.latent_shift) {
+        yyjson_mut_obj_add_real(doc, root, "latent_shift", r->latent_shift);
+    }
+    if (all || r->latent_rescale != def.latent_rescale) {
+        yyjson_mut_obj_add_real(doc, root, "latent_rescale", r->latent_rescale);
+    }
+    if (all || r->custom_timesteps != def.custom_timesteps) {
+        yyjson_mut_obj_add_str(doc, root, "custom_timesteps", r->custom_timesteps.c_str());
+    }
 
     return doc;
 }
@@ -468,6 +489,13 @@ void request_dump(const AceRequest * r, FILE * f) {
     }
     if (!r->adapter.empty()) {
         fprintf(f, "[Request] adapter: %s (scale=%.2f)\n", r->adapter.c_str(), r->adapter_scale);
+    }
+    if (r->latent_shift != 0.0f || r->latent_rescale != 1.0f) {
+        fprintf(f, "[Request] latent: shift=%.3f rescale=%.3f\n", r->latent_shift, r->latent_rescale);
+    }
+    if (!r->custom_timesteps.empty()) {
+        fprintf(f, "[Request] custom_timesteps: %.60s%s\n", r->custom_timesteps.c_str(),
+                r->custom_timesteps.size() > 60 ? "..." : "");
     }
     fprintf(f, "[Request] audio_codes: %s\n", r->audio_codes.empty() ? "(none)" : "(present)");
 }

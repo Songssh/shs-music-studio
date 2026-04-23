@@ -181,6 +181,11 @@ function translateParams(params: any): AceRequest {
   if (params.dcwScaler !== undefined) req.dcw_scaler = params.dcwScaler;
   if (params.dcwHighScaler !== undefined) req.dcw_high_scaler = params.dcwHighScaler;
 
+  // Latent post-processing
+  if (params.latentShift !== undefined) req.latent_shift = params.latentShift;
+  if (params.latentRescale !== undefined) req.latent_rescale = params.latentRescale;
+  if (params.customTimesteps) req.custom_timesteps = params.customTimesteps;
+
   return req;
 }
 
@@ -347,6 +352,11 @@ async function runGeneration(job: GenerationJob): Promise<void> {
         if (aceReq.dcw_mode) result.dcw_mode = aceReq.dcw_mode;
         if (aceReq.dcw_scaler !== undefined) result.dcw_scaler = aceReq.dcw_scaler;
         if (aceReq.dcw_high_scaler !== undefined) result.dcw_high_scaler = aceReq.dcw_high_scaler;
+
+        // Latent post-processing params (user can change between runs)
+        if (aceReq.latent_shift !== undefined) result.latent_shift = aceReq.latent_shift;
+        if (aceReq.latent_rescale !== undefined) result.latent_rescale = aceReq.latent_rescale;
+        if (aceReq.custom_timesteps !== undefined) result.custom_timesteps = aceReq.custom_timesteps;
 
         // Cover/repaint params — ALWAYS override. Cached LM results may carry
         // stale audio_cover_strength from previous runs (e.g. 0.5 from old Lyric

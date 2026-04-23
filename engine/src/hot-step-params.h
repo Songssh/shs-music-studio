@@ -74,6 +74,16 @@ struct HotStepParams {
     std::string dcw_mode         = "low";     // "pix", "low", "high", "double"
     float       dcw_scaler       = 0.1f;
     float       dcw_high_scaler  = 0.0f;      // only used in "double" mode
+
+    // Latent post-processing (applied after DiT output, before VAE decode)
+    // Formula: output[i] = output[i] * latent_rescale + latent_shift
+    float       latent_shift     = 0.0f;
+    float       latent_rescale   = 1.0f;
+
+    // Custom timestep schedule — CSV of descending floats.
+    // When non-empty, completely overrides both upstream schedule AND sideband scheduler.
+    // N values = N-1 steps (trailing 0/endpoint is dropped by sampler).
+    std::string custom_timesteps = "";
 };
 
 // Single-worker-thread global. Set in hot-step-server.cpp before

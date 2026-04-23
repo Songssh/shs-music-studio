@@ -105,6 +105,10 @@ function mergeCreatePanelSettings(params: Record<string, any>): void {
     ['hs-dcwMode', 'dcwMode'],
     ['hs-dcwScaler', 'dcwScaler'],
     ['hs-dcwHighScaler', 'dcwHighScaler'],
+    // Latent post-processing
+    ['hs-latentShift', 'latentShift'],
+    ['hs-latentRescale', 'latentRescale'],
+    ['hs-customTimesteps', 'customTimesteps'],
   ];
   for (const [storageKey, paramKey] of map) {
     const val = readPersisted(storageKey);

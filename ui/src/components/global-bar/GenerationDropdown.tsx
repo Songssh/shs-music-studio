@@ -347,6 +347,31 @@ export const GenerationDropdown: React.FC = () => {
         )}
       </div>
 
+      {/* ── Latent Post-Processing ── */}
+      <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3 space-y-3 transition-all">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider">Latent Post-Processing</span>
+          <button type="button" onClick={() => {
+            gp.setLatentShift(0);
+            gp.setLatentRescale(1);
+            gp.setCustomTimesteps('');
+          }} className="flex items-center gap-1 text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors">
+            <RotateCcw size={10} /> Reset
+          </button>
+        </div>
+        <Slider label="Latent Shift" value={gp.latentShift}
+          onChange={gp.setLatentShift} min={-2} max={2} step={0.01} showInput />
+        <Slider label="Latent Rescale" value={gp.latentRescale}
+          onChange={gp.setLatentRescale} min={0.1} max={3} step={0.01} showInput />
+        <div>
+          <label className="block text-[10px] text-indigo-400 mb-1">Custom Timesteps</label>
+          <input className={inputClasses} value={gp.customTimesteps}
+            onChange={e => gp.setCustomTimesteps(e.target.value)}
+            placeholder="0.97,0.76,0.615,0.5,0.395,0.28,0.18,0.085,0" />
+          <p className="text-[10px] text-zinc-500 mt-1">CSV of descending floats. Overrides schedule + step count when set.</p>
+        </div>
+      </div>
+
       {/* Seed */}
       <div>
         <div className="flex items-center justify-between mb-1.5">

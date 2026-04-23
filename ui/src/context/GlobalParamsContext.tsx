@@ -91,6 +91,14 @@ export interface GlobalParams {
   dcwHighScaler: number;
   setDcwHighScaler: (v: number) => void;
 
+  // Latent post-processing
+  latentShift: number;
+  setLatentShift: (v: number) => void;
+  latentRescale: number;
+  setLatentRescale: (v: number) => void;
+  customTimesteps: string;
+  setCustomTimesteps: (v: string) => void;
+
   // ── LM / Thinking ──
   skipLm: boolean;
   setSkipLm: (v: boolean) => void;
@@ -178,6 +186,11 @@ export const GlobalParamsProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [dcwScaler, setDcwScaler] = usePersistedState('hs-dcwScaler', 1.0);
   const [dcwHighScaler, setDcwHighScaler] = usePersistedState('hs-dcwHighScaler', 0.0);
 
+  // Latent post-processing
+  const [latentShift, setLatentShift] = usePersistedState('hs-latentShift', 0.0);
+  const [latentRescale, setLatentRescale] = usePersistedState('hs-latentRescale', 1.0);
+  const [customTimesteps, setCustomTimesteps] = usePersistedState('hs-customTimesteps', '');
+
   // LM / Thinking
   const [skipLm, setSkipLm] = usePersistedState('hs-skipLm', false);
   const [useCotCaption, setUseCotCaption] = usePersistedState('hs-useCotCaption', true);
@@ -262,6 +275,11 @@ export const GlobalParamsProvider: React.FC<{ children: React.ReactNode }> = ({ 
       dcwMode: dcwEnabled ? dcwMode : undefined,
       dcwScaler: dcwEnabled ? dcwScaler * 0.02 : undefined,
       dcwHighScaler: (dcwEnabled && dcwMode === 'double') ? dcwHighScaler * 0.02 : undefined,
+
+      // Latent post-processing
+      latentShift: latentShift !== 0 ? latentShift : undefined,
+      latentRescale: latentRescale !== 1 ? latentRescale : undefined,
+      customTimesteps: customTimesteps || undefined,
     };
   }, [
     ditModel, lmModel, vaeModel,
@@ -271,6 +289,7 @@ export const GlobalParamsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     storkSubsteps, beatStability, frequencyDamping, temporalSmoothing,
     apgMomentum, apgNormThreshold,
     dcwEnabled, dcwMode, dcwScaler, dcwHighScaler,
+    latentShift, latentRescale, customTimesteps,
     skipLm, useCotCaption, lmTemperature, lmCfgScale, lmTopK, lmTopP, lmNegativePrompt, lmCodesStrength,
     masteringEnabled, masteringReference, timbreReference,
     settings,
@@ -297,6 +316,9 @@ export const GlobalParamsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     // DCW
     dcwEnabled, setDcwEnabled, dcwMode, setDcwMode,
     dcwScaler, setDcwScaler, dcwHighScaler, setDcwHighScaler,
+    // Latent post-processing
+    latentShift, setLatentShift, latentRescale, setLatentRescale,
+    customTimesteps, setCustomTimesteps,
     // LM
     skipLm, setSkipLm, useCotCaption, setUseCotCaption,
     lmTemperature, setLmTemperature, lmCfgScale, setLmCfgScale,
@@ -324,6 +346,8 @@ export const GlobalParamsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     apgMomentum, setApgMomentum, apgNormThreshold, setApgNormThreshold,
     dcwEnabled, setDcwEnabled, dcwMode, setDcwMode,
     dcwScaler, setDcwScaler, dcwHighScaler, setDcwHighScaler,
+    latentShift, setLatentShift, latentRescale, setLatentRescale,
+    customTimesteps, setCustomTimesteps,
     skipLm, setSkipLm, useCotCaption, setUseCotCaption,
     lmTemperature, setLmTemperature, lmCfgScale, setLmCfgScale,
     lmTopK, setLmTopK, lmTopP, setLmTopP,

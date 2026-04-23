@@ -92,6 +92,10 @@ export interface AceRequest {
   dcw_mode?: string;         // 'pix' | 'low' | 'high' | 'double'
   dcw_scaler?: number;
   dcw_high_scaler?: number;
+  // Latent post-processing (applied after DiT, before VAE decode)
+  latent_shift?: number;       // 0.0 = no bias
+  latent_rescale?: number;     // 1.0 = no scaling
+  custom_timesteps?: string;   // CSV of descending floats, overrides scheduler
 }
 
 /** Job status from ace-server */

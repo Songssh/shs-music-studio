@@ -476,6 +476,10 @@ struct ServerFields {
     std::string dcw_mode         = "low";
     float       dcw_scaler       = 0.1f;
     float       dcw_high_scaler  = 0.0f;
+    // Latent post-processing
+    float       latent_shift     = 0.0f;
+    float       latent_rescale   = 1.0f;
+    std::string custom_timesteps = "";
 };
 
 static void parse_server_fields(const char * json, ServerFields * sf) {
@@ -571,6 +575,16 @@ static void parse_server_fields(const char * json, ServerFields * sf) {
     }
     if ((v = yyjson_obj_get(obj, "dcw_high_scaler")) && yyjson_is_num(v)) {
         sf->dcw_high_scaler = (float) yyjson_get_real(v);
+    }
+    // Latent post-processing
+    if ((v = yyjson_obj_get(obj, "latent_shift")) && yyjson_is_num(v)) {
+        sf->latent_shift = (float) yyjson_get_real(v);
+    }
+    if ((v = yyjson_obj_get(obj, "latent_rescale")) && yyjson_is_num(v)) {
+        sf->latent_rescale = (float) yyjson_get_real(v);
+    }
+    if ((v = yyjson_obj_get(obj, "custom_timesteps")) && yyjson_is_str(v)) {
+        sf->custom_timesteps = yyjson_get_str(v);
     }
     yyjson_doc_free(doc);
 }
@@ -879,6 +893,9 @@ static void synth_worker(std::shared_ptr<Job>    job,
     g_hotstep_params.dcw_mode             = sf.dcw_mode;
     g_hotstep_params.dcw_scaler           = sf.dcw_scaler;
     g_hotstep_params.dcw_high_scaler      = sf.dcw_high_scaler;
+    g_hotstep_params.latent_shift          = sf.latent_shift;
+    g_hotstep_params.latent_rescale        = sf.latent_rescale;
+    g_hotstep_params.custom_timesteps      = sf.custom_timesteps;
     fprintf(stderr, "[Server] HOT-Step params: solver=%s, guidance=%s, scheduler=%s\n",
             sf.solver_name.c_str(), sf.guidance_mode.c_str(),
             sf.scheduler.empty() ? "(default)" : sf.scheduler.c_str());

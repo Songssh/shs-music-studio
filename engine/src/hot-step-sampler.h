@@ -82,12 +82,41 @@ static int dit_ggml_generate(DiTGGML *           model,
     frequency_damping  = g_hotstep_params.frequency_damping;
     temporal_smoothing = g_hotstep_params.temporal_smoothing;
 
+    // ── Custom timesteps override (highest priority) ────────────────────
+    // If custom_timesteps CSV is provided, it completely replaces the schedule.
+    // This takes priority over BOTH the upstream shifted-linear schedule AND
+    // the sideband scheduler override below.
+    std::vector<float> custom_ts_schedule;
+    bool custom_ts_active = false;
+    if (!g_hotstep_params.custom_timesteps.empty()) {
+        // Parse CSV floats: "0.97,0.76,...,0.085,0" → vector
+        const char * p = g_hotstep_params.custom_timesteps.c_str();
+        while (*p) {
+            while (*p == ' ' || *p == ',') p++;
+            if (!*p) break;
+            char * end = nullptr;
+            float v = strtof(p, &end);
+            if (end == p) break;  // no parse progress
+            custom_ts_schedule.push_back(v);
+            p = end;
+        }
+        // Drop trailing 0 (x0 endpoint) — sampler handles final step separately
+        if (!custom_ts_schedule.empty() && custom_ts_schedule.back() == 0.0f) {
+            custom_ts_schedule.pop_back();
+        }
+        if (!custom_ts_schedule.empty()) {
+            num_steps = (int) custom_ts_schedule.size();
+            schedule = custom_ts_schedule.data();
+            custom_ts_active = true;
+            fprintf(stderr, "[DiT] Custom timesteps: %d steps (overrides scheduler)\n", num_steps);
+        }
+    }
+
     // ── Scheduler override ────────────────────────────────────────────────
     // The upstream ops_build_schedule() creates a shifted-linear schedule.
-    // If a custom scheduler is configured, rebuild the schedule here.
-    // We create a local vector and swap the const pointer.
+    // If a custom scheduler is configured (and no custom_timesteps), rebuild here.
     std::vector<float> custom_schedule;
-    if (!g_hotstep_params.scheduler.empty()) {
+    if (!custom_ts_active && !g_hotstep_params.scheduler.empty()) {
         custom_schedule.resize(num_steps);
         // Extract shift from the existing schedule (shift warp was already applied
         // by upstream, but we need the raw shift for our scheduler functions).
@@ -785,6 +814,21 @@ static int dit_ggml_generate(DiTGGML *           model,
             }
             fprintf(stderr, "[DiT] Batch%d output: min=%.4f max=%.4f mean=%.6f nan=%d\n", b, mn, mx,
                     sum / (float) n_per, n_nan);
+        }
+    }
+
+    // ── Latent post-processing (sideband) ─────────────────────────────────
+    // Apply rescale + shift to output latents before VAE decode.
+    // Formula: output[i] = output[i] * latent_rescale + latent_shift
+    // No-op at defaults (rescale=1.0, shift=0.0).
+    {
+        float ls = g_hotstep_params.latent_shift;
+        float lr = g_hotstep_params.latent_rescale;
+        if (lr != 1.0f || ls != 0.0f) {
+            for (int i = 0; i < n_total; i++) {
+                output[i] = output[i] * lr + ls;
+            }
+            fprintf(stderr, "[DiT] Latent post-processing: rescale=%.3f shift=%.3f\n", lr, ls);
         }
     }
 
