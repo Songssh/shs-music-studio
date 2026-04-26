@@ -180,9 +180,19 @@ router.get('/:id', async (req, res) => {
 
   const suffix = version === 'original' ? ' - Unmastered' : '';
   const resolvedArtist = artistName || (song.artist || '').replace(badPrefixes, '').replace(/[^a-zA-Z0-9 _()-]/g, '').trim();
+
+  // Strip leading "Artist - " prefix from title if it duplicates the resolved artist.
+  // generate.ts stores titles as "Artist - Song Title", so without this the artist
+  // would appear twice in the download filename.
+  let finalTitle = songTitle;
+  if (resolvedArtist) {
+    const artistPrefix = new RegExp(`^${resolvedArtist.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*-\\s*`, 'i');
+    finalTitle = songTitle.replace(artistPrefix, '').trim() || songTitle;
+  }
+
   // Clean prepend: the user typed this, just trim whitespace
   const cleanPrepend = prepend.trim();
-  const parts = [cleanPrepend, resolvedArtist, `${songTitle}${suffix}`].filter(Boolean);
+  const parts = [cleanPrepend, resolvedArtist, `${finalTitle}${suffix}`].filter(Boolean);
   const downloadFilename = `${parts.join(' - ')}.${format}`;
 
   try {
