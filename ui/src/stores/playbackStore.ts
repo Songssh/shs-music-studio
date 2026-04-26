@@ -316,6 +316,13 @@ let _retryCount = 0;
 const MAX_RETRIES = 30;
 const RETRY_INTERVAL = 150;
 
+/**
+ * When switching from one playing track to another, we suppress the
+ * isPlaying→false transition so the visualiser doesn't collapse and
+ * re-expand.  Cleared on playback start, failure, or manual pause.
+ */
+let _suppressPlayFalse = false;
+
 /** Attempt to start both players. Retries if the AUDIBLE track isn't ready. */
 function startBothPlayers(): void {
   if (_retryTimer) { clearTimeout(_retryTimer); _retryTimer = null; }
@@ -349,6 +356,7 @@ function startBothPlayers(): void {
 
   if (audibleReady) {
     _retryCount = 0;
+    _suppressPlayFalse = false;
     setState({ isPlaying: true, isLoading: false, loadError: null });
     return;
   }
@@ -359,7 +367,9 @@ function startBothPlayers(): void {
     _retryTimer = setTimeout(startBothPlayers, RETRY_INTERVAL);
   } else {
     _retryCount = 0;
+    _suppressPlayFalse = false;
     setState({
+      isPlaying: false,
       isLoading: false,
       loadError: 'Audio failed to load. The file may be missing or inaccessible.',
     });
@@ -406,10 +416,15 @@ function loadTrack(track: PlaybackTrack): void {
   const hasMastered = !!track.masteredAudioUrl;
   const useMastered = hasMastered;
 
+  // If already playing, suppress the isPlaying→false transition so the
+  // visualiser stays expanded during the track switch.
+  const wasPlaying = _state.isPlaying;
+  if (wasPlaying) _suppressPlayFalse = true;
+
   setState({
     currentTrack: track,
     isLoading: true,
-    isPlaying: false,
+    isPlaying: wasPlaying,   // keep true during track-to-track switch
     loadError: null,
     currentTime: 0,
     duration: 0,
@@ -458,6 +473,8 @@ export function playFromList(
 /** Toggle play/pause on both WaveSurfer instances */
 export function togglePlay(): void {
   if (!_state.currentTrack) return;
+  // Manual pause clears the suppress guard so the visualiser collapses normally
+  _suppressPlayFalse = false;
   _wsOriginalRef.current?.playPause();
   if (_state.hasMastered) _wsAltRef.current?.playPause();
 }
@@ -613,6 +630,9 @@ export function setCurrentTime(t: number): void {
 
 /** Called by WaveSurfer onPlayChange */
 export function setIsPlaying(playing: boolean): void {
+  // During track-to-track transitions, suppress the false event so the
+  // visualiser doesn't briefly collapse.
+  if (!playing && _suppressPlayFalse) return;
   if (_state.isPlaying !== playing) {
     setState({ isPlaying: playing });
   }
