@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 import type { Yue2JointTrainRequest } from '../../services/trainingApi';
 
 export const YUE2_JOINT_PRESETS_KEY = 'hs-yue2-joint-presets';
@@ -10,7 +11,7 @@ export type Yue2JointPreset = {
 
 export function readYue2JointPresets(): Yue2JointPreset[] {
   try {
-    const value = JSON.parse(window.localStorage.getItem(YUE2_JOINT_PRESETS_KEY) || '[]') as unknown;
+    const value = JSON.parse(userStorage.getItem(YUE2_JOINT_PRESETS_KEY) || '[]') as unknown;
     return Array.isArray(value) ? value.filter((item): item is Yue2JointPreset =>
       !!item && typeof item === 'object' && typeof item.name === 'string'
       && !!item.settings && typeof item.settings === 'object') : [];

@@ -378,7 +378,7 @@ export const WrittenSongsTab: React.FC<WrittenSongsTabProps> = ({
   const [userSubject, setUserSubject] = useState('');
 
   // ── MM3 caption source ──
-  // The choice has no column to live in, so it is per-generation localStorage.
+  // The choice has no column to live in, so it is per-generation userStorage.
   // This map is only a render mirror of that: absent means "not touched this
   // session", and the stored value (default Automatic) is read on demand.
   const mm3Mode = useBackendStore(s => s.activeBackendId === MM3_BACKEND_ID

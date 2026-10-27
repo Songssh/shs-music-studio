@@ -1,3 +1,4 @@
+import { userSessionStorage } from '../../auth/userStorage';
 import { useQuery } from '@tanstack/react-query';
 import { aceModelsOptions } from '../../queries/global-models/options';
 // GlobalParamBar.tsx — Horizontal top bar with hover-to-expand engine config sections
@@ -260,7 +261,7 @@ export const GlobalParamBar: React.FC<{ onOpenMobileNav?: () => void }> = ({ onO
   // Separate from auto-select — only opens the modal if, after giving
   // the engine time to start, there are genuinely no models available.
   useEffect(() => {
-    if (sessionStorage.getItem('mm-auto-dismissed')) return;
+    if (userSessionStorage.getItem('mm-auto-dismissed')) return;
 
     const timer = setTimeout(() => {
       if (modelsQuery.isPending) return;
@@ -518,7 +519,7 @@ export const GlobalParamBar: React.FC<{ onOpenMobileNav?: () => void }> = ({ onO
       {showModelManager && (
         <ModelManagerModal onClose={() => {
           setShowModelManager(false);
-          sessionStorage.setItem('mm-auto-dismissed', '1');
+          userSessionStorage.setItem('mm-auto-dismissed', '1');
         }} />
       )}
 

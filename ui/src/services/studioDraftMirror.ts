@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 import type { ReadOptions } from './httpClient';
 // studioDraftMirror.ts — mirror a studio's autosaved fields into its own
 // revisioned server draft (/api/studio-drafts), and load a saved draft back.
@@ -128,11 +129,11 @@ function localPointer(studio: StudioDraftBody['studio']): DraftMirrorDeps['point
   return {
     read() {
       try {
-        const value = JSON.parse(localStorage.getItem(pointerKey(studio)) ?? 'null');
+        const value = JSON.parse(userStorage.getItem(pointerKey(studio)) ?? 'null');
         return value && typeof value.id === 'string' && Number.isInteger(value.revision) ? value : null;
       } catch { return null; }
     },
-    write(value) { try { localStorage.setItem(pointerKey(studio), JSON.stringify(value)); } catch { /* storage full */ } },
+    write(value) { try { userStorage.setItem(pointerKey(studio), JSON.stringify(value)); } catch { /* storage full */ } },
   };
 }
 

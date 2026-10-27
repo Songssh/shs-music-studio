@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 import { extractResultOptions } from '../../queries/studios/resources';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { modelsOptions } from '../../queries/studios/shared';
@@ -61,10 +62,10 @@ export const StemStudio: React.FC = () => {
   }, []);
 
   // Source audio (persisted across sessions for testing convenience)
-  const [sourceAudioUrl, _setSourceAudioUrl] = useState(() => localStorage.getItem('hs-stem-sourceUrl') || '');
-  const [sourceFileName, _setSourceFileName] = useState(() => localStorage.getItem('hs-stem-sourceFile') || '');
-  const setSourceAudioUrl = (url: string) => { localStorage.setItem('hs-stem-sourceUrl', url); _setSourceAudioUrl(url); };
-  const setSourceFileName = (name: string) => { localStorage.setItem('hs-stem-sourceFile', name); _setSourceFileName(name); };
+  const [sourceAudioUrl, _setSourceAudioUrl] = useState(() => userStorage.getItem('hs-stem-sourceUrl') || '');
+  const [sourceFileName, _setSourceFileName] = useState(() => userStorage.getItem('hs-stem-sourceFile') || '');
+  const setSourceAudioUrl = (url: string) => { userStorage.setItem('hs-stem-sourceUrl', url); _setSourceAudioUrl(url); };
+  const setSourceFileName = (name: string) => { userStorage.setItem('hs-stem-sourceFile', name); _setSourceFileName(name); };
 
   // Track selection
   const [selectedTracks, setSelectedTracks] = useState<string[]>(['vocals', 'drums', 'bass', 'guitar']);
@@ -72,7 +73,7 @@ export const StemStudio: React.FC = () => {
   // is the specialist path (needs a base/SFT model and disables adapters).
   const [mode, setMode] = useState<'extract' | 'supersep'>('supersep');
   const [sepLevel, setSepLevel] = useState<SeparationLevel>(() => {
-    const stored = localStorage.getItem('hs-stem-sepLevel');
+    const stored = userStorage.getItem('hs-stem-sepLevel');
     return (stored != null ? parseInt(stored) : 1) as SeparationLevel;
   });
 
@@ -106,19 +107,19 @@ export const StemStudio: React.FC = () => {
   useEffect(() => {
     const base = getBaseModels(modelsQuery.data?.models.dit || []);
     if (base.length && !extractModel) {
-      const stored = localStorage.getItem('hs-stem-extractModel');
+      const stored = userStorage.getItem('hs-stem-extractModel');
       setExtractModel(stored && base.includes(stored) ? stored : base[0]);
     }
   }, [modelsQuery.data, extractModel]);
 
   // Persist extract model selection
   useEffect(() => {
-    if (extractModel) localStorage.setItem('hs-stem-extractModel', extractModel);
+    if (extractModel) userStorage.setItem('hs-stem-extractModel', extractModel);
   }, [extractModel]);
 
   // Persist sep level selection
   useEffect(() => {
-    localStorage.setItem('hs-stem-sepLevel', String(sepLevel));
+    userStorage.setItem('hs-stem-sepLevel', String(sepLevel));
   }, [sepLevel]);
 
   const handleSourceChange = useCallback((url: string, fileName: string, meta?: { style?: string; lyrics?: string }) => {

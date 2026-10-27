@@ -1,3 +1,4 @@
+import { ownerId, principalOf } from '../auth/principal.js';
 // lireekDb.ts — Query functions for Lyric Studio / Lireek tables
 //
 // These tables now live in the unified hotstep.db (previously lireek.db).
@@ -30,47 +31,47 @@ export function getLireekDb(): ReturnType<typeof getDb> {
 export function getOrCreateArtist(name: string): Record<string, any> {
   const db = getDb();
   const existing = db.prepare(
-    'SELECT * FROM artists WHERE name = ? COLLATE NOCASE'
+    'SELECT * FROM auth_owned_artists WHERE name = ? COLLATE NOCASE'
   ).get(name) as any;
   if (existing) return existing;
 
   const now = new Date().toISOString();
   const result = db.prepare(
-    'INSERT INTO artists (name, created_at) VALUES (?, ?)'
-  ).run(name, now);
+    'INSERT INTO artists (name, display_name, created_at) VALUES (?, ?, ?)'
+  ).run(JSON.stringify([ownerId(),name]), name, now);
   return { id: result.lastInsertRowid, name, created_at: now, image_url: null, genius_id: null };
 }
 
 export function listArtists(): Record<string, any>[] {
   return getDb().prepare(
     `SELECT a.*, COUNT(ls.id) AS lyrics_set_count
-     FROM artists a LEFT JOIN lyrics_sets ls ON ls.artist_id = a.id
+     FROM auth_owned_artists a LEFT JOIN auth_owned_lyrics_sets ls ON ls.artist_id = a.id
      GROUP BY a.id ORDER BY a.name`
   ).all() as any[];
 }
 
 export function deleteArtist(id: number): boolean {
-  const result = getDb().prepare('DELETE FROM artists WHERE id = ?').run(id);
+  const result = getDb().prepare('DELETE FROM artists WHERE id IN (SELECT id FROM auth_owned_artists) AND id = ?').run(id);
   return result.changes > 0;
 }
 
 export function updateArtistImage(id: number, imageUrl: string | null): void {
-  getDb().prepare('UPDATE artists SET image_url = ? WHERE id = ?').run(imageUrl, id);
+  getDb().prepare('UPDATE artists SET image_url = ? WHERE id IN (SELECT id FROM auth_owned_artists) AND id = ?').run(imageUrl, id);
 }
 
 export function updateArtistGeniusId(id: number, geniusId: number | null): void {
-  getDb().prepare('UPDATE artists SET genius_id = ? WHERE id = ?').run(geniusId, id);
+  getDb().prepare('UPDATE artists SET genius_id = ? WHERE id IN (SELECT id FROM auth_owned_artists) AND id = ?').run(geniusId, id);
 }
 
 export function getArtist(id: number): Record<string, any> | undefined {
-  return getDb().prepare('SELECT * FROM artists WHERE id = ?').get(id) as any;
+  return getDb().prepare('SELECT * FROM auth_owned_artists WHERE id = ?').get(id) as any;
 }
 
 /** Case-insensitive artist lookup that never creates — preview code must not
  *  leave rows behind for an export the user then cancels. */
 export function findArtistByName(name: string): Record<string, any> | null {
   return (getDb().prepare(
-    'SELECT * FROM artists WHERE name = ? COLLATE NOCASE'
+    'SELECT * FROM auth_owned_artists WHERE name = ? COLLATE NOCASE'
   ).get(name) as any) ?? null;
 }
 
@@ -96,7 +97,7 @@ export function saveLyricsSet(
  *  Training Studio export. `songs` stays parsed out like getLyricsSets(). */
 export function findLyricsSetByAlbum(artistId: number, album: string): Record<string, any> | null {
   const row = getDb().prepare(
-    'SELECT * FROM lyrics_sets WHERE artist_id = ? AND album = ? COLLATE NOCASE'
+    'SELECT * FROM auth_owned_lyrics_sets WHERE artist_id = ? AND album = ? COLLATE NOCASE'
   ).get(artistId, album) as any;
   if (!row) return null;
   const songs = JSON.parse(row.songs);
@@ -113,10 +114,10 @@ export function replaceLyricsSetSongs(
   const now = new Date().toISOString();
   const db = getDb();
   db.prepare(
-    'UPDATE lyrics_sets SET album = ?, max_songs = ?, songs = ?, fetched_at = ? WHERE id = ?'
+    'UPDATE lyrics_sets SET album = ?, max_songs = ?, songs = ?, fetched_at = ? WHERE id IN (SELECT id FROM auth_owned_lyrics_sets) AND id = ?'
   ).run(album, songs.length, JSON.stringify(songs), now, id);
   if (imageUrl) {
-    db.prepare('UPDATE lyrics_sets SET image_url = ? WHERE id = ?').run(imageUrl, id);
+    db.prepare('UPDATE lyrics_sets SET image_url = ? WHERE id IN (SELECT id FROM auth_owned_lyrics_sets) AND id = ?').run(imageUrl, id);
   }
   return getLyricsSet(id);
 }
@@ -125,13 +126,13 @@ export function getLyricsSets(artistId?: number): Record<string, any>[] {
   const db = getDb();
   const query = artistId
     ? db.prepare(
-        `SELECT ls.*, a.name as artist_name FROM lyrics_sets ls
-         JOIN artists a ON a.id = ls.artist_id
+        `SELECT ls.*, a.name as artist_name FROM auth_owned_lyrics_sets ls
+         JOIN auth_owned_artists a ON a.id = ls.artist_id
          WHERE ls.artist_id = ? ORDER BY ls.fetched_at DESC`
       )
     : db.prepare(
-        `SELECT ls.*, a.name as artist_name FROM lyrics_sets ls
-         JOIN artists a ON a.id = ls.artist_id
+        `SELECT ls.*, a.name as artist_name FROM auth_owned_lyrics_sets ls
+         JOIN auth_owned_artists a ON a.id = ls.artist_id
          ORDER BY ls.fetched_at DESC`
       );
 
@@ -145,8 +146,8 @@ export function getLyricsSets(artistId?: number): Record<string, any>[] {
 
 export function getLyricsSet(id: number): Record<string, any> | null {
   const row = getDb().prepare(
-    `SELECT ls.*, a.name as artist_name FROM lyrics_sets ls
-     JOIN artists a ON a.id = ls.artist_id WHERE ls.id = ?`
+    `SELECT ls.*, a.name as artist_name FROM auth_owned_lyrics_sets ls
+     JOIN auth_owned_artists a ON a.id = ls.artist_id WHERE ls.id = ?`
   ).get(id) as any;
   if (!row) return null;
   row.songs = JSON.parse(row.songs);
@@ -156,43 +157,43 @@ export function getLyricsSet(id: number): Record<string, any> | null {
 }
 
 export function deleteLyricsSet(id: number): boolean {
-  return getDb().prepare('DELETE FROM lyrics_sets WHERE id = ?').run(id).changes > 0;
+  return getDb().prepare('DELETE FROM lyrics_sets WHERE id IN (SELECT id FROM auth_owned_lyrics_sets) AND id = ?').run(id).changes > 0;
 }
 
 export function removeSongFromSet(lyricsSetId: number, songIndex: number): Record<string, any> | null {
   const db = getDb();
-  const row = db.prepare('SELECT songs FROM lyrics_sets WHERE id = ?').get(lyricsSetId) as any;
+  const row = db.prepare('SELECT songs FROM auth_owned_lyrics_sets WHERE id = ?').get(lyricsSetId) as any;
   if (!row) return null;
   const songs = JSON.parse(row.songs);
   if (songIndex < 0 || songIndex >= songs.length) return null;
   songs.splice(songIndex, 1);
-  db.prepare('UPDATE lyrics_sets SET songs = ? WHERE id = ?').run(JSON.stringify(songs), lyricsSetId);
+  db.prepare('UPDATE lyrics_sets SET songs = ? WHERE id IN (SELECT id FROM auth_owned_lyrics_sets) AND id = ?').run(JSON.stringify(songs), lyricsSetId);
   return getLyricsSet(lyricsSetId);
 }
 
 export function editSongInSet(lyricsSetId: number, songIndex: number, newLyrics: string): Record<string, any> | null {
   const db = getDb();
-  const row = db.prepare('SELECT songs FROM lyrics_sets WHERE id = ?').get(lyricsSetId) as any;
+  const row = db.prepare('SELECT songs FROM auth_owned_lyrics_sets WHERE id = ?').get(lyricsSetId) as any;
   if (!row) return null;
   const songs = JSON.parse(row.songs);
   if (songIndex < 0 || songIndex >= songs.length) return null;
   songs[songIndex].lyrics = newLyrics;
-  db.prepare('UPDATE lyrics_sets SET songs = ? WHERE id = ?').run(JSON.stringify(songs), lyricsSetId);
+  db.prepare('UPDATE lyrics_sets SET songs = ? WHERE id IN (SELECT id FROM auth_owned_lyrics_sets) AND id = ?').run(JSON.stringify(songs), lyricsSetId);
   return getLyricsSet(lyricsSetId);
 }
 
 export function addSongToSet(lyricsSetId: number, song: { title: string; album?: string; lyrics: string }): Record<string, any> | null {
   const db = getDb();
-  const row = db.prepare('SELECT songs FROM lyrics_sets WHERE id = ?').get(lyricsSetId) as any;
+  const row = db.prepare('SELECT songs FROM auth_owned_lyrics_sets WHERE id = ?').get(lyricsSetId) as any;
   if (!row) return null;
   const songs = JSON.parse(row.songs);
   songs.push(song);
-  db.prepare('UPDATE lyrics_sets SET songs = ? WHERE id = ?').run(JSON.stringify(songs), lyricsSetId);
+  db.prepare('UPDATE lyrics_sets SET songs = ? WHERE id IN (SELECT id FROM auth_owned_lyrics_sets) AND id = ?').run(JSON.stringify(songs), lyricsSetId);
   return getLyricsSet(lyricsSetId);
 }
 
 export function updateLyricsSetImage(id: number, imageUrl: string | null): void {
-  getDb().prepare('UPDATE lyrics_sets SET image_url = ? WHERE id = ?').run(imageUrl, id);
+  getDb().prepare('UPDATE lyrics_sets SET image_url = ? WHERE id IN (SELECT id FROM auth_owned_lyrics_sets) AND id = ?').run(imageUrl, id);
 }
 
 
@@ -214,25 +215,25 @@ export function saveProfile(
 export function getProfiles(lyricsSetId?: number): Record<string, any>[] {
   const db = getDb();
   const query = lyricsSetId
-    ? db.prepare('SELECT * FROM profiles WHERE lyrics_set_id = ? ORDER BY created_at DESC')
-    : db.prepare('SELECT * FROM profiles ORDER BY created_at DESC');
+    ? db.prepare('SELECT * FROM auth_owned_profiles WHERE lyrics_set_id = ? ORDER BY created_at DESC')
+    : db.prepare('SELECT * FROM auth_owned_profiles ORDER BY created_at DESC');
   const rows = (lyricsSetId ? query.all(lyricsSetId) : query.all()) as any[];
   return rows.map(r => ({ ...r, profile_data: JSON.parse(r.profile_data) }));
 }
 
 export function getProfile(id: number): Record<string, any> | null {
-  const row = getDb().prepare('SELECT * FROM profiles WHERE id = ?').get(id) as any;
+  const row = getDb().prepare('SELECT * FROM auth_owned_profiles WHERE id = ?').get(id) as any;
   if (!row) return null;
   row.profile_data = JSON.parse(row.profile_data);
   return row;
 }
 
 export function deleteProfile(id: number): boolean {
-  return getDb().prepare('DELETE FROM profiles WHERE id = ?').run(id).changes > 0;
+  return getDb().prepare('DELETE FROM profiles WHERE id IN (SELECT id FROM auth_owned_profiles) AND id = ?').run(id).changes > 0;
 }
 
 export function updateProfileData(id: number, profileData: any): void {
-  getDb().prepare('UPDATE profiles SET profile_data = ? WHERE id = ?').run(JSON.stringify(profileData), id);
+  getDb().prepare('UPDATE profiles SET profile_data = ? WHERE id IN (SELECT id FROM auth_owned_profiles) AND id = ?').run(JSON.stringify(profileData), id);
 }
 
 
@@ -289,38 +290,38 @@ export function saveGeneration(p: SaveGenerationParams): Record<string, any> {
 export function getGenerations(profileId?: number, lyricsSetId?: number): Record<string, any>[] {
   const db = getDb();
   if (profileId) {
-    return db.prepare('SELECT * FROM generations WHERE profile_id = ? ORDER BY created_at DESC').all(profileId) as any[];
+    return db.prepare('SELECT * FROM auth_owned_generations WHERE profile_id = ? ORDER BY created_at DESC').all(profileId) as any[];
   }
   if (lyricsSetId) {
     return db.prepare(
-      `SELECT g.* FROM generations g
-       JOIN profiles p ON p.id = g.profile_id
+      `SELECT g.* FROM auth_owned_generations g
+       JOIN auth_owned_profiles p ON p.id = g.profile_id
        WHERE p.lyrics_set_id = ? ORDER BY g.created_at DESC`
     ).all(lyricsSetId) as any[];
   }
-  return db.prepare('SELECT * FROM generations ORDER BY created_at DESC').all() as any[];
+  return db.prepare('SELECT * FROM auth_owned_generations ORDER BY created_at DESC').all() as any[];
 }
 
 export function getAllGenerationsWithContext(): Record<string, any>[] {
   return getDb().prepare(
     `SELECT g.*, a.name AS artist_name, ls.album, ls.artist_id, ls.id AS lyrics_set_id
-     FROM generations g
-     JOIN profiles p ON p.id = g.profile_id
-     JOIN lyrics_sets ls ON ls.id = p.lyrics_set_id
-     JOIN artists a ON a.id = ls.artist_id
+     FROM auth_owned_generations g
+     JOIN auth_owned_profiles p ON p.id = g.profile_id
+     JOIN auth_owned_lyrics_sets ls ON ls.id = p.lyrics_set_id
+     JOIN auth_owned_artists a ON a.id = ls.artist_id
      ORDER BY g.created_at DESC`
   ).all() as any[];
 }
 
 export function getGeneration(id: number): Record<string, any> | null {
-  return (getDb().prepare('SELECT * FROM generations WHERE id = ?').get(id) as any) ?? null;
+  return (getDb().prepare('SELECT * FROM auth_owned_generations WHERE id = ?').get(id) as any) ?? null;
 }
 
 export function updateGenerationMetadata(
   id: number, bpm: number, key: string, caption: string, duration: number = 0,
 ): void {
   getDb().prepare(
-    'UPDATE generations SET bpm = ?, key = ?, caption = ?, duration = ? WHERE id = ?'
+    'UPDATE generations SET bpm = ?, key = ?, caption = ?, duration = ? WHERE id IN (SELECT id FROM auth_owned_generations) AND id = ?'
   ).run(bpm, key, caption, duration, id);
 }
 
@@ -336,42 +337,51 @@ export function updateGenerationFields(id: number, fields: Record<string, any>):
   }
   if (sets.length === 0) return;
   values.push(id);
-  getDb().prepare(`UPDATE generations SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+  getDb().prepare(`UPDATE generations SET ${sets.join(', ')} WHERE id IN (SELECT id FROM auth_owned_generations) AND id = ?`).run(...values);
 }
 
 export function deleteGeneration(id: number): boolean {
-  return getDb().prepare('DELETE FROM generations WHERE id = ?').run(id).changes > 0;
+  return getDb().prepare('DELETE FROM generations WHERE id IN (SELECT id FROM auth_owned_generations) AND id = ?').run(id).changes > 0;
 }
 
 export function purgeProfilesAndGenerations(): { generations_deleted: number; profiles_deleted: number } {
   const db = getDb();
-  const genResult = db.prepare('DELETE FROM generations').run();
-  const profResult = db.prepare('DELETE FROM profiles').run();
+  const genResult = db.prepare('DELETE FROM generations WHERE id IN (SELECT id FROM auth_owned_generations)').run();
+  const profResult = db.prepare('DELETE FROM profiles WHERE id IN (SELECT id FROM auth_owned_profiles)').run();
   return { generations_deleted: genResult.changes, profiles_deleted: profResult.changes };
 }
 
 export function purgeGenerationsOnly(): { generations_deleted: number } {
-  const result = getDb().prepare('DELETE FROM generations').run();
+  const result = getDb().prepare('DELETE FROM generations WHERE id IN (SELECT id FROM auth_owned_generations)').run();
   return { generations_deleted: result.changes };
 }
 
 export function purgeProfilesOnly(): { profiles_deleted: number; generations_deleted: number } {
   const db = getDb();
   // Generations depend on profiles via FK, so delete generations first
-  const genResult = db.prepare('DELETE FROM generations').run();
-  const profResult = db.prepare('DELETE FROM profiles').run();
+  const genResult = db.prepare('DELETE FROM generations WHERE id IN (SELECT id FROM auth_owned_generations)').run();
+  const profResult = db.prepare('DELETE FROM profiles WHERE id IN (SELECT id FROM auth_owned_profiles)').run();
   return { profiles_deleted: profResult.changes, generations_deleted: genResult.changes };
 }
 
 
 // ── Settings ────────────────────────────────────────────────────────────────
 
+function personalSettingKey(key: string): string {
+  const user = principalOf();
+  if (!user) return key;
+  const legacy = (getDb().prepare('SELECT legacy_user_id FROM registration_settings WHERE id=1').get() as {legacy_user_id:string|null}).legacy_user_id;
+  return user.id === legacy ? key : `user:${user.id}:${key}`;
+}
+
 export function getSetting(key: string, defaultValue = ''): string {
+  key = personalSettingKey(key);
   const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get(key) as any;
   return row?.value ?? defaultValue;
 }
 
 export function setSetting(key: string, value: string): void {
+  key = personalSettingKey(key);
   getDb().prepare(
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
   ).run(key, value);
@@ -381,15 +391,15 @@ export function setSetting(key: string, value: string): void {
 // ── Album Presets ───────────────────────────────────────────────────────────
 
 export function getPreset(lyricsSetId: number): Record<string, any> | null {
-  return (getDb().prepare('SELECT * FROM album_presets WHERE lyrics_set_id = ?').get(lyricsSetId) as any) ?? null;
+  return (getDb().prepare('SELECT * FROM auth_owned_album_presets WHERE lyrics_set_id = ?').get(lyricsSetId) as any) ?? null;
 }
 
 export function getAllPresets(): Record<string, any>[] {
   return getDb().prepare(
     `SELECT ap.*, a.name as artist_name, ls.album, ls.artist_id
-     FROM album_presets ap
-     JOIN lyrics_sets ls ON ls.id = ap.lyrics_set_id
-     JOIN artists a ON a.id = ls.artist_id
+     FROM auth_owned_album_presets ap
+     JOIN auth_owned_lyrics_sets ls ON ls.id = ap.lyrics_set_id
+     JOIN auth_owned_artists a ON a.id = ls.artist_id
      ORDER BY ap.created_at DESC`
   ).all() as any[];
 }
@@ -441,7 +451,7 @@ export function upsertPreset(lyricsSetId: number, data: {
 }
 
 export function deletePreset(lyricsSetId: number): boolean {
-  return getDb().prepare('DELETE FROM album_presets WHERE lyrics_set_id = ?').run(lyricsSetId).changes > 0;
+  return getDb().prepare('DELETE FROM album_presets WHERE lyrics_set_id IN (SELECT lyrics_set_id FROM auth_owned_album_presets) AND lyrics_set_id = ?').run(lyricsSetId).changes > 0;
 }
 
 
@@ -462,9 +472,9 @@ export function linkAudioGeneration(generationId: number, jobId: string, lyricsS
 export function getAudioGenerations(generationId: number, lyricsSetId?: number): Record<string, any>[] {
   return getDb().prepare(
     `SELECT ag.*, s.mastered_audio_url
-     FROM audio_generations ag
-     JOIN generations g ON g.id = ag.generation_id
-     JOIN profiles p ON p.id = g.profile_id
+     FROM auth_owned_audio_generations ag
+     JOIN auth_owned_generations g ON g.id = ag.generation_id
+     JOIN auth_owned_profiles p ON p.id = g.profile_id
      LEFT JOIN songs s ON s.audio_url = ag.audio_url
      WHERE ag.generation_id = ?
        AND (? IS NULL OR COALESCE(ag.lyrics_set_id, p.lyrics_set_id) = ?)
@@ -477,11 +487,11 @@ export function getAudioGenerations(generationId: number, lyricsSetId?: number):
 export function getGenerationsRenderedAs(lyricsSetId: number): Record<string, any>[] {
   return getDb().prepare(
     `SELECT DISTINCT g.*, a.name AS artist_name, ls.album, ls.artist_id, ls.id AS lyrics_set_id
-     FROM audio_generations ag
-     JOIN generations g ON g.id = ag.generation_id
-     JOIN profiles p ON p.id = g.profile_id
-     JOIN lyrics_sets ls ON ls.id = p.lyrics_set_id
-     JOIN artists a ON a.id = ls.artist_id
+     FROM auth_owned_audio_generations ag
+     JOIN auth_owned_generations g ON g.id = ag.generation_id
+     JOIN auth_owned_profiles p ON p.id = g.profile_id
+     JOIN auth_owned_lyrics_sets ls ON ls.id = p.lyrics_set_id
+     JOIN auth_owned_artists a ON a.id = ls.artist_id
      WHERE ag.lyrics_set_id = ? AND p.lyrics_set_id != ?
      ORDER BY g.created_at DESC`
   ).all(lyricsSetId, lyricsSetId) as any[];
@@ -493,11 +503,11 @@ export function resolveAudioGeneration(jobId: string, audioUrl: string, coverUrl
   // Read before the update so we can tell a first resolve from a repeat — the
   // client calls this from more than one place and must not double-count.
   const row = db.prepare(
-    'SELECT generation_id, audio_url FROM audio_generations WHERE hotstep_job_id = ?'
+    'SELECT generation_id, audio_url FROM auth_owned_audio_generations WHERE hotstep_job_id = ?'
   ).get(jobId) as { generation_id: number; audio_url: string | null } | undefined;
 
   db.prepare(
-    'UPDATE audio_generations SET audio_url = ?, cover_url = ? WHERE hotstep_job_id = ?'
+    'UPDATE audio_generations SET audio_url = ?, cover_url = ? WHERE id IN (SELECT id FROM auth_owned_audio_generations) AND hotstep_job_id = ?'
   ).run(audioUrl, coverUrl ?? null, jobId);
 
   // Permanently mark the lyrics as generated. Counted on resolve rather than at
@@ -528,13 +538,13 @@ export function markDownloadedByAudioUrl(audioUrl: string): boolean {
   const db = getDb();
 
   const row = db.prepare(
-    'SELECT id, generation_id, downloaded_at FROM audio_generations WHERE audio_url = ?'
+    'SELECT id, generation_id, downloaded_at FROM auth_owned_audio_generations WHERE audio_url = ?'
   ).get(audioUrl) as { id: number; generation_id: number; downloaded_at: string | null } | undefined;
 
   if (!row || row.downloaded_at) return false;
 
   const now = new Date().toISOString();
-  db.prepare('UPDATE audio_generations SET downloaded_at = ? WHERE id = ?').run(now, row.id);
+  db.prepare('UPDATE audio_generations SET downloaded_at = ? WHERE id IN (SELECT id FROM auth_owned_audio_generations) AND id = ?').run(now, row.id);
   db.prepare(`
     UPDATE generations SET
       download_count      = download_count + 1,
@@ -545,14 +555,14 @@ export function markDownloadedByAudioUrl(audioUrl: string): boolean {
 }
 
 export function deleteAudioGeneration(id: number): boolean {
-  return getDb().prepare('DELETE FROM audio_generations WHERE id = ?').run(id).changes > 0;
+  return getDb().prepare('DELETE FROM audio_generations WHERE id IN (SELECT id FROM auth_owned_audio_generations) AND id = ?').run(id).changes > 0;
 }
 
 /** Delete audio_generations rows matching the given hotstep job IDs (used when songs are deleted from the main library). */
 export function deleteAudioGenerationsByJobIds(jobIds: string[]): number {
   if (jobIds.length === 0) return 0;
   const placeholders = jobIds.map(() => '?').join(',');
-  return getDb().prepare(`DELETE FROM audio_generations WHERE hotstep_job_id IN (${placeholders})`).run(...jobIds).changes;
+  return getDb().prepare(`DELETE FROM audio_generations WHERE id IN (SELECT id FROM auth_owned_audio_generations) AND hotstep_job_id IN (${placeholders})`).run(...jobIds).changes;
 }
 
 export function getRecentGenerationsWithAudio(limit = 50): Record<string, any>[] {
@@ -563,11 +573,11 @@ export function getRecentGenerationsWithAudio(limit = 50): Record<string, any>[]
        ls.album, ls.id AS lyrics_set_id,
        ag.id AS ag_id, ag.audio_url, ag.cover_url, ag.hotstep_job_id,
        s.mastered_audio_url
-     FROM audio_generations ag
-     JOIN generations g ON g.id = ag.generation_id
-     JOIN profiles p ON p.id = g.profile_id
-     JOIN lyrics_sets ls ON ls.id = COALESCE(ag.lyrics_set_id, p.lyrics_set_id)
-     JOIN artists a ON a.id = ls.artist_id
+     FROM auth_owned_audio_generations ag
+     JOIN auth_owned_generations g ON g.id = ag.generation_id
+     JOIN auth_owned_profiles p ON p.id = g.profile_id
+     JOIN auth_owned_lyrics_sets ls ON ls.id = COALESCE(ag.lyrics_set_id, p.lyrics_set_id)
+     JOIN auth_owned_artists a ON a.id = ls.artist_id
      LEFT JOIN songs s ON s.audio_url = ag.audio_url
      WHERE ag.audio_url IS NOT NULL
      ORDER BY ag.created_at DESC

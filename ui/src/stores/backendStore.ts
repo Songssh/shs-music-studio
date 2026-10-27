@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 // backendStore.ts — Zustand store for the multi-backend registry
 //
 // Backends are the registered generation engines behind /api/backends — ACE-Step
@@ -35,11 +36,11 @@ import type { Query } from '@tanstack/react-query';
 const ACTIVE_KEY = 'hs-activeBackend';
 
 function readActiveMirror(): string {
-  try { return localStorage.getItem(ACTIVE_KEY) || 'ace'; } catch { return 'ace'; }
+  try { return userStorage.getItem(ACTIVE_KEY) || 'ace'; } catch { return 'ace'; }
 }
 
 function writeActiveMirror(id: string): void {
-  try { localStorage.setItem(ACTIVE_KEY, id); } catch { /* full / blocked */ }
+  try { userStorage.setItem(ACTIVE_KEY, id); } catch { /* full / blocked */ }
 }
 
 // ── Types (mirror server/src/services/backends/types.ts — §4.2) ──
@@ -253,7 +254,7 @@ interface BackendState {
 
 export const useBackendStore = create<BackendState>((set, get) => ({
   backends: [],
-  // Last known active id (mirrored to localStorage, see above) so the
+  // Last known active id (mirrored to userStorage, see above) so the
   // per-backend UI state hydrates correctly on the very first render.
   // Falls back to 'ace' — the server's default and every pre-multi-backend
   // install; overwritten by fetchBackends() once the registry responds.

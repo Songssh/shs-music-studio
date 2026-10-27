@@ -1,3 +1,4 @@
+import { privateAdapters } from '../../auth/privatePaths.js';
 import { YUE2_OPTIM_DEFAULTS, yue2OptimArgs, type Yue2OptimOptions } from './yue2Optim.js';
 // training/yue2Train.ts — YuE2 NAR LoRA training: model resolution, defaults,
 // the VRAM model and the two argv builders.
@@ -471,7 +472,7 @@ export function readYue2PreprocessSummary(manifestPath: string): Yue2CacheSummar
 
 /** Where every YuE2 NAR run lives, one level above a run directory. */
 export function yue2AdapterRoot(): string {
-  return path.join(config.aceServer.adapters, 'yue2-nar-adapters');
+  return path.join(privateAdapters(), 'yue2-nar-adapters');
 }
 
 export function yue2AdapterRunDir(runName: string): string {

@@ -78,7 +78,7 @@ const PULL_HARNESS = [
   "import fs from 'node:fs';",
   "import path from 'node:path';",
   "import http from 'node:http';",
-  "import { initDb } from './src/db/database.js';",
+  "import { initDb } from './src/auth/dbFixture.js';",
   "import * as repo from './src/services/training/datasetsRepo.js';",
   "import { pullLinked } from './src/services/training/trainingWorkers.js';",
   "import { trainLogArchiveDir } from './src/services/training/datasetProfile.js';",
@@ -184,7 +184,7 @@ test('deleting a worker run is refused while another job for the dataset is acti
     const script = [
       "import fs from 'node:fs';",
       "import path from 'node:path';",
-      "import { initDb } from './src/db/database.js';",
+      "import { initDb } from './src/auth/dbFixture.js';",
       "import * as repo from './src/services/training/datasetsRepo.js';",
       "import { recordYue2AitkRun } from './src/services/training/yue2AitkRuns.js';",
       "import { deleteWorkerMirrorRun } from './src/services/training/trainingWorkers.js';",
@@ -216,7 +216,7 @@ test('deleting a worker run is refused right after it ends: a chained refine sta
     const script = [
       "import fs from 'node:fs';",
       "import path from 'node:path';",
-      "import { initDb } from './src/db/database.js';",
+      "import { initDb } from './src/auth/dbFixture.js';",
       "import * as repo from './src/services/training/datasetsRepo.js';",
       "import { recordYue2AitkRun } from './src/services/training/yue2AitkRuns.js';",
       "import { deleteWorkerMirrorRun } from './src/services/training/trainingWorkers.js';",
@@ -245,7 +245,7 @@ test('deleting a worker run is refused while the GPU lane is busy or queued (a m
     const script = [
       "import fs from 'node:fs';",
       "import path from 'node:path';",
-      "import { initDb } from './src/db/database.js';",
+      "import { initDb } from './src/auth/dbFixture.js';",
       "import * as repo from './src/services/training/datasetsRepo.js';",
       "import { recordYue2AitkRun } from './src/services/training/yue2AitkRuns.js';",
       "import { deleteWorkerMirrorRun } from './src/services/training/trainingWorkers.js';",
@@ -278,7 +278,7 @@ test('deleting a worker run refuses a run record whose output IS the ladder root
     const script = [
       "import fs from 'node:fs';",
       "import path from 'node:path';",
-      "import { initDb } from './src/db/database.js';",
+      "import { initDb } from './src/auth/dbFixture.js';",
       "import * as repo from './src/services/training/datasetsRepo.js';",
       "import { recordYue2AitkRun } from './src/services/training/yue2AitkRuns.js';",
       "import { deleteWorkerMirrorRun } from './src/services/training/trainingWorkers.js';",
@@ -311,7 +311,7 @@ test('deleting a worker run refuses a run record whose output points outside the
     const script = [
       "import fs from 'node:fs';",
       "import path from 'node:path';",
-      "import { initDb } from './src/db/database.js';",
+      "import { initDb } from './src/auth/dbFixture.js';",
       "import * as repo from './src/services/training/datasetsRepo.js';",
       "import { recordYue2AitkRun } from './src/services/training/yue2AitkRuns.js';",
       "import { deleteWorkerMirrorRun } from './src/services/training/trainingWorkers.js';",

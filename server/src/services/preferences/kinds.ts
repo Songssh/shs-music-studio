@@ -10,22 +10,22 @@ import {
 } from '../../contracts/preferences.js';
 
 export const VST_CHAIN_PRESET = registerDocumentKind<VstChainPresetBody>({
-  kind: 'preferences.vst-chain-preset', scope: 'installation', schemaVersion: 1, schema: vstChainPresetBodySchema,
+  kind: 'preferences.vst-chain-preset', scope: 'user', schemaVersion: 1, schema: vstChainPresetBodySchema,
 });
 export const AI_CONTINUE_STYLE_PRESET = registerDocumentKind<AiContinuePresetBody>({
-  kind: 'preferences.ai-continue-style-preset', scope: 'installation', schemaVersion: 1, schema: aiContinuePresetBodySchema,
+  kind: 'preferences.ai-continue-style-preset', scope: 'user', schemaVersion: 1, schema: aiContinuePresetBodySchema,
 });
 export const AI_CONTINUE_LYRIC_PRESET = registerDocumentKind<AiContinuePresetBody>({
-  kind: 'preferences.ai-continue-lyric-preset', scope: 'installation', schemaVersion: 1, schema: aiContinuePresetBodySchema,
+  kind: 'preferences.ai-continue-lyric-preset', scope: 'user', schemaVersion: 1, schema: aiContinuePresetBodySchema,
 });
 export const AI_CONTINUE_TEMPLATE = registerDocumentKind<AiContinueTemplateBody>({
-  kind: 'preferences.ai-continue-template', scope: 'installation', schemaVersion: 1, schema: aiContinueTemplateBodySchema,
+  kind: 'preferences.ai-continue-template', scope: 'user', schemaVersion: 1, schema: aiContinueTemplateBodySchema,
 });
 export const YUE2_JOINT_PRESET = registerDocumentKind<Yue2JointPresetBody>({
-  kind: 'preferences.yue2-joint-preset', scope: 'installation', schemaVersion: 1, schema: yue2JointPresetBodySchema,
+  kind: 'preferences.yue2-joint-preset', scope: 'user', schemaVersion: 1, schema: yue2JointPresetBodySchema,
 });
 export const STORM_TUNING = registerDocumentKind<StormTuningBody>({
-  kind: 'preferences.storm-tuning', scope: 'installation', schemaVersion: 1, schema: stormTuningBodySchema,
+  kind: 'preferences.storm-tuning', scope: 'user', schemaVersion: 1, schema: stormTuningBodySchema,
 });
 
 /** A family's kind and body are erased to `Record<string, unknown>` here:

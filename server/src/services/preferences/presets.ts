@@ -1,3 +1,4 @@
+import { ownerId } from '../../auth/principal.js';
 // services/preferences/presets.ts — import logic shared by every family in
 // routes/preferences.ts: a named-preset collection (VST chain, scale
 // override, AI continue, YuE2 joint) or a singleton current-value document
@@ -27,24 +28,24 @@ export function importPreset<T extends Record<string, unknown>>(
   td: TypedDocuments<T>, nameOf: (body: T) => string, item: ImportPreferenceItem,
 ): ImportPreferenceResult {
   const name = item.name ?? nameOf(item.body as T);
-  const existing = td.list(LOCAL_OWNER).find(d => nameOf(d.body) === name);
+  const existing = td.list(ownerId()).find(d => nameOf(d.body) === name);
   const provenance = { origin: 'import' as const, importedFrom: { storageKey: item.storageKey, sourceHash: item.sourceHash } };
   if (existing && !deepEqual(existing.body, item.body)) {
     if (!item.resolution) return { storageKey: item.storageKey, outcome: 'name-conflict', documentId: existing.id, storedName: name };
     if (item.resolution === 'replace') {
-      const updated = td.update(existing.id, LOCAL_OWNER, existing.revision, item.body, provenance);
+      const updated = td.update(existing.id, ownerId(), existing.revision, item.body, provenance);
       return { storageKey: item.storageKey, outcome: 'replaced', documentId: updated.id, storedName: name };
     }
     // 'keep-both' falls through to importOnce below, landing as a second document under the same name.
   }
-  const { receipt, document, created } = td.importOnce(LOCAL_OWNER, { storageKey: item.storageKey, sourceHash: item.sourceHash }, item.body, provenance);
+  const { receipt, document, created } = td.importOnce(ownerId(), { storageKey: item.storageKey, sourceHash: item.sourceHash }, item.body, provenance);
   return { storageKey: item.storageKey, outcome: created ? 'imported' : 'unchanged', documentId: document?.id ?? receipt.documentId, storedName: name };
 }
 
 /** The installation's one document for a singleton family, or null if none
  *  has been created yet. */
 export function getSingleton<T extends Record<string, unknown>>(td: TypedDocuments<T>) {
-  return td.list(LOCAL_OWNER)[0] ?? null;
+  return td.list(ownerId())[0] ?? null;
 }
 
 /** Create the singleton if none exists, else update it. `expectedRevision`
@@ -54,9 +55,9 @@ export function upsertSingleton<T extends Record<string, unknown>>(
   td: TypedDocuments<T>, expectedRevision: number | undefined, body: unknown,
 ) {
   const existing = getSingleton(td);
-  if (!existing) return td.create(LOCAL_OWNER, body, { origin: 'client' });
+  if (!existing) return td.create(ownerId(), body, { origin: 'client' });
   if (expectedRevision === undefined) throw new WorkflowError(400, 'expectedRevision is required to update an existing document');
-  return td.update(existing.id, LOCAL_OWNER, expectedRevision, body, { origin: 'client' });
+  return td.update(existing.id, ownerId(), expectedRevision, body, { origin: 'client' });
 }
 
 /** Import a browser value for a singleton family. A singleton has no "keep
@@ -69,9 +70,9 @@ export function importSingleton<T extends Record<string, unknown>>(
   const provenance = { origin: 'import' as const, importedFrom: { storageKey: item.storageKey, sourceHash: item.sourceHash } };
   if (existing && !deepEqual(existing.body, item.body)) {
     if (item.resolution !== 'replace') return { storageKey: item.storageKey, outcome: 'name-conflict', documentId: existing.id };
-    const updated = td.update(existing.id, LOCAL_OWNER, existing.revision, item.body, provenance);
+    const updated = td.update(existing.id, ownerId(), existing.revision, item.body, provenance);
     return { storageKey: item.storageKey, outcome: 'replaced', documentId: updated.id };
   }
-  const { receipt, document, created } = td.importOnce(LOCAL_OWNER, { storageKey: item.storageKey, sourceHash: item.sourceHash }, item.body, provenance);
+  const { receipt, document, created } = td.importOnce(ownerId(), { storageKey: item.storageKey, sourceHash: item.sourceHash }, item.body, provenance);
   return { storageKey: item.storageKey, outcome: created ? 'imported' : 'unchanged', documentId: document?.id ?? receipt.documentId };
 }

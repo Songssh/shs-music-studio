@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 // instaDuration.ts — the Custom-Gen duration Insta-Gen's captureInput reads
 // at submission time. Split out from InstaGenPanel.tsx so it can be
 // node:test'd without dragging in that panel's full (CSS-importing) React
@@ -10,7 +11,7 @@
  *  and the LM's own estimate always won. -1 is the app's "auto" sentinel;
  *  MM3 forces it regardless, mirroring CreatePanel's own
  *  `mm3Mode ? -1 : duration` (MM3 has no length input). */
-export function resolveInstaDuration(mm3: boolean, readStored: () => string | null = () => localStorage.getItem('hs-duration')): number {
+export function resolveInstaDuration(mm3: boolean, readStored: () => string | null = () => userStorage.getItem('hs-duration')): number {
   if (mm3) return -1;
   try {
     const raw = readStored();

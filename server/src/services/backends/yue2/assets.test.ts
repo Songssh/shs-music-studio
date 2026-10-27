@@ -98,7 +98,7 @@ test('catalogue explains unavailable VAEs and submit rejects an unavailable capt
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const script = `
     import assert from 'node:assert/strict';
-    import { initDb } from './src/db/database.js';
+    import { initDb } from './src/auth/dbFixture.js';
     import { yue2Backend } from './src/services/backends/yue2/index.js';
     globalThis.fetch = async () => Response.json(${JSON.stringify(manifest())});
     initDb();

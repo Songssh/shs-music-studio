@@ -1,3 +1,7 @@
+import { ownerId } from '../auth/principal.js';
+import { personalRoot } from '../auth/boundary.js';
+import { assets } from '../auth/ownership.js';
+import { privateAdapters } from '../auth/privatePaths.js';
 // adapters.ts — Adapter filesystem browsing and scanning
 //
 // Provides server-side endpoints for:
@@ -40,7 +44,7 @@ router.get('/browse', (req, res) => {
   // Resolve to an absolute path
   let dirPath: string;
   try {
-    dirPath = rawPath ? path.resolve(rawPath) : path.resolve('.');
+    dirPath = rawPath ? path.resolve(rawPath) : personalRoot(ownerId());
   } catch {
     res.status(400).json({ error: 'Invalid path' });
     return;
@@ -58,7 +62,7 @@ router.get('/browse', (req, res) => {
 
     // Parent directory (unless at root)
     const parent = path.dirname(dirPath);
-    if (parent !== dirPath) {
+    if (parent !== dirPath && assets().owns(parent,ownerId())) {
       entries.push({ name: '..', path: parent, type: 'dir' });
     }
 
@@ -66,6 +70,7 @@ router.get('/browse', (req, res) => {
     for (const entry of rawEntries) {
       if (entry.name.startsWith('.')) continue;
       const fullPath = path.join(dirPath, entry.name);
+      if(!assets().owns(fullPath,ownerId()))continue;
       if (entry.isDirectory()) {
         entries.push({ name: entry.name, path: fullPath, type: 'dir' });
       }
@@ -76,6 +81,7 @@ router.get('/browse', (req, res) => {
       if (entry.name.startsWith('.')) continue;
       if (!entry.isFile()) continue;
       const fullPath = path.join(dirPath, entry.name);
+      if(!assets().owns(fullPath,ownerId()))continue;
       const ext = path.extname(entry.name).toLowerCase();
       if (allowedExts.length === 0 || allowedExts.includes(ext)) {
         try {
@@ -289,7 +295,7 @@ router.get('/lm', (req, res) => {
     } else {
       // Default: every planner-adapter root — the per-size lm-06b/lm-17b/lm-4b
       // dirs plus the legacy flat lm/ (adapterLayout.ts).
-      root = config.aceServer.adapters;
+      root = privateAdapters();
       for (const r of lmAdapterRoots()) scanOne(r.dir, r.size);
     }
     // Alphabetical by artist; within an artist, newest run first.
@@ -297,7 +303,7 @@ router.get('/lm', (req, res) => {
       a.name.localeCompare(b.name) || a.lmSize.localeCompare(b.lmSize) || b.run.localeCompare(a.run));
     res.json({ root, adapters } satisfies LmAdaptersResponse);
   } catch (err: any) {
-    res.json({ root: folderParam || config.aceServer.adapters, adapters: [], error: err.message } satisfies LmAdaptersResponse);
+    res.json({ root: folderParam || privateAdapters(), adapters: [], error: err.message } satisfies LmAdaptersResponse);
   }
 });
 

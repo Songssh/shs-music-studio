@@ -1,3 +1,4 @@
+import { assistantHistory, beginAssistantTurn, updateAssistantTurn, clearAssistantHistory } from '../auth/assistantHistory.js';
 // assistant.ts — AI Assistant chat route with SSE streaming
 //
 // Provides a stateless chat endpoint that:
@@ -130,7 +131,11 @@ function buildUserPrompt(history: ChatMessage[], currentMessage: string): string
  *   event: complete — { text: "..." }        (full response)
  *   event: error — { error: "..." }          (on failure)
  */
+router.get('/history',(_req,res)=>res.json({messages:assistantHistory()}));
+router.delete('/history',(_req,res)=>{clearAssistantHistory();res.json({ok:true});});
+
 router.post('/chat', async (req: Request, res: Response) => {
+  let turnId:string|undefined;
   try {
     const {
       message,
@@ -166,6 +171,8 @@ router.post('/chat', async (req: Request, res: Response) => {
 
     console.log(`[Assistant] Chat via ${providerName}/${resolvedModel} (${(systemPrompt.length / 1024).toFixed(1)}K system, ${(userPrompt.length / 1024).toFixed(1)}K user)`);
 
+    turnId=beginAssistantTurn(message);
+    let lastSave=0;
     // Set up SSE
     const sendSse = initSse(res);
     let fullText = '';
@@ -177,6 +184,7 @@ router.post('/chat', async (req: Request, res: Response) => {
       resolvedModel,
       (chunk: string) => {
         fullText += chunk;
+        if(Date.now()-lastSave>250){updateAssistantTurn(turnId!,fullText);lastSave=Date.now();}
         sendSse('chunk', { text: chunk });
       },
     );
@@ -188,9 +196,11 @@ router.post('/chat', async (req: Request, res: Response) => {
       sendSse('chunk', { text: result });
     }
 
+    updateAssistantTurn(turnId!,fullText || result,'complete');
     sendSse('complete', { text: fullText || result });
     res.end();
   } catch (err: any) {
+    if(turnId)updateAssistantTurn(turnId,String(err.message),'failed');
     // The provider's abort fires exactly when a render holds the GPU and a
     // local model is being starved (#136): say so, and name the setting.
     if (/abort|timeout/i.test(`${err?.name} ${err?.message}`) && gpuLaneBusy()) {

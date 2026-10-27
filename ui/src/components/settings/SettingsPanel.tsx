@@ -1,6 +1,6 @@
 // SettingsPanel.tsx — Application settings with persistent state
 //
-// All settings use localStorage via usePersistedState and survive page refreshes.
+// All settings use userStorage via usePersistedState and survive page refreshes.
 // Environment settings read from / write to the server's .env file.
 
 import React, { useState, useEffect, useCallback } from 'react';

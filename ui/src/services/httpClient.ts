@@ -1,7 +1,7 @@
 // httpClient.ts — one configurable client for every /api/* call.
 //
 // JSON traffic goes through the shared axios instance (axiosClient.ts): its
-// request interceptor injects the bearer from the auth session accessor, and
+// request interceptor adds the expected account ID alongside cookie auth, and
 // its response interceptor is the global catch that normalizes failures to
 // ApiError (status + optional currentRevision + reason) — `instanceof
 // ApiError` is enough, callers don't need a second error class.
@@ -20,8 +20,8 @@ export { ApiError };
 
 /** Trailing options every entrypoint accepts, so a query function can pass
  *  TanStack Query's AbortSignal without changing positional callers. The
- *  bearer is no longer threaded per call — the transport reads it from the
- *  auth session accessor (axiosClient.ts). */
+ *  expected account ID comes from the session accessor (axiosClient.ts);
+ *  the HttpOnly session cookie supplies authentication. */
 export interface ClientOptions {
   signal?: AbortSignal;
   /** Opt this request out of the global error toast (X-Skip-Global-Error). */
@@ -131,7 +131,7 @@ export class ApiClient {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', this.url(path));
       const token = getAuthToken();
-      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      if (token) xhr.setRequestHeader('X-Hotstep-User', token);
       if (opts.onProgress) {
         xhr.upload.onprogress = (e) => { if (e.lengthComputable) opts.onProgress!(e.loaded / e.total); };
       }
@@ -157,18 +157,14 @@ export class ApiClient {
     });
   }
 
-  /** The URL to pass to EventSource/sharedEventSource for a streaming route
-   *  under this client's base. Only for routes that don't check the bearer
-   *  token: EventSource cannot set a header, and the server reads auth from
-   *  `Authorization` only (`server/src/routes/auth.ts` getUserId) — a token
-   *  query param here would silently 401 against any authenticated SSE
-   *  route. An authenticated stream needs `streamEvents()` below instead. */
+  /** Same-origin EventSource sends the session cookie. Account changes tear
+   *  down the page and its subscriptions; no token belongs in this URL. */
   eventSourceUrl(path: string): string {
     return this.url(path);
   }
 
-  /** Read a Server-Sent-Events route that needs the bearer token, via fetch
-   *  rather than EventSource (which cannot send one). Splits frames the same
+  /** Read a cookie-authenticated SSE route with an expected-account header.
+   *  Splits frames the same
    *  way `workflowApi.ts`'s `followJob` does; `onData` gets each frame's raw
    *  `data:` payload to parse. Resolves when the server ends the stream;
    *  rejects on an aborted `signal` or a non-OK response (after throwing the
@@ -178,7 +174,7 @@ export class ApiClient {
    *  default timeout applies to an open stream. */
   async streamEvents(path: string, onData: (data: string) => void, opts: ClientOptions = {}): Promise<void> {
     const token = getAuthToken();
-    const res = await fetch(this.url(path), { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: opts.signal });
+    const res = await fetch(this.url(path), { headers: token ? { 'X-Hotstep-User': token } : {}, credentials: 'same-origin', signal: opts.signal });
     if (!res.ok) await sseFailure(res, 'GET', this.url(path), opts.silent);
     if (!res.body) return;
     const reader = res.body.getReader();

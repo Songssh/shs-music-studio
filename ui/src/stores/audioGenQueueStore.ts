@@ -1,10 +1,11 @@
+import { userStorage, userDatabaseName } from '../auth/userStorage';
 /**
  * audioGenQueueStore.ts — Module-level singleton for sequential audio generation.
  *
  * Manages a queue of audio generation jobs with:
  * - Artist-batched execution (reorders pending items to minimize adapter switches)
  * - Progress polling and status tracking
- * - localStorage persistence — queue survives page reloads / HMR
+ * - userStorage persistence — queue survives page reloads / HMR
  * - Resume on reload — in-flight jobs resume polling automatically
  *
  * Adapted for the C++ engine which accepts adapter params directly in the generate call
@@ -241,23 +242,23 @@ function _syncTakeSiblings(item: AudioQueueItem, status?: GenerationJob): void {
 }
 
 // ── Persistence (IndexedDB — no 5MB cap) ─────────────────────────────────────
-// localStorage has a hard 5MB browser limit that large queues (600+ items with
+// userStorage has a hard 5MB browser limit that large queues (600+ items with
 // lyrics/prompts) easily exceed. IndexedDB has virtually unlimited storage
 // (~50% of available disk space). Writes are async and non-blocking.
 
 const IDB_NAME = 'lireek-queue-store';
 const IDB_STORE = 'queue';
 const IDB_KEY = 'state';
-const LS_KEY = 'lireek-audio-gen-queue'; // legacy localStorage key for migration
+const LS_KEY = 'lireek-audio-gen-queue'; // legacy userStorage key for migration
 export const OWNER_KEY = 'lireek-audio-queue-owner-v1';
 export const BACKUP_KEY = 'server-migration-backup-v1';
 export const PENDING_IMPORT_KEY = `${BACKUP_KEY}:pending-import`;
 export const ROLLBACK_PLAN_KEY = `${BACKUP_KEY}:rollback-plan`;
-/** Set while an explicit rollback is unfinished (localStorage, read at load). */
+/** Set while an explicit rollback is unfinished (userStorage, read at load). */
 export const ROLLBACK_REQUESTED_KEY = 'lireek-audio-queue-rollback-requested-v1'; // the exact resolved import request, persisted before the POST so a reload can replay it verbatim
 type QueueOwner = 'browser' | 'migrating' | 'server';
 function queueOwner(): QueueOwner {
-  const value = localStorage.getItem(OWNER_KEY);
+  const value = userStorage.getItem(OWNER_KEY);
   return value === 'server' || value === 'migrating' ? value : 'browser';
 }
 
@@ -265,7 +266,7 @@ let _persistTimer: ReturnType<typeof setTimeout> | null = null;
 
 function _openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, 1);
+    const req = indexedDB.open(userDatabaseName(IDB_NAME), 1);
     req.onupgradeneeded = () => {
       if (!req.result.objectStoreNames.contains(IDB_STORE)) {
         req.result.createObjectStore(IDB_STORE);
@@ -306,7 +307,7 @@ async function _idbSet(key: string, value: unknown): Promise<void> {
  *  default 0.6B LM and the engine refused it outright ("LM adapter has 36 layers
  *  but model has 28"). Every item failed that way after a reload or restart.
  *
- *  Stripping was originally to stay under the 5MB localStorage cap, which no
+ *  Stripping was originally to stay under the 5MB userStorage cap, which no
  *  longer applies now the queue lives in IndexedDB. */
 function _dataForStorage(): { items: AudioQueueItem[]; completionCounter: number } {
   return {
@@ -347,25 +348,25 @@ function _sanitizeItems(items: AudioQueueItem[]): AudioQueueItem[] {
   });
 }
 
-/** Async restore from IndexedDB (with one-time localStorage migration). */
+/** Async restore from IndexedDB (with one-time userStorage migration). */
 async function _restoreFromIDB(): Promise<void> {
   try {
     // Try IDB first
     let data = await _idbGet<{ items: AudioQueueItem[]; completionCounter: number }>(IDB_KEY);
 
-    // One-time migration from localStorage → IDB
+    // One-time migration from userStorage → IDB
     if (!data) {
       try {
-        const raw = localStorage.getItem(LS_KEY);
+        const raw = userStorage.getItem(LS_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
           data = { items: parsed.items || [], completionCounter: parsed.completionCounter || 0 };
           // Keep the legacy source until an explicit, verified server import.
           await _idbSet(IDB_KEY, data);
-          console.log('[AudioGenQueue] Migrated', data.items.length, 'items from localStorage to IndexedDB');
+          console.log('[AudioGenQueue] Migrated', data.items.length, 'items from userStorage to IndexedDB');
         }
       } catch (e) {
-        console.warn('[AudioGenQueue] localStorage migration failed:', e);
+        console.warn('[AudioGenQueue] userStorage migration failed:', e);
       }
     }
 
@@ -402,8 +403,8 @@ const _idbReady: Promise<void> = _restoreFromIDB().then(() => { void _hydrateFin
 
 function migrationStore(): QueueBackupStore {
   return {
-    readLegacy: () => localStorage.getItem(LS_KEY),
-    writeLegacy: raw => raw === null ? localStorage.removeItem(LS_KEY) : localStorage.setItem(LS_KEY, raw),
+    readLegacy: () => userStorage.getItem(LS_KEY),
+    writeLegacy: raw => raw === null ? userStorage.removeItem(LS_KEY) : userStorage.setItem(LS_KEY, raw),
     readIndexedDb: async () => (await _idbGet(IDB_KEY)) ?? null,
     writeIndexedDb: value => _idbSet(IDB_KEY, value),
     saveBackup: backup => _idbSet(`${BACKUP_KEY}:${backup.id}`, backup),
@@ -447,9 +448,9 @@ async function resolvedRequestForImport(item: AudioQueueItem): Promise<Record<st
 function writtenSongIntentFor(item: AudioQueueItem): WrittenSongIntent {
   const backendId = typeof item.globalParams.backend === 'string'
     ? item.globalParams.backend : useBackendStore.getState().activeBackendId;
-  const appSettings = JSON.parse(localStorage.getItem('ace-settings') || '{}') as Record<string, unknown>;
+  const appSettings = JSON.parse(userStorage.getItem('ace-settings') || '{}') as Record<string, unknown>;
   const readSetting = (key: string, fallback: string) => {
-    try { return JSON.parse(localStorage.getItem(key) || '') as string; }
+    try { return JSON.parse(userStorage.getItem(key) || '') as string; }
     catch { return fallback; }
   };
   const datasetId = backendId === YUE2_BACKEND_ID ? readYue2DatasetForLyricsSet(item.lyricsSetId) : '';
@@ -462,7 +463,7 @@ function writtenSongIntentFor(item: AudioQueueItem): WrittenSongIntent {
       triggerUseFilename: appSettings.triggerUseFilename === true,
       triggerPlacement: appSettings.triggerPlacement === 'append' || appSettings.triggerPlacement === 'replace'
         ? appSettings.triggerPlacement : 'prepend',
-      randomizeTimbreRef: localStorage.getItem('lireek-randomizeTimbreRef') === 'true',
+      randomizeTimbreRef: userStorage.getItem('lireek-randomizeTimbreRef') === 'true',
       masterToAlbumTrack: masterToAlbumEnabled(),
       timeSignature: readSetting('hs-timeSignature', ''),
       vocalLanguage: readSetting('hs-vocalLanguage', 'en'), app: appSettings,
@@ -505,9 +506,9 @@ async function _submitImport(token: string, payload: ImportAudioQueue): Promise<
   // describes it. Marker and plan go before the owner changes. A crash in
   // between leaves 'migrating' with no rollback pending, which reload
   // resolves by replaying this same, idempotent import.
-  localStorage.removeItem(ROLLBACK_REQUESTED_KEY);
+  userStorage.removeItem(ROLLBACK_REQUESTED_KEY);
   await _idbSet(ROLLBACK_PLAN_KEY, null);
-  localStorage.setItem(OWNER_KEY, 'server');
+  userStorage.setItem(OWNER_KEY, 'server');
   _lastToken = token;
   _startServerProjection(token);
   return receipt;
@@ -526,9 +527,9 @@ export async function migrateAudioQueue(token: string, choice: 'hold' | 'resume'
   const backup = await exportQueueBackup(migrationStore());
   if (download) downloadQueueExport(`audio-queue-backup-${backup.id}.json`, backup);
   // A fresh move: nothing left from an earlier rollback applies to it.
-  localStorage.removeItem(ROLLBACK_REQUESTED_KEY);
+  userStorage.removeItem(ROLLBACK_REQUESTED_KEY);
   await _idbSet(ROLLBACK_PLAN_KEY, null);
-  localStorage.setItem(OWNER_KEY, 'migrating');
+  userStorage.setItem(OWNER_KEY, 'migrating');
   const items = await _resolveImportItems(backup);
   const payload: ImportAudioQueue = { backupId: backup.id, choice, items };
   await _idbSet(PENDING_IMPORT_KEY, payload);
@@ -691,7 +692,7 @@ function _startServerProjection(token: string): void {
 
 export function getAudioQueueOwner(): QueueOwner { return queueOwner(); }
 /** True while an explicit rollback started but has not finished. */
-export function isAudioQueueRollbackPending(): boolean { return localStorage.getItem(ROLLBACK_REQUESTED_KEY) !== null; }
+export function isAudioQueueRollbackPending(): boolean { return userStorage.getItem(ROLLBACK_REQUESTED_KEY) !== null; }
 
 /** Test-only: resets every module-level singleton this file keeps (state,
  *  the resume/owner-decision call-once guards, timers) so each test in the
@@ -748,14 +749,14 @@ export async function rollbackAudioQueue(): Promise<void> {
   if (!backupId) {
     // Neither a completed import nor a persisted attempt — nothing was ever
     // sent, so there is nothing to reconcile. Just release the fence.
-    localStorage.setItem(OWNER_KEY, 'browser');
+    userStorage.setItem(OWNER_KEY, 'browser');
     _emit(true);
     return;
   }
   const backup = await migrationStore().readBackup(backupId);
   if (!backup) throw new Error('Original browser backup is missing; browser ownership was not changed');
-  localStorage.setItem(ROLLBACK_REQUESTED_KEY, backupId);
-  localStorage.setItem(OWNER_KEY, 'migrating');
+  userStorage.setItem(ROLLBACK_REQUESTED_KEY, backupId);
+  userStorage.setItem(OWNER_KEY, 'migrating');
   if (_serverProjectionTimer) clearInterval(_serverProjectionTimer);
   _serverProjectionTimer = null;
   _emit(true);
@@ -815,16 +816,16 @@ export async function rollbackAudioQueue(): Promise<void> {
     // migrateAudioQueue clears. The reverse would leave 'migrating' with no
     // plan, and a retry would rebuild the queue from a server export this
     // rollback has already cancelled.
-    localStorage.setItem(OWNER_KEY, 'browser');
+    userStorage.setItem(OWNER_KEY, 'browser');
   } catch (err) {
     // Fenced: no browser execution, and the banner keeps Retry and rollback.
-    localStorage.setItem(OWNER_KEY, 'migrating');
+    userStorage.setItem(OWNER_KEY, 'migrating');
     _emit(true);
     throw err;
   }
   // The rollback is done; failing to tidy up must not reopen it.
   try {
-    localStorage.removeItem(ROLLBACK_REQUESTED_KEY);
+    userStorage.removeItem(ROLLBACK_REQUESTED_KEY);
     await _idbSet(ROLLBACK_PLAN_KEY, null);
   } catch (err) { console.warn('[AudioGenQueue] rollback finished; clearing its plan failed:', err); }
   _emit(true);
@@ -1268,17 +1269,17 @@ export async function resetServerQueue(): Promise<{ cancelled: number; drained: 
 
 const SEND_TO_PLAYLIST_KEY = 'hs-sendToPlaylist';
 
-/** Read the "Send To Playlist" toggle from localStorage. */
+/** Read the "Send To Playlist" toggle from userStorage. */
 export function getSendToPlaylist(): boolean {
   try {
-    const raw = localStorage.getItem(SEND_TO_PLAYLIST_KEY);
+    const raw = userStorage.getItem(SEND_TO_PLAYLIST_KEY);
     return raw ? JSON.parse(raw) === true : false;
   } catch { return false; }
 }
 
-/** Write the "Send To Playlist" toggle to localStorage. */
+/** Write the "Send To Playlist" toggle to userStorage. */
 export function setSendToPlaylist(enabled: boolean): void {
-  localStorage.setItem(SEND_TO_PLAYLIST_KEY, JSON.stringify(enabled));
+  userStorage.setItem(SEND_TO_PLAYLIST_KEY, JSON.stringify(enabled));
 }
 
 /** If the toggle is on, auto-add the completed item to the playlist. */
@@ -1600,9 +1601,9 @@ export function ensureQueueOwnerDecided(token: string): Promise<void> {
     _ownerDecision = (async () => {
       await _idbReady;
       const hasPending = _state.items.some(item => item.status !== 'succeeded' && item.status !== 'failed');
-      const action = decideQueueOwnerAction(localStorage.getItem(OWNER_KEY), hasPending, isAudioQueueRollbackPending());
+      const action = decideQueueOwnerAction(userStorage.getItem(OWNER_KEY), hasPending, isAudioQueueRollbackPending());
       if (action === 'none') return;
-      if (action === 'set-server') { localStorage.setItem(OWNER_KEY, 'server'); _emit(true); return; }
+      if (action === 'set-server') { userStorage.setItem(OWNER_KEY, 'server'); _emit(true); return; }
       if (action === 'retry') {
         try { await retryQueueMigration(token); }
         catch (e) { console.error('[AudioGenQueue] migration retry failed, staying fenced:', e); }
@@ -2074,11 +2075,11 @@ async function _executeItem(item: AudioQueueItem): Promise<void> {
   if ((await readSelectedPath()) === 'resolved') {
     if (backendId === YUE2_BACKEND_ID) await ensureYue2CaptionSource({ lyricsSet: item.lyricsSetId });
     const appSettings = (() => {
-      try { return JSON.parse(localStorage.getItem('ace-settings') || '{}') as Record<string, unknown>; }
+      try { return JSON.parse(userStorage.getItem('ace-settings') || '{}') as Record<string, unknown>; }
       catch { return {} as Record<string, unknown>; }
     })();
     const storedSetting = (key: string, fallback: string) => {
-      try { return JSON.parse(localStorage.getItem(key) || '') as string; }
+      try { return JSON.parse(userStorage.getItem(key) || '') as string; }
       catch { return fallback; }
     };
     const datasetId = backendId === YUE2_BACKEND_ID ? readYue2DatasetForLyricsSet(item.lyricsSetId) : '';
@@ -2094,7 +2095,7 @@ async function _executeItem(item: AudioQueueItem): Promise<void> {
         triggerPlacement: appSettings.triggerPlacement === 'append' || appSettings.triggerPlacement === 'replace'
           ? appSettings.triggerPlacement : 'prepend',
         randomizeTimbreRef: (() => {
-          try { return JSON.parse(localStorage.getItem('lireek-randomizeTimbreRef') || 'false') === true; }
+          try { return JSON.parse(userStorage.getItem('lireek-randomizeTimbreRef') || 'false') === true; }
           catch { return false; }
         })(),
         masterToAlbumTrack: masterToAlbumEnabled(),
@@ -2195,25 +2196,25 @@ async function _executeItem(item: AudioQueueItem): Promise<void> {
   if (gen.subject) params.subject = gen.subject;
 
   // 2b) Per-song params that the Create page sends from its local state.
-  //     Read from the same localStorage keys to maintain parity.
+  //     Read from the same userStorage keys to maintain parity.
   //     Fallbacks match CreatePanel defaults: '' (auto) for timesig, 'en' for language.
   if (!params.timeSignature) {
     try {
-      const stored = localStorage.getItem('hs-timeSignature');
+      const stored = userStorage.getItem('hs-timeSignature');
       params.timeSignature = stored ? JSON.parse(stored) : '';
     } catch { params.timeSignature = ''; }
   }
   if (!params.vocalLanguage) {
     try {
-      const stored = localStorage.getItem('hs-vocalLanguage');
+      const stored = userStorage.getItem('hs-vocalLanguage');
       params.vocalLanguage = stored ? JSON.parse(stored) : 'en';
     } catch { params.vocalLanguage = 'en'; }
   }
 
   // 2c) Settings flags — Create page adds these from App settings.
-  //     Read from localStorage (same key as App.tsx / SettingsPanel).
+  //     Read from userStorage (same key as App.tsx / SettingsPanel).
   try {
-    const settingsRaw = localStorage.getItem('ace-settings');
+    const settingsRaw = userStorage.getItem('ace-settings');
     if (settingsRaw) {
       const appSettings = JSON.parse(settingsRaw);
       params.coResident = appSettings.coResident;
@@ -2251,7 +2252,7 @@ async function _executeItem(item: AudioQueueItem): Promise<void> {
 
     // Re-derive trigger word from the PRESET adapter filename (globalParams
     // has the trigger word for the GLOBAL adapter, which may differ).
-    const settingsRaw = localStorage.getItem('ace-settings');
+    const settingsRaw = userStorage.getItem('ace-settings');
     const triggerSettings = settingsRaw ? JSON.parse(settingsRaw) : {};
     const useFilename = triggerSettings.triggerUseFilename === true;
     const placement = (triggerSettings.triggerPlacement as 'prepend' | 'append' | 'replace') || 'prepend';
@@ -2321,7 +2322,7 @@ async function _executeItem(item: AudioQueueItem): Promise<void> {
 
     // Randomize Timbre: pick a random track from the same folder instead of the exact file
     try {
-      const raw = localStorage.getItem('lireek-randomizeTimbreRef');
+      const raw = userStorage.getItem('lireek-randomizeTimbreRef');
       if (raw && JSON.parse(raw) === true) {
         params.randomizeTimbreRef = true;
       }

@@ -1,3 +1,4 @@
+import { privateAdapters } from '../../auth/privatePaths.js';
 // training/mm3Train.ts — MiniMax-Music3 training: paths, defaults, arg building.
 //
 // The MM3 analogue of aceTrain.ts. Kept apart from it deliberately: the two
@@ -493,7 +494,7 @@ export function mm3CodesDir(slug: string, laundered = false): string {
  *  levels under this root and reads `<file>.json` as the sidecar, which is
  *  exactly the layout `ace-train mm3-lm-train` writes. */
 export function mm3AdapterRunDir(runName: string): string {
-  return path.join(config.aceServer.adapters, 'mm3-lm-adapters', runName);
+  return path.join(privateAdapters(), 'mm3-lm-adapters', runName);
 }
 
 /** `<dataset>-YYYY-MM-DD_HH-MM-SS`, the logs/ convention: name-sorted is
@@ -1327,7 +1328,7 @@ export function buildMm3TrainLmArgs(o: ResolvedMm3TrainLmOptions): string[] {
     // it on here means the illegal state fails loudly instead of quietly.
     if (o.pissa && !o.dora && !o.hira && !o.loha) {
       args.push(o.hotPizza ? '--hot-pizza' : '--pissa');
-      if (o.pissaCache) args.push('--pissa-cache-dir', path.join(config.aceServer.adapters, 'mm3-lm-adapters', '_pissa-init-cache'));
+      if (o.pissaCache) args.push('--pissa-cache-dir', path.join(privateAdapters(), 'mm3-lm-adapters', '_pissa-init-cache'));
       if (o.pissaFrozenF16) args.push('--pissa-frozen-f16');
     }
     // rslora is in the guard because the engine refuses --hra --rslora, but the

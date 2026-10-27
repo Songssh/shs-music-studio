@@ -1,3 +1,4 @@
+import { privateDirectory } from '../../../auth/privatePaths.js';
 // minimax/hiddens.ts — saved MM3 plans (`.mm3hiddens`).
 //
 // The AR cache (engine mm3-ar-cache.h) holds one stage-1 plan in host RAM and
@@ -59,7 +60,7 @@ export interface Mm3HiddensMeta {
 
 /** Sibling of the audio directory, so plans travel with a data-dir move. */
 export function mm3HiddensDir(): string {
-  return path.join(path.dirname(config.data.audioDir), 'mm3-hiddens');
+  return privateDirectory('mm3-hiddens',path.join(path.dirname(config.data.audioDir), 'mm3-hiddens'));
 }
 
 /** Create the directory on demand. Returns the path either way — a save that

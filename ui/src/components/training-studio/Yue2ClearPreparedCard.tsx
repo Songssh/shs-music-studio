@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 // Yue2ClearPreparedCard.tsx — "clear prepared data", beside "Perform all stages"
 // on the YuE2 Prepare page. The Joint Training card still owns the stored form
 // and prepare keys this resets after a full wipe.
@@ -46,11 +47,11 @@ export const Yue2ClearPreparedCard: React.FC<{ datasetId: string; disabled: bool
       if (includeCore) {
         // The prepared manifest the form points at is gone with the core.
         try {
-          const form = JSON.parse(window.localStorage.getItem(`${FORM_KEY}${datasetId}`) || '{}') as Record<string, unknown>;
-          window.localStorage.setItem(`${FORM_KEY}${datasetId}`, JSON.stringify({ ...form, resume: '', dataset: '' }));
+          const form = JSON.parse(userStorage.getItem(`${FORM_KEY}${datasetId}`) || '{}') as Record<string, unknown>;
+          userStorage.setItem(`${FORM_KEY}${datasetId}`, JSON.stringify({ ...form, resume: '', dataset: '' }));
         } catch { /* no stored form */ }
-        window.localStorage.removeItem(`${PREP_KEY}${datasetId}:manifest`);
-        window.localStorage.removeItem(`${PREP_KEY}${datasetId}:applied`);
+        userStorage.removeItem(`${PREP_KEY}${datasetId}:manifest`);
+        userStorage.removeItem(`${PREP_KEY}${datasetId}:applied`);
         window.location.reload();
         return;
       }

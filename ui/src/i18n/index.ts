@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
@@ -19,10 +20,12 @@ export const SUPPORTED_LANGUAGES = [
   { code: 'ko', name: '한국어', flag: '🇰🇷' },
 ] as const;
 
+const detector = new LanguageDetector();
+detector.addDetector({name:'accountStorage',lookup:()=>userStorage.getItem('i18nextLng')??undefined,cacheUserLanguage:language=>userStorage.setItem('i18nextLng',language)});
 i18n
   // detect user language
   // learn more: https://github.com/i18next/i18next-browser-languageDetector
-  .use(LanguageDetector)
+  .use(detector)
   // pass the i18n instance to react-i18next.
   .use(initReactI18next)
   // init i18next
@@ -46,11 +49,11 @@ i18n
     
     detection: {
       // Order and from where user language should be detected
-      order: ['localStorage', 'navigator'],
+      order: ['accountStorage', 'navigator'],
       // Keys or params to lookup language from
       lookupLocalStorage: 'i18nextLng',
       // Cache user language on
-      caches: ['localStorage'],
+      caches: ['accountStorage'],
     }
   });
 

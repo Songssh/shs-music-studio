@@ -311,11 +311,11 @@ function enrichFromLireek(audioUrl: string): { artistName?: string; album?: stri
   try {
     const row = getDb().prepare(
       `SELECT a.name AS artist_name, ls.album
-       FROM audio_generations ag
-       JOIN generations g ON g.id = ag.generation_id
-       JOIN profiles p ON p.id = g.profile_id
-       JOIN lyrics_sets ls ON ls.id = COALESCE(ag.lyrics_set_id, p.lyrics_set_id)
-       JOIN artists a ON a.id = ls.artist_id
+       FROM auth_owned_audio_generations ag
+       JOIN auth_owned_generations g ON g.id = ag.generation_id
+       JOIN auth_owned_profiles p ON p.id = g.profile_id
+       JOIN auth_owned_lyrics_sets ls ON ls.id = COALESCE(ag.lyrics_set_id, p.lyrics_set_id)
+       JOIN auth_owned_artists a ON a.id = ls.artist_id
        WHERE ag.audio_url = ?`
     ).get(audioUrl) as any;
 

@@ -1,7 +1,7 @@
 // generation/translateParams.ts — Translate frontend params to AceRequest format
 //
-// Pure function with zero side effects. Maps UI-facing parameter names
-// to the AceRequest schema expected by the ace-server engine.
+// Maps UI-facing parameters to the engine schema. Authenticated submissions
+// revalidate private adapters, including references restored from saved projects.
 
 import type { AceRequest } from '../../services/aceClient.js';
 import { mapPath } from '../../services/pathMapper.js';
@@ -9,6 +9,8 @@ import { normalizeLanguage } from '../languageCodes.js';
 import { parseAdapterSections, stripAdapterDirectives } from './adapterSections.js';
 import { applyTriggers, resolveAdapterTriggers, resolveTriggerSpecs } from './triggerWords.js';
 import { readAdapterTrigger } from '../adapters/stMetadata.js';
+import { principalOf } from '../../auth/principal.js';
+import { ownedAdapter } from '../../auth/adapters.js';
 
 /** Samples per compiled timestep gain curve (t ∈ [0,1], uniform). */
 const GAIN_CURVE_SAMPLES = 33;
@@ -45,6 +47,11 @@ function windowToGainCurve(start: number, end: number, soft = 0.1): number[] {
 
 /** Translate frontend params to AceRequest format */
 export function translateParams(params: any): AceRequest {
+  if (principalOf()) {
+    if (params.lmAdapter) ownedAdapter(mapPath(params.lmAdapter)!,true);
+    if (params.loraPath) ownedAdapter(mapPath(params.loraPath)!);
+    for (const entry of params.loraStack ?? []) if(entry?.path) ownedAdapter(mapPath(entry.path)!);
+  }
   const req: AceRequest = {
     caption: params.prompt || params.songDescription || params.caption || params.style || '',
   };

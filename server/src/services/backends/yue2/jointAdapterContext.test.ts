@@ -7,7 +7,7 @@ import type { Yue2AitkRunRecord } from '../../training/yue2AitkRuns.js';
 
 // A fresh DATA_DIR and database: the fallback path reads the dataset table.
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'yue2-trigger-data-'));
-(await import('../../../db/database.js')).initDb();
+(await import('../../../auth/dbFixture.js')).initDb();
 const { yue2AdapterTrigger } = await import('./jointAdapterContext.js');
 
 function run(styles: string[], method = 'fixed-recipe'): { ref: string; runs: Yue2AitkRunRecord[] } {

@@ -21,7 +21,7 @@ test('dataset creation assigns a distinct trigger and leaves a unique one alone'
   try {
     const script = [
       "import fs from 'node:fs'; import path from 'node:path'; import assert from 'node:assert/strict';",
-      "import { initDb } from './src/db/database.js'; import { createDatasetFromFolder } from './src/services/training/datasetCreate.js';",
+      "import { initDb } from './src/auth/dbFixture.js'; import { createDatasetFromFolder } from './src/services/training/datasetCreate.js';",
       "initDb(); const root = process.env.TRAINING_DIR;",
       "async function create(name, tag) { const sourceDir = path.join(root, name); fs.mkdirSync(sourceDir, { recursive: true }); fs.writeFileSync(path.join(sourceDir, 'track.wav'), 'audio'); return createDatasetFromFolder({ name, sourceDir, customTag: tag }); }",
       "assert.equal((await create('Base', 'base')).customTag, 'base');",
@@ -210,7 +210,7 @@ test('joint catalogue reconciles copied folders, stale records and active runs',
   try {
     const script = [
       "import fs from 'node:fs'; import path from 'node:path'; import assert from 'node:assert/strict';",
-      "import { initDb } from './src/db/database.js'; import { insertDataset, listDatasets } from './src/services/training/datasetsRepo.js';",
+      "import { initDb } from './src/auth/dbFixture.js'; import { insertDataset, listDatasets } from './src/services/training/datasetsRepo.js';",
       "import { recordYue2AitkRun, listAllYue2AitkRuns, findYue2JointAdaptersFor, reconcileYue2AitkRunsAtStartup, aitkRunIndexPath } from './src/services/training/yue2AitkRuns.js';",
       "initDb(); const root = path.join(process.env.ACESTEPCPP_ADAPTERS, 'yue2-joint-adapters'); fs.mkdirSync(root, { recursive: true });",
       "const now = new Date().toISOString();",
@@ -249,7 +249,7 @@ test('startup reconcile only interrupts a local running row, never a remote-orig
   try {
     const script = [
       "import path from 'node:path'; import assert from 'node:assert/strict';",
-      "import { initDb } from './src/db/database.js'; import { insertDataset } from './src/services/training/datasetsRepo.js';",
+      "import { initDb } from './src/auth/dbFixture.js'; import { insertDataset } from './src/services/training/datasetsRepo.js';",
       "import { recordYue2AitkRun, listAllYue2AitkRuns, reconcileYue2AitkRunsAtStartup } from './src/services/training/yue2AitkRuns.js';",
       "initDb();",
       "const now = new Date().toISOString();",

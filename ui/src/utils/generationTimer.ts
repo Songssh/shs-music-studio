@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 /**
  * generationTimer.ts — queue-aware timing for audio generation jobs.
  *
@@ -14,7 +15,7 @@
  * feeds it the latest status via `tick()` and uses the returned values.
  */
 
-/** Read the generation timeout (minutes) from localStorage settings.
+/** Read the generation timeout (minutes) from userStorage settings.
  *  Mirrors SettingsPanel's clamp/default (30 min, [10, 360]).
  *
  *  The upper bound must stay >= the largest option SettingsPanel offers, or a
@@ -27,7 +28,7 @@ const TIMEOUT_MAX_MINUTES = 360;
 
 export function getGenerationTimeoutMinutes(): number {
   try {
-    const raw = localStorage.getItem('ace-settings');
+    const raw = userStorage.getItem('ace-settings');
     if (raw) {
       const parsed = JSON.parse(raw);
       const val = parsed.generationTimeoutMinutes;

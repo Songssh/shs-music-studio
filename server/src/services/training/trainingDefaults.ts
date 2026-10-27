@@ -1,3 +1,4 @@
+import { ownerId } from '../../auth/principal.js';
 // training/trainingDefaults.ts — persisted per-stage option defaults
 //
 // The batch pipeline runs stages with no user in the loop, so the option bodies
@@ -32,7 +33,7 @@ export function getTrainingDefaults(): TrainingDefaults {
   try {
     const row = getDb()
       .prepare('SELECT value FROM settings WHERE key = ?')
-      .get(SETTINGS_KEY) as { value?: string } | undefined;
+      .get(`${SETTINGS_KEY}:${ownerId()}`) as { value?: string } | undefined;
     raw = row?.value ?? '';
   } catch (err: any) {
     console.warn(`[Training] Could not read training defaults: ${err.message}`);
@@ -68,7 +69,7 @@ export function setTrainingDefaults(patch: Partial<TrainingDefaults>): TrainingD
   }
   getDb().prepare(
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-  ).run(SETTINGS_KEY, JSON.stringify(merged));
+  ).run(`${SETTINGS_KEY}:${ownerId()}`, JSON.stringify(merged));
   return merged;
 }
 

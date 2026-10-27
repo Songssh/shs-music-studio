@@ -1,3 +1,4 @@
+import { assets, requireFile } from '../auth/ownership.js';
 // songs.ts — Song CRUD routes + audio file serving
 //
 // Songs are stored in SQLite. Audio files are saved to data/audio/.
@@ -22,6 +23,8 @@ import { SONG_EDITABLE_FIELDS } from '../contracts/songs.js';
 import { planZipEntries, parseZipIds, streamZip, MAX_ZIP_IDS, MAX_ZIP_BYTES } from '../services/library/exportZip.js';
 
 const router = Router();
+router.param('id',(req,res,next,id)=>{if(!getDb().prepare('SELECT 1 FROM songs WHERE id=? AND user_id=?').get(id,getUserId(req))){res.status(404).json({error:'Song not found'});return;}next();});
+router.use((req,res,next)=>{try{for(const [key,value] of Object.entries(req.method==='PATCH'?{}:(req.body??{})))if(typeof value==='string'&&value&&(key.endsWith('_url')||key==='audioUrl'))requireFile(value,getUserId(req)!);next();}catch{res.status(404).json({error:'Resource not found'});}});
 
 // Uploads land on disk rather than in memory: an album's worth of FLAC at
 // 100 MB a file is not something to hold in the heap while ffmpeg works.
@@ -104,11 +107,11 @@ router.get('/recent', (req, res) => {
       const enrichRows = getDb().prepare(
         `SELECT ag.audio_url, a.name AS artist_name, a.image_url AS artist_image,
                 ls.album, g.id AS generation_id
-         FROM audio_generations ag
-         JOIN generations g ON g.id = ag.generation_id
-         JOIN profiles p ON p.id = g.profile_id
-         JOIN lyrics_sets ls ON ls.id = COALESCE(ag.lyrics_set_id, p.lyrics_set_id)
-         JOIN artists a ON a.id = ls.artist_id
+         FROM auth_owned_audio_generations ag
+         JOIN auth_owned_generations g ON g.id = ag.generation_id
+         JOIN auth_owned_profiles p ON p.id = g.profile_id
+         JOIN auth_owned_lyrics_sets ls ON ls.id = COALESCE(ag.lyrics_set_id, p.lyrics_set_id)
+         JOIN auth_owned_artists a ON a.id = ls.artist_id
          WHERE ag.audio_url IN (${placeholders})`
       ).all(...audioUrls) as any[];
       for (const row of enrichRows) {
@@ -424,7 +427,7 @@ router.post('/bulk-delete', (req, res) => {
   console.log(`[Songs] Bulk deleted ${result.changes}/${ids.length} songs`);
 
   // Cascade to Lireek DB
-  try { deleteAudioGenerationsByJobIds(ids); } catch { /* lireek DB may not be initialized */ }
+  try { deleteAudioGenerationsByJobIds(songs.map(s => s.id)); } catch { /* lireek DB may not be initialized */ }
 
   res.json({ success: true, deletedCount: result.changes });
 });
@@ -519,7 +522,7 @@ router.post('/nuke-generations', (req, res) => {
       lireekDeleted += deleteAudioGenerationsByJobIds(songIds);
     }
     // Also nuke ALL audio_generations (catches any orphans)
-    const allResult = getDb().prepare('DELETE FROM audio_generations').run();
+    const allResult = getDb().prepare(`DELETE FROM audio_generations WHERE generation_id IN (SELECT g.id FROM auth_owned_generations g JOIN auth_owned_profiles p ON p.id=g.profile_id JOIN auth_owned_lyrics_sets l ON l.id=p.lyrics_set_id JOIN auth_owned_artists a ON a.id=l.artist_id WHERE a.user_id=?)`).run(userId);
     lireekDeleted = Math.max(lireekDeleted, allResult.changes);
   } catch (err) {
     console.error('[Songs] NUKE audio_generations cleanup error:', err);
@@ -534,7 +537,7 @@ router.post('/nuke-generations', (req, res) => {
         const filePath = path.join(config.data.audioDir, file);
         try {
           const stat = fs.statSync(filePath);
-          if (stat.isFile()) {
+          if (stat.isFile() && assets().owns(filePath,userId)) {
             fs.unlinkSync(filePath);
             orphansDeleted++;
           }

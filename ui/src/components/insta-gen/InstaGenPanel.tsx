@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { inspireProvidersOptions, inspirePromptOptions } from '../../queries/studios/resources';
 import { sharedKeys } from '../../queries/keys';
@@ -152,7 +153,7 @@ export const InstaGenPanel: React.FC<InstaGenPanelProps> = ({ onSongCreated, act
   // remains authoritative, including edits made by another client.
   useEffect(() => {
     if (!token) return;
-    const id = localStorage.getItem('hs-instagen-preview-document');
+    const id = userStorage.getItem('hs-instagen-preview-document');
     if (!id) return;
     let alive = true;
     instaWorkflowApi.getDocument(id).then(({ document }) => {
@@ -163,13 +164,13 @@ export const InstaGenPanel: React.FC<InstaGenPanelProps> = ({ onSongCreated, act
       setEditedLyrics(data.edits.lyrics);
       setEditedCaption(data.edits.caption);
       setPhase('preview');
-    }).catch(() => { localStorage.removeItem('hs-instagen-preview-document'); });
+    }).catch(() => { userStorage.removeItem('hs-instagen-preview-document'); });
     return () => { alive = false; };
   }, [token]);
 
   const captureInput = useCallback((): InstaWorkflowInput => {
     let settings: Record<string, unknown> = {};
-    try { settings = JSON.parse(localStorage.getItem('ace-settings') || '{}'); } catch { /* defaults */ }
+    try { settings = JSON.parse(userStorage.getItem('ace-settings') || '{}'); } catch { /* defaults */ }
     return {
       caption: computedCaption, genres: [...selectedGenres], lyricMode, subject: subject.trim(),
       randomSubject, provider: selectedProvider, model: selectedModel, vocalLanguage, thinking,
@@ -232,7 +233,7 @@ export const InstaGenPanel: React.FC<InstaGenPanelProps> = ({ onSongCreated, act
       const { job: finished } = await instaWorkflowApi.get(job.id);
       if (finished.status !== 'succeeded') throw new Error(finished.error || `Preview ${finished.status}`);
       const output = finished.result as { documentId: string; revision: number; result: InspireResult };
-      localStorage.setItem('hs-instagen-preview-document', output.documentId);
+      userStorage.setItem('hs-instagen-preview-document', output.documentId);
       setPreviewDocument({ id: output.documentId, revision: output.revision, lyrics: output.result.lyrics, caption: output.result.caption });
       setInspireResult(output.result);
       setEditedLyrics(output.result.lyrics);
@@ -258,7 +259,7 @@ export const InstaGenPanel: React.FC<InstaGenPanelProps> = ({ onSongCreated, act
       const { job } = await instaWorkflowApi.approve(previewDocument.id, revision);
       const queueId = addManualQueueItem({ title: inspireResult.title || editedCaption || 'Auto-Gen', caption: editedCaption });
       void trackRender(job.id, queueId, token);
-      localStorage.removeItem('hs-instagen-preview-document');
+      userStorage.removeItem('hs-instagen-preview-document');
       setPhase('input'); setInspireResult(null); setPreviewDocument(null);
     } catch (err: any) { setError(err.message || 'Approval failed'); setPhase('preview'); }
   }, [inspireResult, previewDocument, token, editedLyrics, editedCaption, trackRender]);
@@ -278,25 +279,25 @@ export const InstaGenPanel: React.FC<InstaGenPanelProps> = ({ onSongCreated, act
   const handleRefineInCustomGen = useCallback(() => {
     if (!inspireResult) return;
     try {
-      // Write to the same localStorage keys that CreatePanel's usePersistedState reads
-      localStorage.setItem('hs-caption', JSON.stringify(editedCaption));
-      localStorage.setItem('hs-lyrics', JSON.stringify(editedLyrics));
-      localStorage.setItem('hs-instrumental', JSON.stringify(lyricMode === 'instrumental'));
-      if (inspireResult.bpm) localStorage.setItem('hs-bpm', JSON.stringify(inspireResult.bpm));
+      // Write to the same userStorage keys that CreatePanel's usePersistedState reads
+      userStorage.setItem('hs-caption', JSON.stringify(editedCaption));
+      userStorage.setItem('hs-lyrics', JSON.stringify(editedLyrics));
+      userStorage.setItem('hs-instrumental', JSON.stringify(lyricMode === 'instrumental'));
+      if (inspireResult.bpm) userStorage.setItem('hs-bpm', JSON.stringify(inspireResult.bpm));
       // Not in MM3 mode: the Create panel hides its duration control there, so
       // writing one would leave a number in a box nobody can see or clear.
       if (inspireResult.duration && !isAutoDurationRender()) {
-        localStorage.setItem('hs-duration', JSON.stringify(inspireResult.duration));
+        userStorage.setItem('hs-duration', JSON.stringify(inspireResult.duration));
       }
-      if (inspireResult.keyScale) localStorage.setItem('hs-keyScale', JSON.stringify(inspireResult.keyScale));
-      if (inspireResult.timeSignature) localStorage.setItem('hs-timeSignature', JSON.stringify(inspireResult.timeSignature));
-      if (vocalLanguage) localStorage.setItem('hs-vocalLanguage', JSON.stringify(vocalLanguage));
+      if (inspireResult.keyScale) userStorage.setItem('hs-keyScale', JSON.stringify(inspireResult.keyScale));
+      if (inspireResult.timeSignature) userStorage.setItem('hs-timeSignature', JSON.stringify(inspireResult.timeSignature));
+      if (vocalLanguage) userStorage.setItem('hs-vocalLanguage', JSON.stringify(vocalLanguage));
       // Title from LLM or derived
       const title = inspireResult.title || '';
-      if (title) localStorage.setItem('hs-title', JSON.stringify(title));
+      if (title) userStorage.setItem('hs-title', JSON.stringify(title));
     } catch { /* ignore storage errors */ }
 
-    localStorage.removeItem('hs-instagen-preview-document');
+    userStorage.removeItem('hs-instagen-preview-document');
     setPhase('input');
     setInspireResult(null);
     onNavigate?.('create');
@@ -304,7 +305,7 @@ export const InstaGenPanel: React.FC<InstaGenPanelProps> = ({ onSongCreated, act
 
   // ── Back to input from preview ──
   const handleBack = useCallback(() => {
-    localStorage.removeItem('hs-instagen-preview-document');
+    userStorage.removeItem('hs-instagen-preview-document');
     setPhase('input');
   }, []);
 

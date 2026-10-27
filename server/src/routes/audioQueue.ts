@@ -1,3 +1,4 @@
+import { principalContext } from '../auth/principal.js';
 // routes/audioQueue.ts — /api/audio-queue, the durable audio intent queue
 // (services/audioQueue/intentQueue.ts).
 //
@@ -50,12 +51,12 @@ export function createAudioQueueRouter(queue: AudioIntentQueue, userIdOf: (req: 
   router.get('/items', handle(req => {
     const s = typeof req.query.status === 'string' ? req.query.status : undefined;
     if (s && !STATUSES.has(s)) throw new AudioQueueError(400, `Unknown status '${s}'`);
-    return { items: queue.list(s as AudioIntentStatus | undefined) };
+    return { items: queue.list(s as AudioIntentStatus | undefined, userIdOf(req)!) };
   }));
-  router.get('/items/:id', handle(req => ({ item: queue.get(String(req.params.id)) })));
-  router.delete('/items/:id', handle(req => { queue.dismiss(String(req.params.id)); return { removed: true }; }));
-  router.post('/items/:id/cancel', handle(req => ({ item: queue.cancel(String(req.params.id)) })));
-  router.post('/items/:id/retry', handle(req => { const item = queue.retry(String(req.params.id)); void queue.tick(); return { item }; }));
+  router.get('/items/:id', handle(req => ({ item: queue.get(String(req.params.id), userIdOf(req)!) })));
+  router.delete('/items/:id', handle(req => { queue.dismiss(String(req.params.id), userIdOf(req)!); return { removed: true }; }));
+  router.post('/items/:id/cancel', handle(req => ({ item: queue.cancel(String(req.params.id), userIdOf(req)!) })));
+  router.post('/items/:id/retry', handle(req => { const item = queue.retry(String(req.params.id), userIdOf(req)!); void queue.tick(); return { item }; }));
   router.post('/migration/import', (req, res) => {
     const parsed = importAudioQueueSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -69,16 +70,16 @@ export function createAudioQueueRouter(queue: AudioIntentQueue, userIdOf: (req: 
     if (!Array.isArray(ids) || !ids.every((id: unknown) => typeof id === 'string')) {
       res.status(400).json({ error: 'ids must be an array of queue item ids' }); return;
     }
-    handle(() => { const items = queue.resumeHeld(ids); queue.setPaused(false); void queue.tick(); return { items }; })(req, res);
+    handle(() => { const items = queue.resumeHeld(ids, userIdOf(req)!); queue.setPaused(false, userIdOf(req)!); void queue.tick(); return { items }; })(req, res);
   });
-  router.post('/migration/rollback-export', handle(() => {
-    queue.setPaused(true);
-    if (queue.list('submitting').length) throw new AudioQueueError(409, 'Submission still in flight; retry export when it settles');
-    return { version: 1, exportedAt: Date.now(), state: queue.state(), items: queue.list() };
+  router.post('/migration/rollback-export', handle(req => {
+    queue.setPaused(true, userIdOf(req)!);
+    if (queue.list('submitting', userIdOf(req)!).length) throw new AudioQueueError(409, 'Submission still in flight; retry export when it settles');
+    return { version: 1, exportedAt: Date.now(), state: queue.state(userIdOf(req)!), items: queue.list(undefined, userIdOf(req)!) };
   }));
-  router.get('/state', handle(() => queue.state()));
-  router.post('/pause', handle(() => queue.setPaused(true)));
-  router.post('/resume', handle(() => { const s = queue.setPaused(false); void queue.tick(); return s; }));
+  router.get('/state', handle(req => queue.state(userIdOf(req)!)));
+  router.post('/pause', handle(req => queue.setPaused(true, userIdOf(req)!)));
+  router.post('/resume', handle(req => { const s = queue.setPaused(false, userIdOf(req)!); void queue.tick(); return s; }));
   return router;
 }
 
@@ -88,7 +89,7 @@ let instance: AudioIntentQueue | null = null;
 export function audioIntentQueue(): AudioIntentQueue {
   instance ??= new AudioIntentQueue({
     db: getDb(),
-    submit: (body, userId) => submitGeneration(body, userId),
+    submit: (body, userId) => principalContext.run({id:userId,role:'user',sessionId:'server-job'}, () => submitGeneration(body, userId)),
     getJob: id => getGenerationJob(id),
     cancelJob: id => cancelGenerationJob(id),
     activeEngine: getActiveBackendId,

@@ -1,3 +1,4 @@
+import { AsyncResource } from 'node:async_hooks';
 // One GPU owner at a time, including while reset work drains.
 
 export interface LaneLease {
@@ -79,6 +80,7 @@ export function runOnGpuLane<T>(
   fn: (lease: LaneLease) => Promise<T>,
   opts: { label?: string; family?: string } = {},
 ): Promise<T> {
+  const run = AsyncResource.bind(fn);
   return new Promise<T>((resolve, reject) => {
     pending.push({
       label: opts.label ?? 'gpu task', family: opts.family, reject,
@@ -86,7 +88,7 @@ export function runOnGpuLane<T>(
         Promise.resolve().then(() => {
           // Reset may have invalidated the lease before its first callback.
           if (!lease.isCurrent()) throw new LaneResetError();
-          return fn(lease);
+          return run(lease);
         }).then(
           value => finish(lease, () => resolve(value)),
           error => finish(lease, () => reject(error)),

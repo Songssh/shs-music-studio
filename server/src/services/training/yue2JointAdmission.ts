@@ -1,3 +1,4 @@
+import { jobFetch } from '../../auth/jobRequests.js';
 // yue2JointAdmission.ts — start a joint-training job that a Node operation
 // has already decided on, re-checking that decision at the moment of enqueue.
 //
@@ -55,6 +56,6 @@ export function admitYue2JointTrain(opts: {
 }
 
 async function postJson(url: string, body: Record<string, unknown>): Promise<JointAdmissionResult> {
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const res = await jobFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   return { status: res.status, body: await res.json().catch(() => ({ error: `HTTP ${res.status}` })) };
 }

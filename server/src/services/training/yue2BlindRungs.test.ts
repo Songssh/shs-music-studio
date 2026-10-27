@@ -9,7 +9,7 @@ test('blind labels survive checkpoint changes, scores capture rating mode, and c
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yue2-blind-rungs-'));
   process.env.DATA_DIR = root;
   process.env.TRAINING_DIR = path.join(root, 'training');
-  const { initDb, getDb, closeDb } = await import('../../db/database.js');
+  const { initDb, getDb, closeDb } = await import('../../auth/dbFixture.js');
   const { recordYue2AitkRun, listYue2AitkRuns, yue2RunFinished } = await import('./yue2AitkRuns.js');
   const { scoreYue2Rung, listYue2RungScores, yue2RungScoresCsv } = await import('./yue2RungScores.js');
   const { runYue2Cleanup } = await import('./yue2Cleanup.js');

@@ -1,3 +1,6 @@
+import { claimResource } from '../../auth/ownership.js';
+import { principalOf } from '../../auth/principal.js';
+import { jobFetch } from '../../auth/jobRequests.js';
 // training/pipelineRunner.ts — batch import orchestrator
 //
 // Runs N audio folders through create → label → build → preprocess → train-dit
@@ -254,6 +257,7 @@ export function startPipeline(
     specs: folders.map(spec => ({ ...spec })),
   };
 
+  if(principalOf())claimResource('pipeline',state.id);
   pipelines.set(state.id, state);
   persist(state);
   console.log(
@@ -405,6 +409,7 @@ function revivePipeline(snap: SnapshotFile): void {
       : snap.items.map(i => ({ sourceDir: i.sourceDir, name: i.name })),
   };
 
+  if(principalOf())claimResource('pipeline',state.id);
   pipelines.set(state.id, state);
   persist(state);
   const remaining = items.filter(i => i.status !== 'done').length;
@@ -610,7 +615,7 @@ async function runStage(
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await jobFetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),

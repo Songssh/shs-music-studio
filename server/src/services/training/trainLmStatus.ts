@@ -1,3 +1,4 @@
+import { privateAdapters } from '../../auth/privatePaths.js';
 // training/trainLmStatus.ts — reads LM-trainer state off disk
 //
 // A training run has no database row: its whole state lives in the preprocess
@@ -33,7 +34,7 @@ function str(value: unknown): string {
  *  `-<size>`). Still scanned/validated so pre-migration installs keep working;
  *  nothing new is written here — see adapterLayout.ts for the per-size dirs. */
 export function adapterLmRoot(): string {
-  return path.join(config.aceServer.adapters, 'lm');
+  return path.join(privateAdapters(), 'lm');
 }
 
 /** Strip anything outside the route's `/^[A-Za-z0-9._-]{1,64}$/` alphabet so a
@@ -46,7 +47,7 @@ export function safeAdapterName(name: string): string {
 /** `<adapters>/lm-<sizeSlug>/<name>` — the ARTIST folder of the per-base
  *  layout (2026-07-28). Runs live in stamped subfolders beneath it. */
 export function lmArtistDirFor(name: string, size: LmSize): string {
-  return path.join(config.aceServer.adapters, lmSizeSlug(size), safeAdapterName(name));
+  return path.join(privateAdapters(), lmSizeSlug(size), safeAdapterName(name));
 }
 
 /** A fresh `<artist>/<YYYY-MM-DD_HH-MM-SS>` dir for a NEW training run to

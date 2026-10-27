@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 // lmAdapterPref.ts — the Lyric Studio "Use LM Adapter" toggle.
 //
 // Album presets can carry a planner-LM adapter alongside the DiT adapter, and
@@ -14,7 +15,7 @@ export const USE_LM_ADAPTER_KEY = 'lireek-useLmAdapter';
 /** True only when the user has explicitly ticked the box — default is OFF. */
 export function useLmAdapterEnabled(): boolean {
   try {
-    const raw = localStorage.getItem(USE_LM_ADAPTER_KEY);
+    const raw = userStorage.getItem(USE_LM_ADAPTER_KEY);
     return raw !== null && JSON.parse(raw) === true;
   } catch {
     return false;

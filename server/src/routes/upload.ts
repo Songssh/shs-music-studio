@@ -1,3 +1,4 @@
+import { claimFile } from '../auth/ownership.js';
 /**
  * upload.ts — Audio file upload route for Cover Studio
  *
@@ -23,7 +24,7 @@ const upload = multer({
   limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
   fileFilter: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (ALLOWED_EXTENSIONS.includes(ext) || file.mimetype.startsWith('audio/') || file.mimetype === 'application/octet-stream') {
+    if (ALLOWED_EXTENSIONS.includes(ext)) {
       cb(null, true);
     } else {
       cb(new Error(`Invalid file type "${file.originalname}" (${file.mimetype}). Allowed: ${ALLOWED_EXTENSIONS.join(', ')}`));
@@ -54,6 +55,7 @@ router.post('/audio', upload.single('audio'), (req: Request, res: Response) => {
 
     const filePath = path.join(refsDir, filename);
     fs.writeFileSync(filePath, req.file.buffer);
+    claimFile(filePath,getUserId(req)!);
 
     console.log(`[upload] Saved ${req.file.originalname} (${(req.file.size / 1024 / 1024).toFixed(1)} MB) → ${filename}`);
 
@@ -87,7 +89,7 @@ const latentUpload = multer({
   fileFilter: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     // Accept .latent, .hslat, or generic octet-stream (browsers often use this for custom extensions)
-    if (ext === '.latent' || ext === '.hslat' || file.mimetype === 'application/octet-stream') {
+    if (ext === '.latent' || ext === '.hslat') {
       cb(null, true);
     } else {
       cb(new Error(`Invalid file type "${file.originalname}". Expected .latent or .hslat file.`));
@@ -127,6 +129,7 @@ router.post('/latent', latentUpload.single('latent'), (req: Request, res: Respon
     fs.mkdirSync(refsDir, { recursive: true });
     const filePath = path.join(refsDir, filename);
     fs.writeFileSync(filePath, buf);
+    claimFile(filePath,getUserId(req)!);
 
     console.log(`[upload] Latent saved: ${req.file.originalname} (${(buf.length / 1024).toFixed(0)} KB) → ${filename}`);
 
@@ -174,6 +177,7 @@ router.post('/cover-image', imageUpload.single('image'), (req: Request, res: Res
     fs.mkdirSync(config.data.audioDir, { recursive: true });
     const filePath = path.join(config.data.audioDir, filename);
     fs.writeFileSync(filePath, req.file.buffer);
+    claimFile(filePath,getUserId(req)!);
     console.log(`[upload] Cover image saved: ${req.file.originalname} (${(req.file.size / 1024).toFixed(0)} KB) → ${filename}`);
     res.json({ cover_url: `/audio/${filename}`, filename: req.file.originalname });
   } catch (err: any) {

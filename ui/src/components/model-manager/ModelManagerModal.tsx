@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateModels } from '../../queries/global-models/options';
 // ModelManagerModal.tsx — Full-screen model manager modal
@@ -32,7 +33,7 @@ function formatSize(bytes: number): string {
  *  huggingface.co and only when non-empty (gated repos). */
 function getStoredHfToken(): string | undefined {
   try {
-    const raw = localStorage.getItem('hs-hfToken');
+    const raw = userStorage.getItem('hs-hfToken');
     const token = raw !== null ? JSON.parse(raw) : '';
     return typeof token === 'string' && token.trim() ? token.trim() : undefined;
   } catch {

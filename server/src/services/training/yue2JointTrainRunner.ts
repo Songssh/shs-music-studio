@@ -1,3 +1,4 @@
+import { jobFetch } from '../../auth/jobRequests.js';
 // Explicit AITK YuE2 joint trainer bridge. This is deliberately separate from
 // the legacy NAR/AR runners: a missing prepared dataset must fail, never fall
 // back to a legacy cache or silently change the requested training method.
@@ -261,8 +262,8 @@ type GenerationLyrics = { id: number; title: string; lyrics: string };
 /** The newest Lyric Studio generation with lyrics for a lyrics set. */
 export function latestGenerationLyrics(setId: number): GenerationLyrics | undefined {
   try {
-    return getDb().prepare(`SELECT g.id AS id, g.title AS title, g.lyrics AS lyrics FROM generations g
-      JOIN profiles p ON p.id = g.profile_id
+    return getDb().prepare(`SELECT g.id AS id, g.title AS title, g.lyrics AS lyrics FROM auth_owned_generations g
+      JOIN auth_owned_profiles p ON p.id = g.profile_id
       WHERE p.lyrics_set_id = ? AND trim(g.lyrics) <> '' ORDER BY g.created_at DESC, g.id DESC LIMIT 1`)
       .get(setId) as GenerationLyrics | undefined;
   } catch { return undefined; }
@@ -917,7 +918,7 @@ export async function runYue2JointTrainJob(job: TrainingJob): Promise<void> {
           const body = autoRefineRequest(job.id, last.step);
           const url = `http://127.0.0.1:${config.server.port}/api/training/datasets/${encodeURIComponent(job.datasetId)}/yue2-joint-train`;
           setTimeout(() => {
-            fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+            jobFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
               .then(async r => { const t = await r.text(); log(job, r.ok ? 'info' : 'warn', r.ok ? `Refinement started automatically from step ${last.step}` : `Automatic refinement did not start: ${t.slice(0, 200)}`); })
               .catch(err => log(job, 'warn', `Automatic refinement did not start: ${err?.message || err}`));
           }, 1500);

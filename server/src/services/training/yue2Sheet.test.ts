@@ -1,3 +1,4 @@
+import { listBackends } from '../backends/registry.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -11,6 +12,8 @@ import {
   buildYue2SheetArgs, readYue2CoverAbc, writeYue2CoverSheetManifest,
   type ResolvedYue2SheetOptions,
 } from './yue2Sheet.js';
+
+test.before(()=>{for(const backend of listBackends())if(backend.releaseVram)test.mock.method(backend as {releaseVram:()=>Promise<void>},'releaseVram',async()=>{});});
 
 const trainingOptions: ResolvedYue2SheetOptions = {
   manifest: 'training.json', only: '', force: false, fast: false, datasetSlug: 'fixture',

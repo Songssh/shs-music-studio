@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 // masterToAlbumPref.ts — the Lyric Studio "Master to Album Track" toggle.
 //
 // When on, every Lyric Studio render turns Mastering on, skips the VST chain,
@@ -10,7 +11,7 @@ export const MASTER_TO_ALBUM_KEY = 'lireek-masterToAlbumTrack';
 /** True only when the user has ticked the box — default is OFF. */
 export function masterToAlbumEnabled(): boolean {
   try {
-    const raw = localStorage.getItem(MASTER_TO_ALBUM_KEY);
+    const raw = userStorage.getItem(MASTER_TO_ALBUM_KEY);
     return raw !== null && JSON.parse(raw) === true;
   } catch {
     return false;

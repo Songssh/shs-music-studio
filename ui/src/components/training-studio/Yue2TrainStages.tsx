@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 // Yue2TrainStages.tsx — Training Studio phase 3, YuE2 branch: the seven-stage
 // page.
 //
@@ -140,12 +141,12 @@ export const Yue2TrainStages: React.FC<{ datasetId: string; trigger?: string; se
     // 2026-09-28 reset of every stored training setting: lyric timing back off, once.
     const reset = `${LYRIC_TIMING_KEY}${datasetId}:reset-2026-09-28`;
     try {
-      if (!window.localStorage.getItem(reset)) {
-        window.localStorage.removeItem(`${LYRIC_TIMING_KEY}${datasetId}`);
-        window.localStorage.setItem(reset, '1');
+      if (!userStorage.getItem(reset)) {
+        userStorage.removeItem(`${LYRIC_TIMING_KEY}${datasetId}`);
+        userStorage.setItem(reset, '1');
         return false;
       }
-      return window.localStorage.getItem(`${LYRIC_TIMING_KEY}${datasetId}`) === 'true';
+      return userStorage.getItem(`${LYRIC_TIMING_KEY}${datasetId}`) === 'true';
     } catch { return false; /* storage full or unavailable */ }
   });
   const [, setTimingLocked] = useState(false);
@@ -209,7 +210,7 @@ export const Yue2TrainStages: React.FC<{ datasetId: string; trigger?: string; se
 
   const setAitkLyricTiming = (value: boolean) => {
     setLyricTiming(value);
-    window.localStorage.setItem(`${LYRIC_TIMING_KEY}${datasetId}`, String(value));
+    userStorage.setItem(`${LYRIC_TIMING_KEY}${datasetId}`, String(value));
   };
 
   {

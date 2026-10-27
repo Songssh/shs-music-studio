@@ -1,3 +1,4 @@
+import { privateAdapters } from '../../auth/privatePaths.js';
 import { YUE2_OPTIM_DEFAULTS, yue2OptimArgs, type Yue2OptimOptions } from './yue2Optim.js';
 // training/yue2ArTrain.ts — YuE2 AR LoRA training: defaults, the regulariser
 // pack's location and the argv builder.
@@ -257,7 +258,7 @@ export const YUE2_AR_DEFAULTS = {
  *  tree, so AR and NAR runs sharing a root would each be invisible to the
  *  other's scanner or, worse, half-visible. */
 export function yue2ArAdapterRoot(): string {
-  return path.join(config.aceServer.adapters, 'yue2-ar-adapters');
+  return path.join(privateAdapters(), 'yue2-ar-adapters');
 }
 
 export function yue2ArAdapterRunDir(runName: string): string {

@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 import { useStudioSongs } from '../../queries/studios/shared';
 // RepaintStudio.tsx — Main Repaint Studio orchestrator
 //
@@ -30,11 +31,11 @@ import { StudioDraftPicker } from '../shared/StudioDraftPicker';
 
 // ── Persist helpers (same pattern as CoverStudio) ──
 function persist(key: string, value: unknown) {
-  try { localStorage.setItem(`hs-repaint-${key}`, JSON.stringify(value)); } catch {}
+  try { userStorage.setItem(`hs-repaint-${key}`, JSON.stringify(value)); } catch {}
 }
 function restore<T>(key: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem(`hs-repaint-${key}`);
+    const raw = userStorage.getItem(`hs-repaint-${key}`);
     if (raw !== null) return JSON.parse(raw);
   } catch {}
   return fallback;
@@ -130,7 +131,7 @@ export const RepaintStudio: React.FC = () => {
   };
 
   useEffect(() => {
-    const id = localStorage.getItem('hs-repaint-workflowJob');
+    const id = userStorage.getItem('hs-repaint-workflowJob');
     if (!id || !token) return;
     let mounted = true;
     const observation = new AbortController();
@@ -151,7 +152,7 @@ export const RepaintStudio: React.FC = () => {
         showToast('Repaint complete!');
       }).catch(err => { if (mounted) showToast(`Repaint ${String((err as Error).message)}`); })
       .finally(() => {
-        if (mounted && localStorage.getItem('hs-repaint-workflowJob') === id) localStorage.removeItem('hs-repaint-workflowJob');
+        if (mounted && userStorage.getItem('hs-repaint-workflowJob') === id) userStorage.removeItem('hs-repaint-workflowJob');
         if (mounted) { setIsGenerating(false); setActiveJobId(null); }
       });
     return () => { mounted = false; observation.abort(); };
@@ -227,7 +228,7 @@ export const RepaintStudio: React.FC = () => {
 
   // ── Generate ──
   const handleGenerate = useCallback(async () => {
-    if (submissionKeyRef.current || localStorage.getItem('hs-repaint-workflowJob')) return;
+    if (submissionKeyRef.current || userStorage.getItem('hs-repaint-workflowJob')) return;
     if (!token || !sourceAudioUrl) { showToast('Load source audio first'); return; }
     const source = sourceSong?.id
       ? { kind: 'song' as const, id: String(sourceSong.id), expectedUrl: sourceAudioUrl }
@@ -252,7 +253,7 @@ export const RepaintStudio: React.FC = () => {
       if (submissionKeyRef.current !== key) { await workflowApi.cancel(job.id); return; }
       setActiveJobId(job.id);
       submittedJobId = job.id;
-      localStorage.setItem('hs-repaint-workflowJob', job.id);
+      userStorage.setItem('hs-repaint-workflowJob', job.id);
       showToast('Repaint generation started!');
       const qId = addManualQueueItem({
         title: sourceName ? `${sourceName} (Repaint)` : 'Repaint',
@@ -278,7 +279,7 @@ export const RepaintStudio: React.FC = () => {
     } finally {
       if (submissionKeyRef.current === key) {
         submissionKeyRef.current = null;
-        if (localStorage.getItem('hs-repaint-workflowJob') === submittedJobId) localStorage.removeItem('hs-repaint-workflowJob');
+        if (userStorage.getItem('hs-repaint-workflowJob') === submittedJobId) userStorage.removeItem('hs-repaint-workflowJob');
         setIsGenerating(false);
         setActiveJobId(null);
         setQueueItemId(null);
@@ -290,7 +291,7 @@ export const RepaintStudio: React.FC = () => {
   const handleCancel = async () => {
     submissionKeyRef.current = null;
     if (activeJobId && token) { try { await workflowApi.cancel(activeJobId); } catch {} }
-    localStorage.removeItem('hs-repaint-workflowJob');
+    userStorage.removeItem('hs-repaint-workflowJob');
     if (queueItemId) failManualQueueItem(queueItemId, 'Cancelled by user');
     setIsGenerating(false);
     setActiveJobId(null);

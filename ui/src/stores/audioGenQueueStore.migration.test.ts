@@ -1,3 +1,5 @@
+import { bindUserStorage, userStorage } from '../auth/userStorage';
+bindUserStorage('fixture-user');
 // audioGenQueueStore.migration.test.ts — the real store logic behind queue
 // ownership: never-decided -> server/migrate, a migration interrupted by
 // reload, retry, and explicit rollback. Exercises the actual exported
@@ -107,7 +109,7 @@ test('import landed before an interrupted reload: a failed replay stays fenced, 
     assert.equal(api.calls.length, 1);
     // ...but the client died before it could record that locally — exactly
     // what migrateAudioQueue persists right before its own POST.
-    storage.setItem(OWNER_KEY, 'migrating');
+    userStorage.setItem(OWNER_KEY, 'migrating');
     idbData.set(PENDING_IMPORT_KEY, payload);
 
     // The connection stays down: every further import attempt fails too.
@@ -130,7 +132,7 @@ test('a stuck migration recovers once the replay succeeds', async () => {
       backupId: 'bk-2', choice: 'resume',
       items: [{ legacyId: 'a', request: { prompt: 'test' }, meta: { view: items[0] }, status: 'pending' }],
     };
-    storage.setItem(OWNER_KEY, 'migrating');
+    userStorage.setItem(OWNER_KEY, 'migrating');
     idbData.set(PENDING_IMPORT_KEY, payload);
 
     await retryQueueMigration('tok');
@@ -150,7 +152,7 @@ test('an explicit rollback is the only way back to browser ownership from a stuc
       items: [{ legacyId: 'a', request: { prompt: 'test' }, meta: { view: items[0] }, status: 'pending' }],
     };
     seedBackup(idbData, 'bk-3', ['a']);
-    storage.setItem(OWNER_KEY, 'migrating');
+    userStorage.setItem(OWNER_KEY, 'migrating');
     idbData.set(PENDING_IMPORT_KEY, payload);
 
     // Even a repeatedly-failing retry must not unblock rollback's own path.
@@ -180,7 +182,7 @@ const generateCalls = (api: AudioQueueApiFake) => api.calls.filter((c: any) => c
 test('rollback refused with 409 (submission in flight) stays fenced; reload neither replays the import nor runs locally; a later rollback succeeds', async () => {
   const items = [fixtureItem('a')];
   await withFakeQueue(items, async ({ storage, idbData, api }) => {
-    storage.setItem(OWNER_KEY, 'server');
+    userStorage.setItem(OWNER_KEY, 'server');
     idbData.set(`${BACKUP_KEY}:receipt`, { backupId: 'bk-r1' });
     seedBackup(idbData, 'bk-r1', ['a']);
     api.serverItems = [srvItem('a', 'submitting')];
@@ -213,7 +215,7 @@ test('rollback refused with 409 (submission in flight) stays fenced; reload neit
 
 test('a rollback that fails part-way through its cancels finishes the same plan on retry, without re-exporting', async () => {
   await withFakeQueue([fixtureItem('a'), fixtureItem('b')], async ({ storage, idbData, api }) => {
-    storage.setItem(OWNER_KEY, 'server');
+    userStorage.setItem(OWNER_KEY, 'server');
     idbData.set(`${BACKUP_KEY}:receipt`, { backupId: 'bk-r2' });
     seedBackup(idbData, 'bk-r2', ['a', 'b']);
     api.serverItems = [
@@ -244,7 +246,7 @@ test('after a failed rollback, choosing Retry hands the queue back to the server
       backupId: 'bk-r3', choice: 'resume',
       items: [{ legacyId: 'a', request: { prompt: 'test' }, meta: { view: items[0] }, status: 'pending' }],
     };
-    storage.setItem(OWNER_KEY, 'server');
+    userStorage.setItem(OWNER_KEY, 'server');
     idbData.set(PENDING_IMPORT_KEY, payload);
     idbData.set(`${BACKUP_KEY}:receipt`, { backupId: 'bk-r3' });
     seedBackup(idbData, 'bk-r3', ['a']);
@@ -266,7 +268,7 @@ test('after a failed rollback, choosing Retry hands the queue back to the server
 // ── Interrupted cleanup (round 5): recovery data outlives the ownership change ──
 
 /** Make the next matching localStorage write throw once, like a tab dying at that line. */
-function crashOnce(storage: MemoryStorage, method: 'setItem' | 'removeItem', match: (key: string, value?: string) => boolean) {
+function crashOnce(storage: Pick<Storage, 'getItem'|'setItem'|'removeItem'>, method: 'setItem' | 'removeItem', match: (key: string, value?: string) => boolean) {
   const real = (storage as any)[method].bind(storage);
   let armed = true;
   (storage as any)[method] = (key: string, value?: string) => {
@@ -279,11 +281,11 @@ const { ROLLBACK_REQUESTED_KEY } = await import('./audioGenQueueStore.js') as an
 
 test('a rollback interrupted before browser ownership is recorded keeps its plan; the retry restores the saved pending state', async () => {
   await withFakeQueue([fixtureItem('a')], async ({ storage, idbData, api }) => {
-    storage.setItem(OWNER_KEY, 'server');
+    userStorage.setItem(OWNER_KEY, 'server');
     idbData.set(`${BACKUP_KEY}:receipt`, { backupId: 'bk-c1' });
     seedBackup(idbData, 'bk-c1', ['a']);
     api.serverItems = [srvItem('a', 'pending')];
-    crashOnce(storage, 'setItem', (key, value) => key === OWNER_KEY && value === 'browser');
+    crashOnce(userStorage, 'setItem', (key, value) => key === OWNER_KEY && value === 'browser');
 
     await assert.rejects(() => rollbackAudioQueue(), /tab closed/);
     assert.equal(getAudioQueueOwner(), 'migrating');
@@ -300,11 +302,11 @@ test('a rollback interrupted before browser ownership is recorded keeps its plan
 
 test('a rollback interrupted after browser ownership is recorded stands; the next migration clears its leftovers', async () => {
   await withFakeQueue([fixtureItem('a')], async ({ storage, idbData, api }) => {
-    storage.setItem(OWNER_KEY, 'server');
+    userStorage.setItem(OWNER_KEY, 'server');
     idbData.set(`${BACKUP_KEY}:receipt`, { backupId: 'bk-c2' });
     seedBackup(idbData, 'bk-c2', ['a']);
     api.serverItems = [srvItem('a', 'pending')];
-    crashOnce(storage, 'removeItem', key => key === ROLLBACK_REQUESTED_KEY);
+    crashOnce(userStorage, 'removeItem', key => key === ROLLBACK_REQUESTED_KEY);
 
     await rollbackAudioQueue();
     assert.equal(getAudioQueueOwner(), 'browser', 'a failed tidy-up does not reopen the rollback');
@@ -330,10 +332,10 @@ test('an import interrupted after clearing the rollback state but before server 
       backupId: 'bk-c3', choice: 'resume',
       items: [{ legacyId: 'a', request: { prompt: 'test' }, meta: { view: items[0] }, status: 'pending' }],
     };
-    storage.setItem(OWNER_KEY, 'migrating');
-    storage.setItem(ROLLBACK_REQUESTED_KEY, 'bk-c3');
+    userStorage.setItem(OWNER_KEY, 'migrating');
+    userStorage.setItem(ROLLBACK_REQUESTED_KEY, 'bk-c3');
     idbData.set(PENDING_IMPORT_KEY, payload);
-    crashOnce(storage, 'setItem', (key, value) => key === OWNER_KEY && value === 'server');
+    crashOnce(userStorage, 'setItem', (key, value) => key === OWNER_KEY && value === 'server');
 
     await assert.rejects(() => retryQueueMigration('tok'), /tab closed/);
     assert.equal(getAudioQueueOwner(), 'migrating');

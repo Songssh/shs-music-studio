@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 // ImportTracksModal.tsx — bring audio you already have into the library.
 //
 // The post-processing chain only runs on a song row backed by a raw WAV, so a
@@ -57,7 +58,7 @@ export const ImportTracksModal: React.FC = () => {
   const [dragging, setDragging] = useState(false);
   const [description, setDescription] = useState('');
   const [runPp, setRunPp] = useState(() => {
-    try { return localStorage.getItem(PP_PREF_KEY) === '1'; } catch { return false; }
+    try { return userStorage.getItem(PP_PREF_KEY) === '1'; } catch { return false; }
   });
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -285,7 +286,7 @@ export const ImportTracksModal: React.FC = () => {
             disabled={busy}
             onChange={(checked) => {
               setRunPp(checked);
-              try { localStorage.setItem(PP_PREF_KEY, checked ? '1' : '0'); } catch { /* ignore */ }
+              try { userStorage.setItem(PP_PREF_KEY, checked ? '1' : '0'); } catch { /* ignore */ }
             }}
             label={t('library.importRunPp', 'Run post-processing after import')}
             info={t('library.importRunPpHint',

@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 // MidiStudio.tsx — MIDI Studio orchestrator (audio → MIDI transcription)
 //
 // Pick any track from the library, transcribe it to multi-instrument MIDI,
@@ -67,7 +68,7 @@ export const MidiStudio: React.FC = () => {
   const [sourceName, setSourceName] = useState('');
   const [sourceSongId, setSourceSongId] = useState<string | undefined>(undefined);
   const [model, setModel] = useState<MuscriptorModel>(() =>
-    (localStorage.getItem('hs-midi-model') as MuscriptorModel) || 'small');
+    (userStorage.getItem('hs-midi-model') as MuscriptorModel) || 'small');
 
   // ── Jobs ──
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
@@ -116,7 +117,7 @@ export const MidiStudio: React.FC = () => {
 
   const handleModelChange = (m: MuscriptorModel) => {
     setModel(m);
-    try { localStorage.setItem('hs-midi-model', m); } catch { /* ignore */ }
+    try { userStorage.setItem('hs-midi-model', m); } catch { /* ignore */ }
   };
 
   const handleTranscribe = async () => {

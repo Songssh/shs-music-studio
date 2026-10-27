@@ -1,3 +1,7 @@
+import { claimResource, ownsResource, requireFile } from '../auth/ownership.js';
+import { runOnGpuLane } from '../services/generation/gpuLane.js';
+import { evictOtherFamilies } from '../services/generation/residency.js';
+import { getUserId } from './auth.js';
 // stemStudio.ts — Stem Studio stem separation route
 //
 // Server-side orchestration for two modes:
@@ -20,6 +24,7 @@ import { STEM_TRACK_NAMES, stemExtractRequestSchema, stemSupersepRequestSchema }
 import { registerJobsBusyCheck, trackBusy } from '../dataroot/pointer.js';
 
 const router = Router();
+router.param('jobId',(req,res,next,id)=>{if(!ownsResource('stem',id,getUserId(req)!)){res.status(404).json({error:'Job not found'});return;}next();});
 const ACE_URL = config.aceServer.url;
 
 // ── Constants ────────────────────────────────────────────────────────────
@@ -61,16 +66,8 @@ registerJobsBusyCheck('stem', jobs);
 
 /** Resolve a URL-style audio path to an absolute filesystem path */
 function resolveAudioPath(audioUrl: string): string {
-  if (audioUrl.startsWith('/references/')) {
-    return path.join(config.data.dir, 'references', path.basename(audioUrl));
-  }
-  if (audioUrl.startsWith('/audio/')) {
-    return path.join(config.data.audioDir, path.basename(audioUrl));
-  }
-  if (path.isAbsolute(audioUrl)) {
-    return audioUrl;
-  }
-  return path.join(config.data.dir, 'references', path.basename(audioUrl));
+  return requireFile(audioUrl);
+
 }
 
 /** Poll ace-server job until completion */
@@ -99,6 +96,10 @@ function sanitizeStemName(name: string): string {
 
 /** Run the SuperSep pipeline: separate → save stems to disk */
 async function runSupersep(job: StemJob): Promise<void> {
+  try{await runOnGpuLane(async()=>{if(job.status==='cancelled')return;await evictOtherFamilies('supersep');await runSupersepOnLane(job);},{label:`stem:${job.id}`,family:'supersep'});}
+  catch(error){if(job.status!=='cancelled'){job.status='failed';job.error=String(error);}}
+}
+async function runSupersepOnLane(job: StemJob): Promise<void> {
   const jobDir = path.join(stemsBaseDir, job.id);
   fs.mkdirSync(jobDir, { recursive: true });
 
@@ -241,6 +242,10 @@ async function runSupersep(job: StemJob): Promise<void> {
 
 /** Run the full extraction pipeline (async — called after POST returns) */
 async function runExtraction(job: StemJob, ditSettings: any, style: string, lyrics: string): Promise<void> {
+  try{await runOnGpuLane(async()=>{if(job.status==='cancelled')return;await evictOtherFamilies('ace');await runExtractionOnLane(job,ditSettings,style,lyrics);},{label:`stem:${job.id}`,family:'ace'});}
+  catch(error){if(job.status!=='cancelled'){job.status='failed';job.error=String(error);}}
+}
+async function runExtractionOnLane(job: StemJob, ditSettings: any, style: string, lyrics: string): Promise<void> {
   const jobDir = path.join(stemsBaseDir, job.id);
   fs.mkdirSync(jobDir, { recursive: true });
 
@@ -400,6 +405,7 @@ router.post('/extract', (req: Request, res: Response) => {
     completedStems: [],
     createdAt: Date.now(),
   };
+  claimResource('stem',job.id,getUserId(req)!);
   jobs.set(job.id, job);
 
   // Start extraction async
@@ -436,6 +442,7 @@ router.post('/supersep', (req: Request, res: Response) => {
     createdAt: Date.now(),
     sepLevel,
   };
+  claimResource('stem',job.id,getUserId(req)!);
   jobs.set(job.id, job);
 
   // Start separation async
@@ -608,7 +615,7 @@ router.get('/jobs', (_req: Request, res: Response) => {
     const jobSummaries = [];
 
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory() || !ownsResource('stem',entry.name)) continue;
       const metaPath = path.join(stemsBaseDir, entry.name, '_meta.json');
       if (!fs.existsSync(metaPath)) continue;
 
@@ -643,20 +650,14 @@ router.get('/jobs', (_req: Request, res: Response) => {
  * "Clear All Stems" request 404s as "Job not found" (#154).
  */
 router.delete('/all', (_req: Request, res: Response) => {
-  // Cancel all running jobs
-  for (const [, job] of jobs) {
-    if (job.status === 'pending' || job.status === 'extracting') {
-      job.status = 'cancelled';
-    }
+  for (const [id,job] of jobs) if(ownsResource('stem',id)) {job.status='cancelled';jobs.delete(id);}
+  if(fs.existsSync(stemsBaseDir))for(const entry of fs.readdirSync(stemsBaseDir,{withFileTypes:true})){
+    if(!entry.isDirectory()||entry.isSymbolicLink()||!ownsResource('stem',entry.name))continue;
+    const target=path.resolve(stemsBaseDir,entry.name);
+    if(path.dirname(target)!==path.resolve(stemsBaseDir))continue;
+    fs.rmSync(target,{recursive:true,force:true});
   }
-  jobs.clear();
-
-  if (fs.existsSync(stemsBaseDir)) {
-    fs.rmSync(stemsBaseDir, { recursive: true, force: true });
-    fs.mkdirSync(stemsBaseDir, { recursive: true });
-    console.log('[StemStudio] All stems cleared');
-  }
-  res.json({ ok: true });
+  res.json({ok:true});
 });
 
 /**
@@ -698,7 +699,7 @@ router.get('/stats', (_req: Request, res: Response) => {
 
     const entries = fs.readdirSync(stemsBaseDir, { withFileTypes: true });
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory() || !ownsResource('stem',entry.name)) continue;
       jobCount++;
       const jobDir = path.join(stemsBaseDir, entry.name);
       const files = fs.readdirSync(jobDir);

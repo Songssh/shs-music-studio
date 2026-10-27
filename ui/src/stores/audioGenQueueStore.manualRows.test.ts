@@ -1,3 +1,5 @@
+import { bindUserStorage, userStorage } from '../auth/userStorage';
+bindUserStorage('fixture-user');
 // audioGenQueueStore.manualRows.test.ts — a studio's own queue row survives a
 // server-owned queue's refresh until the server has its render.
 //
@@ -30,7 +32,7 @@ const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200, 
 const settle = (ms = 300) => new Promise(resolve => setTimeout(resolve, ms));
 
 test('server-owned queue: a queued studio row stays until the server item for its workflow replaces it', async () => {
-  localStorage.setItem(OWNER_KEY, 'server');
+  userStorage.setItem(OWNER_KEY, 'server');
   const api = new AudioQueueApiFake();
   // The first cover is rendering; the second's workflow has no server item yet.
   api.serverItems = [{ id: 'srv1', status: 'submitted', jobId: 'job1', request: { title: 'First' },

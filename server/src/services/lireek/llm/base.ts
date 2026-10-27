@@ -1,7 +1,7 @@
 // llm/base.ts — LLMProvider abstract base class + SSE streaming helper
 
 import type { ProviderInfo, ChunkCallback, CallOptions } from './types.js';
-import { skipThinkingSignal } from './types.js';
+import { shouldSkipThinking } from './types.js';
 
 export abstract class LLMProvider {
   abstract id: string;
@@ -105,7 +105,7 @@ export async function readSSE(
               if (displayText) {
                 onChunk(displayText);
                 // Track for skip-thinking detection but don't add to returned text
-                if (skipThinkingSignal) {
+                if (shouldSkipThinking()) {
                   const thinkCheck = fullText + displayText;
                   if (thinkCheck.includes('<think>') && !thinkCheck.includes('</think>')) {
                     reader.cancel();
@@ -121,7 +121,7 @@ export async function readSSE(
               fullText += text;
               onChunk(text);
               
-              if (skipThinkingSignal && fullText.includes('<think>') && !fullText.includes('</think>')) {
+              if (shouldSkipThinking() && fullText.includes('<think>') && !fullText.includes('</think>')) {
                 reader.cancel();
                 return fullText;
               }

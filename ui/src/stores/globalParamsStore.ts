@@ -1,10 +1,11 @@
+import { userStorage } from '../auth/userStorage';
 // globalParamsStore.ts -- Zustand store replacing GlobalParamsContext
 //
 // Migrated from React Context + usePersistedState to Zustand with
-// per-field localStorage keys.  Consumers use selectors:
+// per-field userStorage keys.  Consumers use selectors:
 //   const val = useGlobalParamsStore(s => s.fieldName);
 //
-// Uses the SAME hs-* localStorage keys -- zero migration needed.
+// Uses the SAME hs-* userStorage keys -- zero migration needed.
 
 import { create } from 'zustand';
 import type { GenerationParams, LmRepMode, StableStepBackend, StableStepBlendMode } from '../types';
@@ -22,22 +23,22 @@ export interface AdapterGroupScales {
   proj_in: number;
 }
 
-// -- Per-key localStorage adapter --
+// -- Per-key userStorage adapter --
 
 function readKey<T>(key: string, fallback: T): T {
   try {
-    const v = localStorage.getItem(key);
+    const v = userStorage.getItem(key);
     return v !== null ? JSON.parse(v) : fallback;
   } catch { return fallback; }
 }
 
 function writeKey<T>(key: string, value: T): void {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* full */ }
+  try { userStorage.setItem(key, JSON.stringify(value)); } catch { /* full */ }
 }
 
 // -- Default values --
 //
-// Every field's localStorage fallback, in one place, so a control can show a
+// Every field's userStorage fallback, in one place, so a control can show a
 // "reset to default" affordance without hard-coding the literal a second time.
 // Values here must match what readKey() below actually falls back to; this
 // table is a move, not an edit.
@@ -232,7 +233,7 @@ function activeBackendId(): string {
 }
 
 /**
- * localStorage key for `base` under `backendId`. Unscoped keys pass through
+ * userStorage key for `base` under `backendId`. Unscoped keys pass through
  * unchanged, so this is safe to call on any hs-* key.
  *
  * Exported because the preset/profile writer (utils/paramProfiles.ts) persists
@@ -261,7 +262,7 @@ function readScoped<T>(base: string, fallback: T, backendId: string = activeBack
   const key = scopedKey(base, backendId);
   if (key !== base) {
     try {
-      if (localStorage.getItem(key) === null) {
+      if (userStorage.getItem(key) === null) {
         // First visit to this backend: fork from whatever is in force rather
         // than resetting the user to defaults, and persist it so a later
         // change on the OTHER backend can't drift this one.
@@ -288,7 +289,7 @@ function hydrateBackendScoped(backendId: string = activeBackendId()): Record<str
 /**
  * Mirror the Models-tab selection to the server.
  *
- * This state lives in localStorage, which the server cannot see — and the
+ * This state lives in userStorage, which the server cannot see — and the
  * Training Studio needs it: a BULK run has no UI in the loop, and the engine
  * that knows its own loaded DiT is deliberately stopped while training runs. A
  * stale mirror is what made an overnight run train 18 datasets against the
@@ -307,7 +308,7 @@ function mirrorActiveModels(patch: Record<string, string>): void {
 }
 
 export const useGlobalParamsStore = create<any>()((set, get) => ({
-  // -- State (initialised from localStorage) --
+  // -- State (initialised from userStorage) --
   ditModel: readKey("hs-ditModel", GLOBAL_PARAM_DEFAULTS.ditModel),
   lmModel: readKey("hs-lmModel", GLOBAL_PARAM_DEFAULTS.lmModel),
   vaeModel: normalizeModelSelection('vaeModel', readKey("hs-vaeModel", GLOBAL_PARAM_DEFAULTS.vaeModel)),
@@ -364,7 +365,7 @@ export const useGlobalParamsStore = create<any>()((set, get) => ({
   shift: readKey("hs-shift", GLOBAL_PARAM_DEFAULTS.shift),
   // DiT self-attention reach override. PARKED — the UI control is removed and
   // this is pinned to -1 (= the model's own 128). Deliberately NOT read from
-  // localStorage: anyone who moved the slider while it was exposed still has a
+  // userStorage: anyone who moved the slider while it was exposed still has a
   // value stored, and reading it back would keep silently applying an override
   // with no UI left to show or undo it. See docs/plans/attention-drift/.
   ditSlidingWindow: -1,
@@ -999,7 +1000,7 @@ export const useGlobalParamsStore = create<any>()((set, get) => ({
 // could only guess at.
 //
 // Nothing is written here: hydrateBackendScoped() reads (and, on a backend's
-// first visit, seeds) localStorage, so the settings the user leaves behind on
+// first visit, seeds) userStorage, so the settings the user leaves behind on
 // the backend they are switching AWAY from were already persisted by its
 // setters.
 let lastScopedBackendId = activeBackendId();
@@ -1011,7 +1012,7 @@ useBackendStore.subscribe((st) => {
 });
 
 // One-shot boot sync. An existing install already has a DiT chosen in
-// localStorage that the server has never been told about, and a user who never
+// userStorage that the server has never been told about, and a user who never
 // touches the dropdown again would otherwise never mirror it — leaving the
 // Training Studio on its old "first BF16 in the catalogue" fallback.
 mirrorActiveModels({

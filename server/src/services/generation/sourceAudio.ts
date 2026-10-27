@@ -1,3 +1,5 @@
+import { principalOf } from '../../auth/principal.js';
+import { assets, requireFile } from '../../auth/ownership.js';
 // generation/sourceAudio.ts — Source audio and timbre reference preparation
 //
 // Handles loading, format conversion, and pre-processing of source audio
@@ -31,6 +33,7 @@ export function loadSourceAudio(
         ? resolvedUrl
         : path.join(config.data.dir, resolvedUrl);
 
+  if(principalOf())requireFile(srcPath);
   log('DEBUG', `[Synth Phase] Looking for source audio at: ${srcPath}`);
 
   if (!fs.existsSync(srcPath)) {
@@ -62,6 +65,7 @@ export function loadSourceLatent(
     ? path.join(config.data.audioDir, sourceLatentUrl.replace('/audio/', ''))
     : path.isAbsolute(sourceLatentUrl) ? sourceLatentUrl : path.join(config.data.dir, sourceLatentUrl);
 
+  if(principalOf())requireFile(latentPath);
   if (!fs.existsSync(latentPath)) {
     log('WARNING', `[Latent] Source latent not found: ${latentPath}`);
     return undefined;
@@ -147,6 +151,7 @@ export async function loadTimbreReference(
   log('DEBUG', `[Synth Phase] timbreRef=${params.timbreReference}, masteringRef=${masteringRef}`);
   const resolved = resolveTimbreRefPath(params, masteringRef);
   if (!resolved) return undefined;
+  if(principalOf())requireFile(resolved);
   let refPath = resolved;
 
   // Randomize timbre reference
@@ -164,6 +169,7 @@ export async function loadTimbreReference(
       const audioExts = new Set(['.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac', '.wma']);
       const candidates = fs.readdirSync(refDir)
         .filter(f => audioExts.has(path.extname(f).toLowerCase()))
+        .filter(f => !principalOf() || assets().owns(path.join(refDir,f),principalOf()!.id))
         .sort();
 
       if (candidates.length > 1) {
@@ -207,6 +213,7 @@ export async function loadTimbreReference(
     }
   }
 
+  if(principalOf())requireFile(refPath);
   log('DEBUG', `[Synth Phase] Looking for timbre ref at: ${refPath}`);
   if (!fs.existsSync(refPath)) {
     log('ERROR', `[Synth Phase] Timbre reference file not found: ${refPath}`);

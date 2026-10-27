@@ -20,6 +20,8 @@
 
 import fs from 'fs';
 import path from 'path';
+import { principalOf } from '../../../auth/principal.js';
+import { requireFile } from '../../../auth/ownership.js';
 
 import { engineReady } from '../../../engineState.js';
 import { isEngineSuspended } from '../../aceEngineProcess.js';
@@ -279,8 +281,8 @@ export function yue2PlanScaleDiffers(adapters: Record<Yue2LmAdapterKind, Yue2Per
 /** An adapter reference the engine can actually open, or null.
  *
  *  Deliberately NOT confined to the training root: a hand-trained or copied
- *  adapter anywhere on disk is a legitimate pick, and the reference comes from
- *  the local user either way. What is refused is a reference that would fail
+ *  adapter in an explicitly assigned folder is a legitimate pick. Ownership
+ *  is checked again when a saved reference is resolved. Also refuse paths that fail
  *  silently later — a relative path (the engine would resolve it against
  *  ace-server's working directory, which is nobody's intent), a missing file,
  *  or something that is not a .safetensors. A bad path must fail the pick, not
@@ -291,6 +293,7 @@ function resolveYue2Adapter(ref: string): string | null {
   if (!path.isAbsolute(trimmed)) return null;
   if (!/\.safetensors$/i.test(trimmed)) return null;
   try {
+    if (principalOf()) requireFile(trimmed);
     if (!fs.statSync(trimmed).isFile()) return null;
   } catch {
     return null;

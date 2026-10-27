@@ -24,7 +24,7 @@ test('operations always go to this machine, and refusals keep their status, reas
   const calls: string[] = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = (async (url: string, init: RequestInit) => {
-    calls.push(`${init.method} ${url} ${(init.headers as Record<string, string>).Authorization ?? '-'}`);
+    calls.push(`${init.method} ${url} ${(init.headers as Record<string, string>)['X-Hotstep-User'] ?? '-'}`);
     if (url.endsWith('/stale')) {
       return new Response(JSON.stringify({ error: 'changed', reason: 'stale-dataset', currentRevision: 'r2' }), { status: 409 });
     }
@@ -36,7 +36,7 @@ test('operations always go to this machine, and refusals keep their status, reas
     assert.deepEqual(await trainingOperation('prep', '/start', { body: {} }), { ok: true });
     await assert.rejects(trainingOperation('prep', '/stale', { body: {} }), (e: unknown) =>
       e instanceof ApiError && e.status === 409 && e.reason === 'stale-dataset' && e.currentRevision === 'r2');
-    assert.deepEqual(calls, ['POST /api/training/ops/prep/start Bearer t', 'POST /api/training/ops/prep/stale Bearer t']);
+    assert.deepEqual(calls, ['POST /api/training/ops/prep/start t', 'POST /api/training/ops/prep/stale t']);
   } finally {
     globalThis.fetch = realFetch;
     setAuthToken(null);

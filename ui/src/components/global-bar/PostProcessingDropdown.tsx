@@ -61,7 +61,7 @@ interface AccordionProps {
    *  the section contains alone — that's what its own inner group Reset (if
    *  any) already covers. */
   onReset?: () => void;
-  persistKey: string;  // localStorage key for remembering open/closed state
+  persistKey: string;  // userStorage key for remembering open/closed state
   children: React.ReactNode;
 }
 

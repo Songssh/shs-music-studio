@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 // defaultCover.ts — the generic artwork a song falls back to when it has none.
 //
 // Two sets of 50 ship in ui/public/covers/ (generated with the app's own sd.exe
@@ -26,7 +27,7 @@ const subscribers = new Set<() => void>();
 
 function readSet(): CoverSet {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = userStorage.getItem(STORAGE_KEY);
     return COVER_SETS.some(s => s.id === stored) ? stored as CoverSet : FALLBACK_SET;
   } catch {
     return FALLBACK_SET;
@@ -59,7 +60,7 @@ export function useCoverSet(): CoverSet {
 
 /** Switch sets. Every mounted cover updates immediately. */
 export function setCoverSet(set: CoverSet): void {
-  try { localStorage.setItem(STORAGE_KEY, set); } catch { /* storage unavailable */ }
+  try { userStorage.setItem(STORAGE_KEY, set); } catch { /* storage unavailable */ }
   publish();
 }
 

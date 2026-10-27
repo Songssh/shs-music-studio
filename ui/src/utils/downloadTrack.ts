@@ -1,6 +1,7 @@
+import { userStorage } from '../auth/userStorage';
 // downloadTrack.ts — Instant download utility using settings-page preferences
 //
-// Reads format, bitrate, version, and latent settings from AppSettings (localStorage).
+// Reads format, bitrate, version, and latent settings from AppSettings (userStorage).
 // Saves into the DOWNLOAD_DIR folder when one is set, else triggers browser downloads via hidden <a> clicks.
 
 import type { Song } from '../types';
@@ -25,10 +26,10 @@ const DEFAULTS: DownloadSettings = {
   downloadIncludeLatent: false,
 };
 
-/** Read current download settings from localStorage (same key as AppSettings). */
+/** Read current download settings from userStorage (same key as AppSettings). */
 function readSettings(): DownloadSettings {
   try {
-    const raw = localStorage.getItem('ace-settings');
+    const raw = userStorage.getItem('ace-settings');
     if (raw) {
       const parsed = JSON.parse(raw);
       return { ...DEFAULTS, ...parsed };
@@ -37,10 +38,10 @@ function readSettings(): DownloadSettings {
   return { ...DEFAULTS };
 }
 
-/** Read the optional filename prepend from Lyric Studio's localStorage key. */
+/** Read the optional filename prepend from Lyric Studio's userStorage key. */
 function readFilenamePrepend(): string {
   try {
-    const raw = localStorage.getItem('lireek-downloadFilenamePrepend');
+    const raw = userStorage.getItem('lireek-downloadFilenamePrepend');
     return raw ? JSON.parse(raw) : '';
   } catch { return ''; }
 }

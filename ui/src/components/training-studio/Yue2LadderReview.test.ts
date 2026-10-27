@@ -4,7 +4,9 @@
 //   (cd server && node --import tsx --test ../ui/src/components/training-studio/Yue2LadderReview.test.ts)
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ladderVisibility } from './Yue2LadderReview.tsx';
+import { register } from 'node:module';
+register('../../stores/cssStubLoader.mjs',import.meta.url);
+const { ladderVisibility }=await import('./Yue2LadderReview.tsx');
 import type { Yue2AitkRunRecord } from '../../services/trainingApi.js';
 
 const checkpoints = [

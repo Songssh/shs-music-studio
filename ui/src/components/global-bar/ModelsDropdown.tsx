@@ -1,3 +1,5 @@
+import { userSessionStorage } from '../../auth/userStorage';
+import { userStorage } from '../../auth/userStorage';
 import { useQuery } from '@tanstack/react-query';
 import { aceModelsOptions } from '../../queries/global-models/options';
 // ModelsDropdown.tsx — Model selection UI for the global param bar
@@ -21,7 +23,7 @@ const FORMAT_FILTER_KEY = 'model-format-filter';
 function loadFormatFilter(): Record<ModelFormat, boolean> {
   const allOn = { gguf: true, safetensors: true, onnx: true };
   try {
-    const raw = localStorage.getItem(FORMAT_FILTER_KEY);
+    const raw = userStorage.getItem(FORMAT_FILTER_KEY);
     if (!raw) return allOn;
     const parsed = JSON.parse(raw);
     return {
@@ -73,7 +75,7 @@ export const ModelsDropdown: React.FC = () => {
   // selected model stays selected even when its format is filtered out.
   const [formatFilter, setFormatFilter] = useState<Record<ModelFormat, boolean>>(loadFormatFilter);
   useEffect(() => {
-    try { localStorage.setItem(FORMAT_FILTER_KEY, JSON.stringify(formatFilter)); } catch { /* ignore */ }
+    try { userStorage.setItem(FORMAT_FILTER_KEY, JSON.stringify(formatFilter)); } catch { /* ignore */ }
   }, [formatFilter]);
 
   // Only surface chips for formats that actually exist across the available models.
@@ -192,7 +194,7 @@ export const ModelsDropdown: React.FC = () => {
       {showModelManager && (
         <ModelManagerModal onClose={() => {
           setShowModelManager(false);
-          sessionStorage.setItem('mm-auto-dismissed', '1');
+          userSessionStorage.setItem('mm-auto-dismissed', '1');
         }} />
       )}
     </div>

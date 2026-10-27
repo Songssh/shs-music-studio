@@ -1,6 +1,6 @@
 // Pure decision logic for audio queue ownership — no storage, no network,
 // no browser globals, so it can be unit-tested without a DOM. The stateful
-// wiring (localStorage, migrateAudioQueue, the banner's own effect) lives in
+// wiring (userStorage, migrateAudioQueue, the banner's own effect) lives in
 // audioGenQueueStore.ts and AudioQueueMigrationBanner.tsx.
 
 export type QueueOwner = 'browser' | 'migrating' | 'server';

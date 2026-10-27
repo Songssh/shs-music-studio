@@ -1,3 +1,4 @@
+import { principalOf } from '../../../auth/principal.js';
 // backends/minimax/index.ts — MiniMax-Music3 backend
 //
 // The second registered generation backend (plan §4.3). Thin by design: the
@@ -258,7 +259,9 @@ async function capabilities(): Promise<BackendCapabilities> {
   // resets the in-memory selection) is repaired without anyone touching the
   // dropdown. Fire-and-forget — capabilities must stay fast and never fail
   // because of a residency concern.
-  void reconcileSelection(props, stale);
+  // Browser polling must never change another owner's running model. Jobs
+  // already capture and replay their own selection on the shared GPU lane.
+  if(!principalOf())void reconcileSelection(props, stale);
   // stale === true means the props probe timed out — nearly always "an MM3
   // generation is running and holds the engine mutex", which is the opposite
   // of down. Keep the last-known-good answer rather than flapping to false.

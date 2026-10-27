@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 // ProviderSelector.tsx — LLM provider/model selector for Lyric Studio
 // Ported from hot-step-9000 with lireekApi import adaptation
 
@@ -26,7 +27,7 @@ export async function getCachedProviders(forceRefresh = false): Promise<LlmProvi
   return (await lireekApi.getProviders()).filter(p => p.available);
 }
 
-// ── localStorage persistence for model selections ─────────────────────────
+// ── userStorage persistence for model selections ─────────────────────────
 const STORAGE_KEY = 'lireek-model-selections';
 
 export interface ModelSelections {
@@ -44,10 +45,10 @@ export function loadSelections(): ModelSelections {
     coverCaption: { provider: '', model: '' },
   };
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = userStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Merge defensively — localStorage might contain '{}' or partial data
+      // Merge defensively — userStorage might contain '{}' or partial data
       return {
         profiling: { ...defaults.profiling, ...parsed.profiling },
         generation: { ...defaults.generation, ...parsed.generation },
@@ -70,7 +71,7 @@ export function updateModelSelection(
 }
 
 export function saveSelections(sel: ModelSelections) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sel));
+  userStorage.setItem(STORAGE_KEY, JSON.stringify(sel));
 }
 
 // ── Single row selector ──────────────────────────────────────────────────

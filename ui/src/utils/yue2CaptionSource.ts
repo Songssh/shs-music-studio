@@ -1,3 +1,4 @@
+import { userStorage, userStorageKeys } from '../auth/userStorage';
 /**
  * yue2CaptionSource.ts — where a YuE2 render's caption comes from.
  *
@@ -101,7 +102,7 @@ export const YUE2_CAPTION_SOURCES_KEY = 'hs-yue2CaptionSources';
 
 function _read<T>(key: string): T | null {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = userStorage.getItem(key);
     return raw === null ? null : (JSON.parse(raw) as T);
   } catch {
     return null;
@@ -110,7 +111,7 @@ function _read<T>(key: string): T | null {
 
 function _write(key: string, value: unknown): void {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    userStorage.setItem(key, JSON.stringify(value));
   } catch {
     /* storage full or unavailable — the choice simply won't persist */
   }
@@ -118,13 +119,13 @@ function _write(key: string, value: unknown): void {
 
 // The dataset's captioned tracks are a copy of server data, so they live in
 // memory: every render path calls ensureYue2CaptionSource first, which
-// refetches on a miss. They used to sit in localStorage, one entry per dataset
+// refetches on a miss. They used to sit in userStorage, one entry per dataset
 // ever opened, and filled the quota. Clear what earlier builds left there,
 // including the adapter-keyed hs-yue2SourceTracks: and hs-yue2SourceTracks2:.
 const sourceTracks = new Map<string, Yue2SourceTrack[]>();
 try {
-  for (const key of Object.keys(localStorage)) {
-    if (key.startsWith('hs-yue2SourceTracks')) localStorage.removeItem(key);
+  for (const key of userStorageKeys()) {
+    if (key.startsWith('hs-yue2SourceTracks')) userStorage.removeItem(key);
   }
 } catch { /* storage unavailable */ }
 
@@ -196,7 +197,7 @@ export function readYue2CaptionSources(): Yue2CaptionSourcesHandoff | null {
 }
 
 export function clearYue2CaptionSources(): void {
-  try { localStorage.removeItem(YUE2_CAPTION_SOURCES_KEY); } catch { /* ignore */ }
+  try { userStorage.removeItem(YUE2_CAPTION_SOURCES_KEY); } catch { /* ignore */ }
 }
 
 /**

@@ -1,3 +1,5 @@
+import { accountRequest } from '../../auth/accountApi';
+import { userStorage } from '../../auth/userStorage';
 import { useQuery } from '@tanstack/react-query';
 import { assistantProvidersOptions } from '../../queries/studios/resources';
 // AssistantPanel.tsx — AI Assistant sidebar with streaming chat
@@ -63,6 +65,24 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({ onClose, activeV
   const globalParams = useGlobalParams();
   const { applyActions, previewActions } = useAssistantActions();
 
+  // Durable history is private to the current cookie session. Poll only while
+  // recovering an in-flight answer after reopening the panel.
+  useEffect(() => {
+    let gone=false;let timer:ReturnType<typeof setTimeout>|undefined;
+    const restore=async()=>{
+      try{
+        const data=await accountRequest<{messages:{role:'user'|'assistant';content:string;status:string}[]}>('assistant/history');
+        if(gone || abortRef.current)return;
+        const pending=data.messages.filter(m=>m.status==='streaming');
+        setMessages(data.messages.filter(m=>m.status!=='streaming').map(m=>({id:++messageIdCounter,role:m.status==='failed'?'error':m.role,
+          content:m.role==='assistant'?stripActionBlocks(stripThinkingBlocks(m.content)):m.content,rawContent:m.content,
+          actions:m.role==='assistant'?parseActions(stripThinkingBlocks(m.content)):undefined})));
+        setIsStreaming(pending.length>0);setStreamingText(pending.map(m=>m.content).join('\n'));
+        if(pending.length)timer=setTimeout(()=>void restore(),1500);
+      }catch{/* Keep the current conversation if a network request fails. */}
+    };void restore();return()=>{gone=true;if(timer)clearTimeout(timer);};
+  },[]);
+
   // ── Load providers on mount ──
   useEffect(() => {
     if (!selectedProvider) {
@@ -117,15 +137,15 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({ onClose, activeV
     setIsStreaming(true);
     setStreamingText('');
 
-    // Get current settings snapshot (engine params + content fields from localStorage)
+    // Get current settings snapshot (engine params + content fields from userStorage)
     const readLS = <T,>(key: string, fallback: T): T => {
-      try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
+      try { const v = userStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
     };
     const currentSettings = {
       ...globalParams.getGlobalParams(),
       // Active mode/view
       _activeView: activeView || 'create',
-      // Content fields (stored in localStorage by CreatePanel)
+      // Content fields (stored in userStorage by CreatePanel)
       caption: readLS('hs-caption', ''),
       lyrics: readLS('hs-lyrics', ''),
       instrumental: readLS('hs-instrumental', false),
@@ -208,6 +228,7 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({ onClose, activeV
     if (isStreaming && abortRef.current) {
       abortRef.current.abort();
     }
+    void accountRequest('assistant/history',undefined,'DELETE');
     setMessages([]);
     setStreamingText('');
     setIsStreaming(false);

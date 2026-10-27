@@ -1,3 +1,5 @@
+import { bindUserStorage, userStorage } from '../auth/userStorage';
+bindUserStorage('fixture-user');
 // audioGenQueueStore.generationTime.test.ts — a completed song keeps showing
 // real generation time next to the track duration, in both queue modes.
 //
@@ -43,7 +45,7 @@ const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200, 
 const settle = (ms = 300) => new Promise(resolve => setTimeout(resolve, ms));
 
 test('server-owned queue: the row shows the server\'s elapsedSeconds live, and keeps it when the job finishes between polls', async () => {
-  localStorage.setItem(OWNER_KEY, 'server');
+  userStorage.setItem(OWNER_KEY, 'server');
   const api = new AudioQueueApiFake();
   api.serverItems = [{ id: 'srv1', status: 'submitted', jobId: 'job1', request: { title: 'Cover' },
     meta: { source: 'cover-studio', workflowJobId: 'wf1' }, createdAt: 1, elapsedSeconds: null }];
@@ -82,7 +84,7 @@ test('server-owned queue: the row shows the server\'s elapsedSeconds live, and k
 });
 
 test('browser-owned queue: a workflow-backed Cover row reads the server\'s elapsedSeconds, not a client-side clock', async () => {
-  localStorage.setItem(OWNER_KEY, 'browser');
+  userStorage.setItem(OWNER_KEY, 'browser');
   const api = new AudioQueueApiFake();
   const uninstall = api.install();
   const queue = globalThis.fetch;

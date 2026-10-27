@@ -1,3 +1,4 @@
+import { ownerId } from '../auth/principal.js';
 // routes/preferences.ts — /api/preferences: Batch 4 slice 7a.
 //
 // Named preset families (one collection each):
@@ -8,24 +9,21 @@
 //   POST   /presets/:family/import       { items }  batch import, see contracts/preferences.ts
 // family: vst-chain | ai-continue-style | ai-continue-lyric | yue2-joint
 //
-// Singleton settings families (one current-value document per installation):
+// Singleton settings families (one current-value document per account):
 //   GET    /settings/:family                         the document, or { document: null }
 //   PUT    /settings/:family             { expectedRevision?, body }   create (first call) or update
 //   POST   /settings/:family/import      { items: [one item] }
 // family: ai-continue-template | storm-tuning
 //
-// No auth: every kind here is installation-scoped (no user id in any source
-// browser key), the same reasoning routes/vst.ts already applies to the VST
-// active chain. A caller still needs *some* local identity to satisfy
-// TypedDocuments' signatures; services/preferences/presets.ts supplies the
-// fixed LOCAL_OWNER, which installation scope discards anyway.
+// All preference kinds use the authenticated owner. Migration assigns the
+// former installation documents to the original user's administrator account.
 
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { WorkflowError } from '../services/workflows/workflowJobs.js';
 import { typedDocuments } from './workflows.js';
 import { PRESET_FAMILIES, SINGLETON_FAMILIES, type PresetFamily, type SingletonFamily } from '../services/preferences/kinds.js';
-import { getSingleton, importPreset, importSingleton, upsertSingleton, LOCAL_OWNER } from '../services/preferences/presets.js';
+import { getSingleton, importPreset, importSingleton, upsertSingleton } from '../services/preferences/presets.js';
 import {
   createPreferenceSchema, importPreferenceBatchSchema, resolveYue2PresetSchema, updatePreferenceSchema,
 } from '../contracts/preferences.js';
@@ -66,7 +64,7 @@ router.post('/presets/yue2-joint/resolve', (req, res) => {
 
 router.get('/presets/:family', handle(req => {
   const { def } = presetFamily(req);
-  return { documents: typedDocuments(def).list(LOCAL_OWNER) };
+  return { documents: typedDocuments(def).list(ownerId()) };
 }));
 
 router.post('/presets/:family', (req, res) => {
@@ -75,7 +73,7 @@ router.post('/presets/:family', (req, res) => {
   handle(() => {
     const { def } = presetFamily(req);
     res.status(201);
-    return { document: typedDocuments(def).create(LOCAL_OWNER, parsed.data.body, { origin: 'client' }) };
+    return { document: typedDocuments(def).create(ownerId(), parsed.data.body, { origin: 'client' }) };
   })(req, res);
 });
 
@@ -84,7 +82,7 @@ router.put('/presets/:family/:id', (req, res) => {
   if (!parsed.success) { invalid(res, 'preset update', parsed.error.issues); return; }
   handle(() => {
     const { def } = presetFamily(req);
-    return { document: typedDocuments(def).update(String(req.params.id), LOCAL_OWNER, parsed.data.expectedRevision, parsed.data.body, { origin: 'client' }) };
+    return { document: typedDocuments(def).update(String(req.params.id), ownerId(), parsed.data.expectedRevision, parsed.data.body, { origin: 'client' }) };
   })(req, res);
 });
 
@@ -92,7 +90,7 @@ router.delete('/presets/:family/:id', handle(req => {
   const { def } = presetFamily(req);
   const expected = Number(req.query.expectedRevision);
   if (!Number.isInteger(expected) || expected < 1) throw new WorkflowError(400, 'expectedRevision is required');
-  typedDocuments(def).remove(String(req.params.id), LOCAL_OWNER, expected);
+  typedDocuments(def).remove(String(req.params.id), ownerId(), expected);
   return { removed: true };
 }));
 

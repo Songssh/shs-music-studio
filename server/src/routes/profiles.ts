@@ -1,3 +1,6 @@
+import { ownerId } from '../auth/principal.js';
+import { personalRoot } from '../auth/boundary.js';
+import { getDb } from '../db/database.js';
 // profiles.ts — Parameter profile REST API
 //
 // A profile is a named snapshot of every generation parameter (the UI's
@@ -34,7 +37,8 @@ function backendOf(raw: unknown): string {
 }
 
 function profilesDir(backend: string): string {
-  const root = path.join(config.data.dir, 'profiles');
+  const legacy=(getDb().prepare('SELECT legacy_user_id FROM registration_settings WHERE id=1').get() as {legacy_user_id:string|null}).legacy_user_id;
+  const root = path.join(legacy===ownerId()?config.data.dir:personalRoot(ownerId()), 'profiles');
   const dir = backend === 'ace' ? root : path.join(root, backend);
   fs.mkdirSync(dir, { recursive: true });
   return dir;

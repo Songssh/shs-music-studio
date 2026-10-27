@@ -1,7 +1,8 @@
+import { userStorage } from '../../auth/userStorage';
 /**
  * useAudioGeneration.ts — Send-to-Create flow for Lyric Studio V2.
  *
- * Handles: preset loading → localStorage writes → page navigation.
+ * Handles: preset loading → userStorage writes → page navigation.
  *
  * NOTE: The generateAudio function and mergeCreatePanelSettings helper
  * were removed — all audio generation now flows through
@@ -57,7 +58,7 @@ export function useAudioGeneration({ profiles, showToast: _showToast }: UseAudio
       } catch { /* ignore */ }
     }
 
-    // Write to hs-* localStorage keys AND fire same-tab StorageEvent so
+    // Write to hs-* userStorage keys AND fire same-tab StorageEvent so
     // usePersistedState hooks in the top bar update immediately.
     const write = (key: string, value: any) => writePersistedState(key, value);
 
@@ -148,7 +149,7 @@ export function useAudioGeneration({ profiles, showToast: _showToast }: UseAudio
     }
 
     // Adapter from album preset — update Zustand store directly (writePersistedState
-    // only touches localStorage, which the Zustand store doesn't listen to after init)
+    // only touches userStorage, which the Zustand store doesn't listen to after init)
     const gps = useGlobalParamsStore.getState();
     if (preset?.adapter_path) {
       gps.setAdapter(preset.adapter_path);
@@ -195,7 +196,7 @@ export function useAudioGeneration({ profiles, showToast: _showToast }: UseAudio
     console.log(`[LyricStudioV2] Send to Create: "${gen.title}" (adapter: ${preset?.adapter_path || 'none'}, mastering: ${preset?.reference_track_path || 'none'})`);
 
     // Navigate to Create page — save current LS URL first so sidebar can restore it
-    try { localStorage.setItem('hs-lastLyricStudioUrl', window.location.pathname); } catch { /* ignore */ }
+    try { userStorage.setItem('hs-lastLyricStudioUrl', window.location.pathname); } catch { /* ignore */ }
     window.history.pushState({}, '', '/');
     window.dispatchEvent(new PopStateEvent('popstate'));
   }, [profiles]);

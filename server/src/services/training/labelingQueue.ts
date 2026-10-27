@@ -1,3 +1,4 @@
+import { onTrainingGpu } from './sharedGpu.js';
 // training/labelingQueue.ts — the Dataset Studio job engine
 //
 // Structurally a sibling of routes/midiStudio.ts (job Map, replayable event
@@ -428,7 +429,9 @@ export function enqueue(job: TrainingJob, run: (j: TrainingJob) => Promise<void>
   const swallow = () => { /* runners handle their own errors */ };
   run = runnerOverrides.get(job.kind) ?? run;
   if (laneFor(job) === 'gpu') {
-    gpuTail = gpuTail.then(() => run(job)).catch(swallow);
+    gpuTail = gpuTail.then(() => onTrainingGpu(()=>run(job),{label:`training:${job.id}`})).catch(error=>{
+      if(!isCancelled(job))finishJob(job,'failed',error instanceof Error?error.message:String(error));
+    });
   } else {
     netTail = netTail.then(() => run(job)).catch(swallow);
   }

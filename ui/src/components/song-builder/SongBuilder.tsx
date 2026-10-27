@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 import { getSessionEpoch } from '../../queries/keys';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { projectsOptions, projectOptions } from '../../queries/studios/resources';
@@ -406,7 +407,7 @@ export const SongBuilder: React.FC = () => {
     if (typeof engineParams.generationTimeoutMinutes !== 'number') engineParams.generationTimeoutMinutes = getGenerationTimeoutMinutes();
     // "Keep Models in VRAM" is respected, never forced (see sectionOps.ts).
     const coResident = (() => {
-      try { return JSON.parse(localStorage.getItem('ace-settings') || '{}').coResident === true; }
+      try { return JSON.parse(userStorage.getItem('ace-settings') || '{}').coResident === true; }
       catch { return false; }
     })();
     try {

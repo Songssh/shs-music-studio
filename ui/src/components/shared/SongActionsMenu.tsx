@@ -169,7 +169,7 @@ export function songFromRecent(rs: UnifiedRecentSong): Song {
 /**
  * Widen a playlist entry into the Song shape.
  *
- * A playlist item is a thin projection stored in localStorage, so it carries no
+ * A playlist item is a thin projection stored in userStorage, so it carries no
  * lyrics and its `style` doubles as the caption. That is enough for every menu
  * action: the post-processing gate reads masteredAudioUrl and audioUrl, and the
  * server re-reads the real row before it runs anything.

@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 // TrainingDraftBar.tsx — offer a Training Studio audition draft to Create.
 //
 // Shown while the address carries ?trainingDraft=<id> (trainingCreateDraft.ts).
@@ -36,7 +37,7 @@ export const TrainingDraftBar: React.FC = () => {
     try {
       const data = await loadTrainingCreateDraft(draftId);
       applyTrainingCreateDraft(data, {
-        store: useGlobalParamsStore, write: writePersistedState, storage: localStorage, scopedKey: base => scopedKey(base),
+        store: useGlobalParamsStore, write: writePersistedState, storage: userStorage, scopedKey: base => scopedKey(base),
       });
       dismiss();
     } catch (e) {

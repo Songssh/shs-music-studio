@@ -3,7 +3,7 @@
 // The transport layer between TanStack Query (caching, dedup, retry) and REST:
 // - the request interceptor injects the bearer from a module-level session
 //   accessor that AuthProvider updates at the same site that calls
-//   startAuthSession — the token lives in auth state, not localStorage, and
+//   startAuthSession — the token lives in auth state, not userStorage, and
 //   fetchers no longer thread it per call;
 // - the response interceptor is the global catch: every failure is normalized
 //   to ApiError, logged once here, and toasted per the filters below. Errors
@@ -70,7 +70,7 @@ function messageFor(status: number, body: any): string {
   const server = typeof body?.error === 'string' ? body.error : undefined;
   if (server) return server;
   switch (status) {
-    case 401: return 'Session expired — signing you back in';
+    case 401: return 'Session expired — please sign in again';
     case 403: return 'The server refused this action (403)';
     case 404: return 'Not found on the server (404)';
     default: return `Server error (HTTP ${status})`;
@@ -238,7 +238,7 @@ export const http = axios.create({
 
 http.interceptors.request.use((config) => {
   const token = getAuthToken();
-  if (token) config.headers.set('Authorization', `Bearer ${token}`);
+  if (token) config.headers.set('X-Hotstep-User', token);
   return config;
 });
 

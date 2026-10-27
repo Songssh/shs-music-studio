@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 import { useQuery } from '@tanstack/react-query';
 import { modelsOptions } from '../../queries/studios/shared';
 // StemBuilder.tsx — Main Stem Builder orchestrator
@@ -49,13 +50,13 @@ export const StemBuilder: React.FC = () => {
   const gp = useGlobalParamsStore();
 
   // ── Source audio ──
-  const [sourceAudioUrl, setSourceAudioUrl] = useState(() => localStorage.getItem('hs-sb-sourceUrl') || '');
+  const [sourceAudioUrl, setSourceAudioUrl] = useState(() => userStorage.getItem('hs-sb-sourceUrl') || '');
   const [sourceRef, setSourceRef] = useState<SourceRef | null>(() => {
-    try { return JSON.parse(localStorage.getItem('hs-sb-sourceRef') || 'null'); } catch { return null; }
+    try { return JSON.parse(userStorage.getItem('hs-sb-sourceRef') || 'null'); } catch { return null; }
   });
   const sourceUrlRef = useRef(sourceAudioUrl);
   sourceUrlRef.current = sourceAudioUrl;
-  const [sourceFileName, setSourceFileName] = useState(() => localStorage.getItem('hs-sb-sourceFile') || '');
+  const [sourceFileName, setSourceFileName] = useState(() => userStorage.getItem('hs-sb-sourceFile') || '');
   const { mutate: uploadSource, isPending: isUploading } = useUpload<{ audio_url: string; asset_id?: string }>();
 
   // ── Track selection ──
@@ -110,12 +111,12 @@ export const StemBuilder: React.FC = () => {
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 4000); };
 
   // ── Persist source ──
-  useEffect(() => { localStorage.setItem('hs-sb-sourceUrl', sourceAudioUrl); }, [sourceAudioUrl]);
-  useEffect(() => { localStorage.setItem('hs-sb-sourceRef', JSON.stringify(sourceRef)); }, [sourceRef]);
-  useEffect(() => { localStorage.setItem('hs-sb-sourceFile', sourceFileName); }, [sourceFileName]);
+  useEffect(() => { userStorage.setItem('hs-sb-sourceUrl', sourceAudioUrl); }, [sourceAudioUrl]);
+  useEffect(() => { userStorage.setItem('hs-sb-sourceRef', JSON.stringify(sourceRef)); }, [sourceRef]);
+  useEffect(() => { userStorage.setItem('hs-sb-sourceFile', sourceFileName); }, [sourceFileName]);
 
   useEffect(() => {
-    const id = localStorage.getItem('hs-sb-workflowJob');
+    const id = userStorage.getItem('hs-sb-workflowJob');
     if (!id || !token) return;
     let mounted = true;
     const observation = new AbortController();
@@ -138,7 +139,7 @@ export const StemBuilder: React.FC = () => {
         showToast('Layer complete!');
       }).catch(err => { if (mounted) showToast(`Layer ${String((err as Error).message)}`); })
       .finally(() => {
-        if (mounted && localStorage.getItem('hs-sb-workflowJob') === id) localStorage.removeItem('hs-sb-workflowJob');
+        if (mounted && userStorage.getItem('hs-sb-workflowJob') === id) userStorage.removeItem('hs-sb-workflowJob');
         if (mounted) { setIsGenerating(false); setActiveJobId(null); }
       });
     return () => { mounted = false; observation.abort(); };
@@ -146,14 +147,14 @@ export const StemBuilder: React.FC = () => {
 
   // ── Persist model ──
   useEffect(() => {
-    if (buildModel) localStorage.setItem('hs-sb-model', buildModel);
+    if (buildModel) userStorage.setItem('hs-sb-model', buildModel);
   }, [buildModel]);
 
   // ── Load base models on mount ──
   useEffect(() => {
     const base = getBaseModels(modelsQuery.data?.models.dit || []);
     if (base.length && !buildModel) {
-      const stored = localStorage.getItem('hs-sb-model');
+      const stored = userStorage.getItem('hs-sb-model');
       setBuildModel(stored && base.includes(stored) ? stored : base[0]);
     }
   }, [modelsQuery.data, buildModel]);
@@ -222,7 +223,7 @@ export const StemBuilder: React.FC = () => {
 
   // ── Generate ──
   const handleGenerate = async () => {
-    if (submissionKeyRef.current || localStorage.getItem('hs-sb-workflowJob')) return;
+    if (submissionKeyRef.current || userStorage.getItem('hs-sb-workflowJob')) return;
     if (!token || !sourceAudioUrl || !sourceRef || sourceRef.expectedUrl !== sourceAudioUrl ||
         !selectedTrack || !buildModel) {
       showToast('Select a source, track, and model');
@@ -241,7 +242,7 @@ export const StemBuilder: React.FC = () => {
       if (submissionKeyRef.current !== key) { await workflowApi.cancel(job.id); return; }
       setActiveJobId(job.id);
       submittedJobId = job.id;
-      localStorage.setItem('hs-sb-workflowJob', job.id);
+      userStorage.setItem('hs-sb-workflowJob', job.id);
       showToast(`Building ${selectedTrack} layer...`);
       const result = await followStudioRender(job.id, stage => setGenStage(stage));
       const audio = result.audio || {};
@@ -264,7 +265,7 @@ export const StemBuilder: React.FC = () => {
     } finally {
       if (submissionKeyRef.current === key) {
         submissionKeyRef.current = null;
-        if (localStorage.getItem('hs-sb-workflowJob') === submittedJobId) localStorage.removeItem('hs-sb-workflowJob');
+        if (userStorage.getItem('hs-sb-workflowJob') === submittedJobId) userStorage.removeItem('hs-sb-workflowJob');
         setIsGenerating(false);
         setActiveJobId(null);
       }
@@ -276,7 +277,7 @@ export const StemBuilder: React.FC = () => {
     if (activeJobId && token) {
       try { await workflowApi.cancel(activeJobId); } catch { /* ignore */ }
     }
-    localStorage.removeItem('hs-sb-workflowJob');
+    userStorage.removeItem('hs-sb-workflowJob');
     setIsGenerating(false);
     setActiveJobId(null);
     setGenStage('');

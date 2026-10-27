@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 // AiGenerateModal.tsx — Modal for generating song content via external LLM
 //
 // Lets the user pick an LLM provider/model, enter a subject and genre/style,
@@ -42,15 +43,15 @@ interface AiGenerateModalProps {
   onResult: (result: AiGenerateResult) => void;
 }
 
-// ── localStorage keys for persisting provider/model selection ─────────
+// ── userStorage keys for persisting provider/model selection ─────────
 const STORAGE_KEY_PROVIDER = 'hs-customgen-ai-provider';
 const STORAGE_KEY_MODEL = 'hs-customgen-ai-model';
 
 function loadPersisted(key: string): string {
-  try { return JSON.parse(localStorage.getItem(key) || '""'); } catch { return ''; }
+  try { return JSON.parse(userStorage.getItem(key) || '""'); } catch { return ''; }
 }
 function savePersisted(key: string, value: string) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+  try { userStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
 }
 
 // ── Component ────────────────────────────────────────────────────────────

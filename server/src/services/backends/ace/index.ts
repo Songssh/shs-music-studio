@@ -1,3 +1,4 @@
+import { privateAdapterNames } from '../../../auth/adapters.js';
 // backends/ace/index.ts — ACE-Step 1.5 backend
 //
 // Backend manifest plus the thin step 4 wrapper around the existing ACE
@@ -100,8 +101,8 @@ async function models(): Promise<BackendModels> {
         vae: props.models.vae,
         embedding: props.models.embedding,
       },
-      adapters: props.adapters,
-      lmAdapters: props.lm_adapters ?? [],
+      adapters: privateAdapterNames(props.adapters),
+      lmAdapters: privateAdapterNames(props.lm_adapters ?? [],true),
       defaults: props.default,
     };
   } catch {

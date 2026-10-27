@@ -1,3 +1,4 @@
+import { privateAdapters } from '../../auth/privatePaths.js';
 // training/mm3Runs.ts — what is on disk from previous MM3 LM training runs, and
 // what it would take to continue one.
 //
@@ -43,7 +44,7 @@ import type { TrainingAdapterHit } from './types.js';
 
 /** Where every MM3 LM run lives. One level above a run directory. */
 export function mm3AdapterRoot(): string {
-  return path.join(config.aceServer.adapters, 'mm3-lm-adapters');
+  return path.join(privateAdapters(), 'mm3-lm-adapters');
 }
 
 export function mm3RunManifestPath(outDir: string): string {

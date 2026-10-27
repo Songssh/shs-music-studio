@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 // FolderPicker.tsx — folder browse dialog for the dataset wizard
 //
 // Reuses the existing GET /api/adapters/browse endpoint with the
@@ -16,10 +17,10 @@ import type { BrowseEntry } from '../../types';
 const LAST_DIR_KEY = 'hs-training-lastDir';
 
 function getLastDir(): string {
-  try { return localStorage.getItem(LAST_DIR_KEY) || ''; } catch { return ''; }
+  try { return userStorage.getItem(LAST_DIR_KEY) || ''; } catch { return ''; }
 }
 function saveLastDir(dir: string): void {
-  try { localStorage.setItem(LAST_DIR_KEY, dir); } catch { /* ignore */ }
+  try { userStorage.setItem(LAST_DIR_KEY, dir); } catch { /* ignore */ }
 }
 
 interface FolderPickerProps {

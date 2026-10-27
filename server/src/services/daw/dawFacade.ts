@@ -5,6 +5,9 @@
 // facade job map, the per-job temp dir and the float32 WAV export.
 
 import fs from 'fs';
+import { jobFetch } from '../../auth/jobRequests.js';
+import { claimFile } from '../../auth/ownership.js';
+import { principalOf } from '../../auth/principal.js';
 import path from 'path';
 import { execFile } from 'child_process';
 import crypto from 'crypto';
@@ -84,32 +87,20 @@ const base = () => `http://127.0.0.1:${config.server.port}`;
 
 // ── Loopback client ───────────────────────────────────────────────────────
 
-let token: string | null = null;
-
-async function getToken(): Promise<string> {
-  if (token) return token;
-  const r = await fetch(`${base()}/api/auth/auto`);
-  if (!r.ok) throw new DawError(502, 'upstream_error', `auth/auto returned ${r.status}`);
-  token = ((await r.json()) as any).token;
-  return token!;
-}
-
 type Caller = (method: string, route: string, body?: unknown) => Promise<{ status: number; data: any }>;
 let caller: Caller = (method, route, body) => httpCall(method, route, body);
 const call: Caller = (method, route, body) => caller(method, route, body);
 /** Test hook: swap the loopback client. Returns the previous one. */
 export function __setCaller(c: Caller): Caller { const prev = caller; caller = c; return prev; }
 
-async function httpCall(method: string, route: string, body?: unknown, retry = true): Promise<{ status: number; data: any }> {
-  const r = await fetch(`${base()}${route}`, {
+async function httpCall(method: string, route: string, body?: unknown): Promise<{ status: number; data: any }> {
+  const r = await jobFetch(`${base()}${route}`, {
     method,
-    headers: { Authorization: `Bearer ${await getToken()}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
     // Metadata lookups must not hang a DAW request on a stuck server.
     ...(method === 'GET' && (route === '/api/models' || route === '/api/backends') ? { signal: AbortSignal.timeout(10_000) } : {}),
   });
-  // Tokens live in memory upstream; mint a fresh one after a server restart.
-  if (r.status === 401 && retry) { token = null; return httpCall(method, route, body, false); }
   let data: any = null;
   try { data = await r.json(); } catch { /* non-JSON */ }
   return { status: r.status, data };
@@ -169,6 +160,7 @@ export async function getDitInfo(): Promise<{ dit: string[]; loaded: string | nu
 export function newTmpDir(id: string): string {
   const dir = path.join(dawTmpRoot(), id);
   fs.mkdirSync(dir, { recursive: true });
+  if(principalOf())claimFile(dir,undefined,'directory');
   return dir;
 }
 

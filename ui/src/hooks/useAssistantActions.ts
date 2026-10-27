@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 // useAssistantActions.ts — Hook for applying LLM-suggested settings changes
 //
 // Maps action field names to GlobalParamsContext setters, provides
@@ -86,7 +87,7 @@ const LABEL_MAP: Record<string, string> = {
   autoTrimEnabled: 'Auto-Trim',
   durationBuffer: 'Duration Buffer',
   autoTrimFadeMs: 'Trim Fade',
-  // Content fields (localStorage)
+  // Content fields (userStorage)
   caption: 'Style Description',
   lyrics: 'Lyrics',
   instrumental: 'Instrumental',
@@ -173,7 +174,7 @@ export function useAssistantActions() {
     autoTrimEnabled: gp.setAutoTrimEnabled,
     durationBuffer: gp.setDurationBuffer,
     autoTrimFadeMs: gp.setAutoTrimFadeMs,
-    // Content fields (stored in localStorage, synced via StorageEvent)
+    // Content fields (stored in userStorage, synced via StorageEvent)
     caption: (v: any) => writePersistedState('hs-caption', v),
     lyrics: (v: any) => writePersistedState('hs-lyrics', v),
     instrumental: (v: any) => writePersistedState('hs-instrumental', v),
@@ -202,9 +203,9 @@ export function useAssistantActions() {
   /** Preview actions as a diff array (before applying) */
   function previewActions(actions: AssistantAction[]): ActionDiff[] {
     const engineParams = gp.getGlobalParams();
-    // Also read content fields from localStorage for preview diffs
+    // Also read content fields from userStorage for preview diffs
     const readLS = <T,>(key: string, fallback: T): T => {
-      try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
+      try { const v = userStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
     };
     const current: Record<string, any> = {
       ...engineParams,

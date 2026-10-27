@@ -1,3 +1,4 @@
+import { principalContext } from '../../auth/principal.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
@@ -6,20 +7,21 @@ import { TypedDocuments, WorkflowDocuments, type TypedDocumentKind } from '../wo
 import { getSingleton, importPreset, importSingleton, LOCAL_OWNER, upsertSingleton } from './presets.js';
 import { aiContinuePresetBodySchema, aiContinueTemplateBodySchema, type AiContinuePresetBody, type AiContinueTemplateBody } from '../../contracts/preferences.js';
 
+principalContext.enterWith({id:LOCAL_OWNER,role:'user',sessionId:'fixture'});
 const uniq = (() => { let n = 0; return () => `t.preset-test-${process.pid}-${n++}`; })();
 const uniqSingleton = (() => { let n = 0; return () => `t.singleton-test-${process.pid}-${n++}`; })();
 
 function presetStore(): TypedDocuments<AiContinuePresetBody> {
   const db = new Database(':memory:');
   const def: TypedDocumentKind<AiContinuePresetBody> = {
-    kind: uniq(), scope: 'installation', schemaVersion: 1, schema: aiContinuePresetBodySchema,
+    kind: uniq(), scope: 'user', schemaVersion: 1, schema: aiContinuePresetBodySchema,
   };
   return new TypedDocuments(new WorkflowDocuments(db), db, def);
 }
 function singletonStore(): TypedDocuments<AiContinueTemplateBody> {
   const db = new Database(':memory:');
   const def: TypedDocumentKind<AiContinueTemplateBody> = {
-    kind: uniqSingleton(), scope: 'installation', schemaVersion: 1, schema: aiContinueTemplateBodySchema,
+    kind: uniqSingleton(), scope: 'user', schemaVersion: 1, schema: aiContinueTemplateBodySchema,
   };
   return new TypedDocuments(new WorkflowDocuments(db), db, def);
 }

@@ -1,3 +1,4 @@
+import { authenticatedTestServer } from '../auth/testSupport.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -21,25 +22,24 @@ type ImportResponse = import('./exportImport.js').ImportResponse;
 
 database.initDb();
 const app = express();
+const fixture = await authenticatedTestServer(app,database.getDb(),DATA_DIR);
+const {server,cookie,user}=fixture;
 app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/export-import', exportImportRoutes);
-const server = app.listen(0);
-await new Promise(resolve => server.once('listening', resolve));
 const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 test.after(() => new Promise(resolve => server.close(() => { database.closeDb(); fs.rmSync(DATA_DIR, { recursive: true, force: true }); resolve(undefined); })));
 
-const { token, user } = await (await fetch(`${base}/api/auth/auto`)).json() as { token: string; user: { id: string } };
 const json = async (p: string, body: unknown, auth = true) => {
   const res = await fetch(`${base}/api/export-import${p}`, { method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) });
+    headers: { Origin:fixture.base, 'Content-Type': 'application/json', ...(auth ? { Cookie: cookie, Origin: fixture.base } : {}) }, body: JSON.stringify(body) });
   return { status: res.status, type: res.headers.get('content-type') ?? '', body: await res.json() as Record<string, any> };
 };
 const upload = async (name: string, bytes: Uint8Array, auth = true) => {
   const form = new FormData();
   form.append('audio', new Blob([bytes]), name);
   const res = await fetch(`${base}/api/export-import/assets`, { method: 'POST', body: form,
-    headers: auth ? { Authorization: `Bearer ${token}` } : {} });
+    headers: auth ? { Cookie: cookie, Origin: fixture.base } : {Origin:fixture.base} });
   return { status: res.status, body: await res.json() as Record<string, any> };
 };
 

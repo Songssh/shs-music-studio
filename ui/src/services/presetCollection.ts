@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 // presetCollection.ts — one named-preset family from /api/preferences, as the
 // UI edits it. The VST chain store and the AI continue preset modal render
 // one of these and call its methods; the tests drive the same objects.
@@ -62,7 +63,7 @@ export interface PresetCollectionOptions {
   family: PresetFamily;
   /** The legacy browser values to import, or [] when there are none. */
   legacyItems: () => Promise<ImportPreferenceItem[]>;
-  /** localStorage flag set once every legacy value is imported or resolved. */
+  /** userStorage flag set once every legacy value is imported or resolved. */
   migratedFlag: string;
   api?: PresetsApi;
 }
@@ -349,9 +350,9 @@ function fromDocument<B>(d: TypedDocument<B>): PresetEntry<B> {
 }
 
 function readFlag(key: string): boolean {
-  try { return !!localStorage.getItem(key); } catch { return false; }
+  try { return !!userStorage.getItem(key); } catch { return false; }
 }
 
 function writeFlag(key: string): void {
-  try { localStorage.setItem(key, '1'); } catch { /* storage unavailable: the import is retried, and is idempotent */ }
+  try { userStorage.setItem(key, '1'); } catch { /* storage unavailable: the import is retried, and is idempotent */ }
 }

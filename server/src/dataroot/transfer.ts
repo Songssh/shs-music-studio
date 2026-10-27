@@ -82,7 +82,7 @@ function moveByRename(m: Mapping, log: Log): void {
 function copyTree(src: string, dst: string, progress: (bytes: number) => void): void {
   const st = fs.lstatSync(src);
   if (st.isSymbolicLink()) {
-    if (!fs.existsSync(dst)) fs.symlinkSync(fs.readlinkSync(src), dst, st.isDirectory() ? 'junction' : undefined);
+    if (!fs.existsSync(dst)) fs.symlinkSync(fs.readlinkSync(src), dst, fs.statSync(src).isDirectory() ? 'junction' : undefined);
     return;
   }
   if (st.isDirectory()) {
@@ -137,6 +137,7 @@ function gb(n: number): string { return `${(n / 1e9).toFixed(2)} GB`; }
 // ── Metadata rewrite ─────────────────────────────────────────────────
 
 const PLAIN_COLUMNS: Record<string, string[]> = {
+  user_assets: ['path'],
   album_presets: ['adapter_path', 'lm_adapter_path', 'mm3_adapter_path', 'yue2_ar_adapter_path', 'yue2_nar_adapter_path', 'reference_track_path'],
   training_datasets: ['source_dir', 'dataset_json_path'],
   yue2_rung_scores: ['checkpoint_dir'],
@@ -175,6 +176,10 @@ export function rewriteDb(dbPath: string, pairs: PathPair[], backupTag: string, 
   try {
     const cols = (t: string) => new Set((db.prepare(`PRAGMA table_info("${t}")`).all() as any[]).map(c => c.name));
     db.transaction(() => {
+      // This offline, administrator-authorized transfer rewrites every owner's
+      // paths. Preserve ownership triggers verbatim and restore them atomically.
+      const guards=db.prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND name IN ('lyrics_sets_auth_update','profiles_auth_update','generations_auth_update','audio_generations_auth_update','album_presets_auth_update')").all() as {name:string;sql:string}[];
+      for(const guard of guards)db.exec(`DROP TRIGGER "${guard.name}"`);
       for (const [table, json] of [...Object.entries(PLAIN_COLUMNS).map(e => [e, false] as const), ...Object.entries(JSON_COLUMNS).map(e => [e, true] as const)]) {
         const [t, wanted] = table;
         const have = cols(t);
@@ -197,6 +202,7 @@ export function rewriteDb(dbPath: string, pairs: PathPair[], backupTag: string, 
           }
         }
       }
+      for(const guard of guards)db.exec(guard.sql);
     })();
   } finally {
     db.close();

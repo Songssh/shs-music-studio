@@ -48,7 +48,7 @@ export interface AudioQueueDeps {
    *  actually render", because it does not depend on this queue's own poll
    *  cadence ever observing the job mid-run. */
   getJob: (jobId: string) => {
-    status: string; error?: string; result?: unknown;
+    status: string; userId?: string; error?: string; result?: unknown;
     attempts?: Array<{ startedAt: number; endedAt?: number }>;
   } | undefined;
   cancelJob: (jobId: string) => boolean;
@@ -97,6 +97,17 @@ export function ensureAudioQueueSchema(db: Database.Database): void {
     const row = db.prepare(`SELECT COUNT(*) AS c FROM pragma_table_info('audio_intents') WHERE name = ?`).get(name) as { c: number };
     if (row.c === 0) db.exec(`ALTER TABLE audio_intents ADD COLUMN ${name} INTEGER`);
   }
+  if(!db.prepare("SELECT 1 FROM audio_queue_state WHERE key='owner-keys-v1'").get())db.transaction(()=>{
+    const rows=db.prepare('SELECT id,idempotency_key,user_id FROM audio_intents').all() as {id:string;idempotency_key:string;user_id:string}[];
+    for(const row of rows)db.prepare('UPDATE audio_intents SET idempotency_key=? WHERE id=?').run('owner:'+JSON.stringify([row.user_id,row.idempotency_key]),row.id);
+    for(const row of db.prepare('SELECT backup_id,receipt FROM audio_queue_imports').all() as {backup_id:string;receipt:string}[]){
+      const receipt=JSON.parse(row.receipt) as {items:{itemId:string}[]};
+      const owners=new Set(receipt.items.map(item=>(db.prepare('SELECT user_id FROM audio_intents WHERE id=?').get(item.itemId) as {user_id:string}|undefined)?.user_id).filter(Boolean));
+      if(owners.size!==1)throw new Error('Legacy queue receipt needs an explicit owner mapping');
+      db.prepare('UPDATE audio_queue_imports SET backup_id=? WHERE backup_id=?').run(JSON.stringify([[...owners][0],row.backup_id]),row.backup_id);
+    }
+    db.prepare("INSERT INTO audio_queue_state VALUES('owner-keys-v1','1')").run();
+  })();
 }
 
 /** Server-side status strings that mean "accepted, but the engine has not
@@ -129,7 +140,7 @@ function attemptElapsedSeconds(
 
 function toItem(r: Row, now: number): AudioIntentItem {
   return {
-    id: r.id, idempotencyKey: r.idempotency_key, status: r.status, engine: r.engine,
+    id: r.id, idempotencyKey: r.idempotency_key.startsWith('owner:') ? (JSON.parse(r.idempotency_key.slice(6)) as string[])[1] : r.idempotency_key, status: r.status, engine: r.engine,
     request: JSON.parse(r.request), meta: r.meta ? JSON.parse(r.meta) : null,
     jobId: r.job_id, attempt: r.attempt, previousJobIds: JSON.parse(r.previous_job_ids),
     waiting: r.waiting, cancelRequested: r.cancel_requested === 1, error: r.error,
@@ -156,25 +167,27 @@ export class AudioIntentQueue {
     return this.db.prepare('SELECT * FROM audio_intents WHERE id = ?').get(id) as Row | undefined;
   }
 
-  get(id: string): AudioIntentItem {
+  get(id: string, userId?: string): AudioIntentItem {
     const r = this.row(id);
+    if (userId && r?.user_id !== userId) throw new AudioQueueError(404, 'Queue item not found');
     if (!r) throw new AudioQueueError(404, `Queue item ${id} not found`);
     return toItem(r, this.now());
   }
 
-  dismiss(id: string): void {
+  dismiss(id: string, userId?: string): void {
+    if (userId) this.get(id, userId);
     const r = this.row(id);
     if (!r) throw new AudioQueueError(404, `Queue item ${id} not found`);
     if (!TERMINAL.includes(r.status)) throw new AudioQueueError(409, 'Only a finished queue item can be removed');
     this.db.prepare('DELETE FROM audio_intents WHERE id = ?').run(id);
   }
 
-  list(status?: AudioIntentStatus): AudioIntentItem[] {
+  list(status?: AudioIntentStatus, userId?: string): AudioIntentItem[] {
     const rows = status
       ? this.db.prepare('SELECT * FROM audio_intents WHERE status = ? ORDER BY created_at, rowid').all(status)
       : this.db.prepare('SELECT * FROM audio_intents ORDER BY created_at, rowid').all();
     const now = this.now();
-    return (rows as Row[]).map(r => toItem(r, now));
+    return (rows as Row[]).filter(r => !userId || r.user_id === userId).map(r => toItem(r, now));
   }
 
   /** Import a verified browser backup atomically. A submitted legacy job is
@@ -184,8 +197,9 @@ export class AudioIntentQueue {
    *  own status, never on new work. Left paused, every later submit would
    *  sit pending with nothing in the UI to say why. */
   importLegacy(input: ImportAudioQueue, userId: string): { backupId: string; imported: number; existing: number; items: { legacyId: string; itemId: string; status: AudioIntentStatus }[] } {
-    const prior = this.db.prepare('SELECT receipt FROM audio_queue_imports WHERE backup_id = ?').get(input.backupId) as { receipt: string } | undefined;
-    if (prior) { this.setPaused(false); return JSON.parse(prior.receipt); }
+    const backupKey = JSON.stringify([userId, input.backupId]);
+    const prior = this.db.prepare('SELECT receipt FROM audio_queue_imports WHERE backup_id = ?').get(backupKey) as { receipt: string } | undefined;
+    if (prior) { this.setPaused(false, userId); return JSON.parse(prior.receipt); }
     const seen = new Set<string>();
     for (const item of input.items) {
       if (seen.has(item.legacyId)) throw new AudioQueueError(400, `Duplicate legacy item id: ${item.legacyId}`);
@@ -204,7 +218,7 @@ export class AudioIntentQueue {
         backupId: input.backupId, imported: 0, existing: 0, items: [],
       };
       for (const old of input.items) {
-        const key = `browser:${old.legacyId}`;
+        const key = 'owner:' + JSON.stringify([userId, `browser:${old.legacyId}`]);
         const existing = this.db.prepare('SELECT * FROM audio_intents WHERE idempotency_key = ?').get(key) as Row | undefined;
         if (existing) {
           if (existing.meta && (JSON.parse(existing.meta) as Record<string, unknown>).legacyId !== old.legacyId) {
@@ -221,6 +235,7 @@ export class AudioIntentQueue {
         const engine = typeof request.expectedBackend === 'string' ? request.expectedBackend : this.deps.activeEngine();
         request.expectedBackend = engine;
         const job = old.jobId ? this.deps.getJob(old.jobId) : undefined;
+        if (job && job.userId !== userId) throw new AudioQueueError(404, 'Job not found');
         let status: AudioIntentStatus;
         if (old.status === 'succeeded' || old.status === 'failed') status = old.status;
         else if ((old.meta.view as Record<string, unknown> | undefined)?.mm3TakeOf && !old.jobId) status = 'interrupted';
@@ -238,13 +253,14 @@ export class AudioIntentQueue {
         receipt.imported++;
         receipt.items.push({ legacyId: old.legacyId, itemId: id, status });
       }
-      this.db.prepare('INSERT INTO audio_queue_imports (backup_id, receipt) VALUES (?, ?)').run(input.backupId, JSON.stringify(receipt));
-      this.setPaused(false);
+      this.db.prepare('INSERT INTO audio_queue_imports (backup_id, receipt) VALUES (?, ?)').run(backupKey, JSON.stringify(receipt));
+      this.setPaused(false, userId);
       return receipt;
     })();
   }
 
-  resumeHeld(ids: string[]): AudioIntentItem[] {
+  resumeHeld(ids: string[], userId?: string): AudioIntentItem[] {
+    if (userId) for (const id of ids) this.get(id, userId);
     const change = this.db.transaction(() => ids.map(id => {
       const done = this.db.prepare(`UPDATE audio_intents SET status = 'pending', waiting = NULL, updated_at = ? WHERE id = ? AND status = 'held'`)
         .run(this.now(), id);
@@ -256,6 +272,7 @@ export class AudioIntentQueue {
 
   /** Queue a request, or return the item already queued under this key. */
   enqueue(input: { idempotencyKey: string; request: Record<string, unknown>; meta?: Record<string, unknown> }, userId: string): { item: AudioIntentItem; created: boolean } {
+    const storageKey = 'owner:' + JSON.stringify([userId, input.idempotencyKey]);
     const request = structuredClone(input.request);
     const asserted = request.expectedBackend;
     if (asserted !== undefined && (typeof asserted !== 'string' || !this.deps.isEngine(asserted))) {
@@ -267,19 +284,19 @@ export class AudioIntentQueue {
     request.expectedBackend = engine;
     const hash = requestVersion(request);
 
-    const existing = this.db.prepare('SELECT * FROM audio_intents WHERE idempotency_key = ?').get(input.idempotencyKey) as Row | undefined;
+    const existing = this.db.prepare('SELECT * FROM audio_intents WHERE idempotency_key = ?').get(storageKey) as Row | undefined;
     if (existing) return this.sameOrConflict(existing, hash);
     const t = this.now();
     const id = randomUUID();
     try {
       this.db.prepare(`INSERT INTO audio_intents (id, idempotency_key, user_id, status, engine, request, request_hash, meta, created_at, updated_at)
         VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`).run(
-        id, input.idempotencyKey, userId, engine, JSON.stringify(request), hash,
+        id, storageKey, userId, engine, JSON.stringify(request), hash,
         input.meta ? JSON.stringify(input.meta) : null, t, t);
     } catch (err: any) {
       // Lost a race with another client using the same key.
       if (String(err?.code).startsWith('SQLITE_CONSTRAINT')) {
-        const winner = this.db.prepare('SELECT * FROM audio_intents WHERE idempotency_key = ?').get(input.idempotencyKey) as Row;
+        const winner = this.db.prepare('SELECT * FROM audio_intents WHERE idempotency_key = ?').get(storageKey) as Row;
         return this.sameOrConflict(winner, hash);
       }
       throw err;
@@ -296,7 +313,8 @@ export class AudioIntentQueue {
 
   /** Cancel an item. Pending stops at once; submitting is cancelled as soon as
    *  its submit returns; submitted cancels its job. Terminal items are refused. */
-  cancel(id: string): AudioIntentItem {
+  cancel(id: string, userId?: string): AudioIntentItem {
+    if (userId) this.get(id, userId);
     const r = this.row(id);
     if (!r) throw new AudioQueueError(404, `Queue item ${id} not found`);
     if (TERMINAL.includes(r.status)) throw new AudioQueueError(409, `Queue item is already ${r.status}`);
@@ -325,7 +343,8 @@ export class AudioIntentQueue {
 
   /** Put a failed, cancelled or interrupted item back in the queue as a new
    *  attempt. This is the only way anything renders twice. */
-  retry(id: string): AudioIntentItem {
+  retry(id: string, userId?: string): AudioIntentItem {
+    if (userId) this.get(id, userId);
     const r = this.row(id);
     if (!r) throw new AudioQueueError(404, `Queue item ${id} not found`);
     if (!['failed', 'cancelled', 'interrupted'].includes(r.status)) {
@@ -344,23 +363,23 @@ export class AudioIntentQueue {
 
   // ── Queue state ───────────────────────────────────────────────────────────
 
-  private paused(): boolean {
-    const v = this.db.prepare(`SELECT value FROM audio_queue_state WHERE key = 'paused'`).get() as { value: string } | undefined;
+  private paused(userId?: string): boolean {
+    const v = this.db.prepare(`SELECT value FROM audio_queue_state WHERE key = ?`).get(userId ? `paused:${userId}` : 'paused') as { value: string } | undefined;
     return v?.value === '1';
   }
 
   /** Pause stops new submissions; what is already submitted carries on. */
-  setPaused(paused: boolean): AudioQueueState {
-    this.db.prepare(`INSERT INTO audio_queue_state (key, value) VALUES ('paused', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(paused ? '1' : '0');
-    return this.state();
+  setPaused(paused: boolean, userId?: string): AudioQueueState {
+    this.db.prepare(`INSERT INTO audio_queue_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(userId ? `paused:${userId}` : 'paused', paused ? '1' : '0');
+    return this.state(userId);
   }
 
-  state(): AudioQueueState {
+  state(userId?: string): AudioQueueState {
     const counts: AudioQueueState['counts'] = {};
-    for (const row of this.db.prepare('SELECT status, COUNT(*) AS n FROM audio_intents GROUP BY status').all() as Array<{ status: AudioIntentStatus; n: number }>) {
+    for (const row of this.db.prepare('SELECT status, COUNT(*) AS n FROM audio_intents WHERE (? IS NULL OR user_id=?) GROUP BY status').all(userId??null,userId??null) as Array<{ status: AudioIntentStatus; n: number }>) {
       counts[row.status] = row.n;
     }
-    return { paused: this.paused(), maxInFlight: MAX_IN_FLIGHT, counts };
+    return { paused: this.paused(userId), maxInFlight: MAX_IN_FLIGHT, counts };
   }
 
   // ── Restart ───────────────────────────────────────────────────────────────
@@ -415,6 +434,7 @@ export class AudioIntentQueue {
     const pending = this.db.prepare(`SELECT * FROM audio_intents WHERE status = 'pending' ORDER BY created_at, rowid`).all() as Row[];
     const active = this.deps.activeEngine();
     for (const r of pending) {
+      if (this.paused(r.user_id)) continue;
       if (inFlight() >= MAX_IN_FLIGHT) break;
       if (r.engine !== active) {
         this.setWaiting(r.id, `Waiting for the ${r.engine} engine; ${active} is active`);
@@ -437,7 +457,7 @@ export class AudioIntentQueue {
     // an earlier submit in this pass is awaiting stops every later claim.
     const claim = this.db.prepare(`UPDATE audio_intents SET status = 'submitting', waiting = NULL, updated_at = ?
       WHERE id = ? AND status = 'pending' AND cancel_requested = 0
-        AND NOT EXISTS (SELECT 1 FROM audio_queue_state WHERE key = 'paused' AND value = '1')`).run(this.now(), r.id);
+        AND NOT EXISTS (SELECT 1 FROM audio_queue_state WHERE key IN ('paused', ?) AND value = '1')`).run(this.now(), r.id, `paused:${r.user_id}`);
     if (claim.changes !== 1) return this.paused();
     let result: Awaited<ReturnType<AudioQueueDeps['submit']>>;
     try {

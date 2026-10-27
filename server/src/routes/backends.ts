@@ -1,3 +1,5 @@
+import { runOnGpuLane } from '../services/generation/gpuLane.js';
+import { ownerId } from '../auth/principal.js';
 // routes/backends.ts — backend registry + capabilities API
 //
 // Phase 1 scaffolding (docs/plans/multi-backend-architecture.md §4.1/§4.2).
@@ -78,7 +80,7 @@ router.post('/backends/active', (req, res) => {
   if (previousId !== id) {
     const outgoing = getBackend(previousId);
     if (outgoing?.releaseVram) {
-      trackBackendRelease(previousId, () => outgoing.releaseVram!()).catch(err => {
+      runOnGpuLane(() => trackBackendRelease(previousId, () => outgoing.releaseVram!()), {label: 'backend residency change'}).catch(err => {
         console.warn(`[backends] releaseVram not confirmed for outgoing '${previousId}':`, err?.message || err);
       });
     }
@@ -133,9 +135,9 @@ router.post('/backends/models', async (req, res) => {
     return;
   }
   try {
-    const result = await backend.selectModel(selection as Record<string, string>);
+    const result = await runOnGpuLane(() => backend.selectModel!(selection as Record<string, string>), {label:'model selection',family:id});
     // The catalogue's `defaults` (what is actually in force) just changed.
-    cache.delete(id);
+    cache.delete(`${ownerId()}:${id}`);
     res.json(result);
   } catch (err: any) {
     // Unlike the probes above this DOES surface as an error — silently keeping
@@ -158,7 +160,7 @@ router.get('/capabilities', async (req, res) => {
     return;
   }
 
-  const cached = cache.get(id);
+  const cached = cache.get(`${ownerId()}:${id}`);
   if (cached && Date.now() - cached.ts < CACHE_TTL) {
     res.json(cached.data);
     return;
@@ -166,7 +168,7 @@ router.get('/capabilities', async (req, res) => {
 
   try {
     const data = await backend.capabilities();
-    cache.set(id, { data, ts: Date.now() });
+    cache.set(`${ownerId()}:${id}`, { data, ts: Date.now() });
     res.json(data);
   } catch (err: any) {
     console.error(`[backends] capabilities probe failed for '${id}':`, err.message);

@@ -1,3 +1,6 @@
+import { ownerId } from '../auth/principal.js';
+import { personalRoot } from '../auth/boundary.js';
+import { getDb } from '../db/database.js';
 // seeds.ts — Seed management REST API
 // MDMAchine / A&E Concepts 2026
 // GPL v3 — safe for public repo
@@ -35,12 +38,14 @@ const router = Router();
 function seedsRoot(): string {
   // config.data.dir is the data root (matches scragnog's generate.ts pattern)
   const dir = (config as any)?.data?.dir ?? (config as any)?.data?.audioDir ?? './output';
-  return path.join(dir, 'seeds');
+  const legacy=(getDb().prepare('SELECT legacy_user_id FROM registration_settings WHERE id=1').get() as {legacy_user_id:string|null}).legacy_user_id;
+  return path.join(legacy===ownerId()?dir:personalRoot(ownerId()), 'seeds');
 }
 
 function seedsDir(subdir = ''): string {
   const base = seedsRoot();
-  const dir  = subdir ? path.join(base, subdir) : base;
+  const dir  = subdir ? path.resolve(base, subdir) : base;
+  const rel=path.relative(base,dir);if(rel==='..'||rel.startsWith('..'+path.sep)||path.isAbsolute(rel))throw new Error('Invalid seed directory');
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }

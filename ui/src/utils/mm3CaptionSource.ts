@@ -1,3 +1,4 @@
+import { userStorage, userStorageKeys } from '../auth/userStorage';
 /**
  * mm3CaptionSource.ts — where a MiniMax-Music3 render's caption comes from.
  *
@@ -14,7 +15,7 @@
  *   track   a specific source track the user picked, by title.
  *   custom  the generation's own `caption_mm3`, exactly as before this existed.
  *
- * The choice lives in localStorage — there is no column for it — keyed by
+ * The choice lives in userStorage — there is no column for it — keyed by
  * generation id. The album's captioned tracks are cached in memory, keyed by
  * lyrics-set id, so the two non-React render paths (the Lyric Studio audio
  * queue and Send-to-Create) can resolve a caption synchronously.
@@ -59,7 +60,7 @@ export const MM3_CAPTION_SOURCES_KEY = 'hs-mm3CaptionSources';
 
 function _read<T>(key: string): T | null {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = userStorage.getItem(key);
     return raw === null ? null : (JSON.parse(raw) as T);
   } catch {
     return null;
@@ -68,7 +69,7 @@ function _read<T>(key: string): T | null {
 
 function _write(key: string, value: unknown): void {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    userStorage.setItem(key, JSON.stringify(value));
   } catch {
     /* storage full or unavailable — the choice simply won't persist */
   }
@@ -76,12 +77,12 @@ function _write(key: string, value: unknown): void {
 
 // The album's captioned tracks are a copy of server data, so they live in
 // memory: every render path calls ensureMm3SourceTracks first, which refetches
-// on a miss. They used to sit in localStorage, one entry per album ever opened,
+// on a miss. They used to sit in userStorage, one entry per album ever opened,
 // and filled the quota. Clear what earlier builds left there.
 const sourceTracks = new Map<number, Mm3SourceTrack[]>();
 try {
-  for (const key of Object.keys(localStorage)) {
-    if (key.startsWith(MM3_SOURCE_TRACKS_PREFIX)) localStorage.removeItem(key);
+  for (const key of userStorageKeys()) {
+    if (key.startsWith(MM3_SOURCE_TRACKS_PREFIX)) userStorage.removeItem(key);
   }
 } catch { /* storage unavailable */ }
 
@@ -150,7 +151,7 @@ export function readMm3CaptionSources(): Mm3CaptionSourcesHandoff | null {
 }
 
 export function clearMm3CaptionSources(): void {
-  try { localStorage.removeItem(MM3_CAPTION_SOURCES_KEY); } catch { /* ignore */ }
+  try { userStorage.removeItem(MM3_CAPTION_SOURCES_KEY); } catch { /* ignore */ }
 }
 
 // ── Resolution ───────────────────────────────────────────────────────────────

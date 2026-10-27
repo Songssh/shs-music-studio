@@ -1,3 +1,5 @@
+import { privateFile } from '../../auth/privatePaths.js';
+import { privateAdapters } from '../../auth/privatePaths.js';
 // Durable catalogue for native AITK YuE2 joint runs. The native trainer owns
 // its output directory; this index only records paths after that directory has
 // appeared, so a failed launch cannot reserve or overwrite a user directory.
@@ -53,7 +55,7 @@ export function freeYue2RunDirectory(wanted: string, taken?: Set<string>): strin
   }
 }
 
-const INDEX = path.join(trainingBaseDir, 'yue2-aitk-runs.json');
+const indexFile = () => privateFile('training',path.join(trainingBaseDir, 'yue2-aitk-runs.json'));
 const MAX_RECORDS = 256;
 const MAX_INDEX_BYTES = 4 * 1024 * 1024;
 const warnedRunFiles = new Set<string>();
@@ -110,9 +112,9 @@ export interface Yue2AitkRunRecord {
 
 function readIndex(): Yue2AitkRunRecord[] {
   try {
-    const stat = fs.statSync(INDEX);
+    const stat = fs.statSync(indexFile());
     if (!stat.isFile() || stat.size > MAX_INDEX_BYTES) return [];
-    const value = JSON.parse(fs.readFileSync(INDEX, 'utf8')) as unknown;
+    const value = JSON.parse(fs.readFileSync(indexFile(), 'utf8')) as unknown;
     if (!Array.isArray(value)) return [];
     const records = value.filter(isRunRecord);
     // A run folder moved by hand into refined/ (the cleanup's own destination)
@@ -166,11 +168,11 @@ function isRunRecord(value: unknown): value is Yue2AitkRunRecord {
 }
 
 function writeIndex(records: Yue2AitkRunRecord[], changedRecords: Yue2AitkRunRecord[]): void {
-  fs.mkdirSync(path.dirname(INDEX), { recursive: true });
-  const tmp = `${INDEX}.${process.pid}.${Date.now()}.tmp`;
+  fs.mkdirSync(path.dirname(indexFile()), { recursive: true });
+  const tmp = `${indexFile()}.${process.pid}.${Date.now()}.tmp`;
   const persisted = records.slice(-MAX_RECORDS);
   fs.writeFileSync(tmp, JSON.stringify(persisted, null, 2), 'utf8');
-  fs.renameSync(tmp, INDEX);
+  fs.renameSync(tmp, indexFile());
   const changed = new Set(changedRecords);
   for (const record of persisted.filter(r => changed.has(r))) {
     try { fs.writeFileSync(path.join(record.output, 'run.json'), JSON.stringify(record, null, 2), 'utf8'); }
@@ -178,7 +180,7 @@ function writeIndex(records: Yue2AitkRunRecord[], changedRecords: Yue2AitkRunRec
   }
 }
 
-export function aitkRunIndexPath(): string { return INDEX; }
+export function aitkRunIndexPath(): string { return indexFile(); }
 
 export function checkpointRecords(output: string): Yue2AitkCheckpointRecord[] {
   let entries: fs.Dirent[];
@@ -333,7 +335,7 @@ function datasetSetForSkipped(): string | null {
 }
 
 function jointFolders(): string[] | null {
-  const root = path.join(config.aceServer.adapters, 'yue2-joint-adapters');
+  const root = path.join(privateAdapters(), 'yue2-joint-adapters');
   try {
     const direct = fs.readdirSync(root, { withFileTypes: true });
     const refined = direct.some(e => e.isDirectory() && e.name === 'refined')
@@ -353,7 +355,7 @@ function inferredDataset(output: string): { id: string; slug: string } | null {
   if (exact) return { id: exact.id, slug: exact.slug };
   const matches = datasets.filter(ds => {
     const trigger = ds.customTag || ds.slug;
-    const folder = path.basename(yue2JointOutputDirectory(config.aceServer.adapters, trigger));
+    const folder = path.basename(yue2JointOutputDirectory(privateAdapters(), trigger));
     return folder.slice(0, -20) === match[1];
   });
   const owner = matches.length === 1 ? matches[0] : null;

@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 // AiContinuePresetModal.tsx — Preset manager for AI lyric/style continuation
 // MDMAchine / A&E Concepts 2026 — STORM Streaming
 
@@ -63,7 +64,7 @@ export const MIGRATED_FLAG: Record<PresetCategory, string> = {
 };
 
 function loadLegacyUserPresets(key: string): AiPreset[] {
-  try { const v = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+  try { const v = JSON.parse(userStorage.getItem(key) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
 }
 
 const legacyKey = (category: PresetCategory) => category === 'style' ? USER_STYLE_KEY : USER_LYRIC_KEY;
@@ -108,7 +109,7 @@ export function _resetAiContinueStateForTests(): void {
 }
 
 export function loadTemplate(): string {
-  try { return localStorage.getItem(TEMPLATE_KEY) || DEFAULT_TEMPLATE; } catch { return DEFAULT_TEMPLATE; }
+  try { return userStorage.getItem(TEMPLATE_KEY) || DEFAULT_TEMPLATE; } catch { return DEFAULT_TEMPLATE; }
 }
 
 // ── Props ────────────────────────────────────────────────────────────────────

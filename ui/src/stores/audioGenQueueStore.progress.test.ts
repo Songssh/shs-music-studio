@@ -1,3 +1,5 @@
+import { bindUserStorage, userStorage } from '../auth/userStorage';
+bindUserStorage('fixture-user');
 // audioGenQueueStore.progress.test.ts — a running row shows the engine's stage
 // and progress in both queue modes: a server-owned queue projects it from the
 // server's audio items; a browser-owned queue follows a studio's workflow-backed
@@ -25,7 +27,7 @@ const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200, 
 const settle = () => new Promise(resolve => setTimeout(resolve, 300));
 
 async function withEngine(owner: string, run: (api: AudioQueueApiFake) => Promise<void>) {
-  localStorage.setItem(OWNER_KEY, owner);
+  userStorage.setItem(OWNER_KEY, owner);
   const api = new AudioQueueApiFake();
   // The render a cover workflow queued: a server audio item with an engine job.
   api.serverItems = [{ id: 'srv1', status: 'submitted', jobId: 'job1', request: { title: 'Cover' },

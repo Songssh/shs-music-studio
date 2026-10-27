@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 // trainingApi.ts — API client for the Training Studio (Dataset phase)
 //
 // Talks to the Node server's /api/training endpoints. The type block below is
@@ -30,7 +31,7 @@ export interface TrainingReadOptions extends TrainingTarget, ReadOptions {}
 const WORKER_KEY = 'hotstep.trainingWorker';
 const LOCAL_BASE = '/api/training';
 const workerBase = (name: string | null) => name ? `/api/workers/${encodeURIComponent(name)}/api/training` : LOCAL_BASE;
-let trainingWorker: string | null = (() => { try { return localStorage.getItem(WORKER_KEY) || null; } catch { return null; } })();
+let trainingWorker: string | null = (() => { try { return userStorage.getItem(WORKER_KEY) || null; } catch { return null; } })();
 let API_BASE = workerBase(trainingWorker);
 /** The base for a captured worker, or the current selection when undefined. */
 const trainingBase = (worker?: string | null) => worker === undefined ? API_BASE : workerBase(worker);
@@ -39,7 +40,7 @@ export const getTrainingWorker = () => trainingWorker;
 export function setTrainingWorker(name: string | null): void {
   trainingWorker = name;
   API_BASE = workerBase(name);
-  try { if (name) localStorage.setItem(WORKER_KEY, name); else localStorage.removeItem(WORKER_KEY); } catch { /* per-viewer convenience only */ }
+  try { if (name) userStorage.setItem(WORKER_KEY, name); else userStorage.removeItem(WORKER_KEY); } catch { /* per-viewer convenience only */ }
 }
 
 // ── Core enums ────────────────────────────────────────────────────────────

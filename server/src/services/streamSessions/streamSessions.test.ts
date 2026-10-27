@@ -1,3 +1,4 @@
+import { principalContext } from '../../auth/principal.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -186,10 +187,12 @@ test('session cap evicts the oldest ended session; idle and ended sessions expir
 });
 
 test('route: 404 for unknown, 400 for bad input, start/stop/export round trip', async () => {
+  const principal={id:'stream-fixture',role:'user' as const,sessionId:'test'};principalContext.enterWith(principal);
   const express = (await import('express')).default;
   const { createStreamSessionsRouter } = await import('../../routes/streamSessions.js');
   const { sessions, done } = store();
   const app = express();
+  app.use((req,_res,next)=>{Object.assign(req,{principal});principalContext.run(principal,next);});
   app.use(express.json());
   app.use('/s', createStreamSessionsRouter(() => sessions));
   const server = app.listen(0);

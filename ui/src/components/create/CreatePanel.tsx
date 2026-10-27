@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 // CreatePanel.tsx — The composition panel (Content + Metadata only)
 //
 // Global engine parameters (Models, Adapters, Generation Settings, LM, Mastering)
@@ -98,7 +99,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, activeJobC
 
   // ── MM3 caption source (songs sent here from Lyric Studio) ──
   // Send-to-Create leaves the album's captioned source tracks and the song's
-  // own caption in one localStorage key, so the same three-way control can be
+  // own caption in one userStorage key, so the same three-way control can be
   // offered here with no server call. Absent key, or a non-MM3 backend, and
   // none of this exists — the caption box is the plain editable one.
   const [mm3Sources, setMm3Sources] = useState<Mm3CaptionSourcesHandoff | null>(() => readMm3CaptionSources());
@@ -128,7 +129,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, activeJobC
     const next: Mm3CaptionSourcesHandoff = value === 'auto' || value === 'custom'
       ? { ...mm3Sources, mode: value, selectedTitle: undefined }
       : { ...mm3Sources, mode: 'track', selectedTitle: value.slice('track:'.length) };
-    try { localStorage.setItem(MM3_CAPTION_SOURCES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+    try { userStorage.setItem(MM3_CAPTION_SOURCES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
     setMm3Sources(next);
     // Switching to Custom hands the box back with the song's own caption in it —
     // otherwise it would be left holding the dataset track's.

@@ -1,3 +1,4 @@
+import { privateDirectory } from '../../../auth/privatePaths.js';
 // minimax/plank.ts — MM3 Plank: the AR-stage code cache.
 //
 // Captures the AR (LM) stage's output codes so a later render can replay them
@@ -54,7 +55,7 @@ export interface Mm3PlankMeta {
 
 /** Sibling of the audio directory, so planks travel with a data-dir move. */
 export function mm3PlankDir(): string {
-  return path.join(path.dirname(config.data.audioDir), 'mm3-planks');
+  return privateDirectory('mm3-planks',path.join(path.dirname(config.data.audioDir), 'mm3-planks'));
 }
 
 /** Resolve a plank reference to an absolute path INSIDE the plank directory.

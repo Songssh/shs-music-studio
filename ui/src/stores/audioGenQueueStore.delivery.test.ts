@@ -1,3 +1,5 @@
+import { bindUserStorage, userStorage } from '../auth/userStorage';
+bindUserStorage('fixture-user');
 // audioGenQueueStore.delivery.test.ts — a server-owned Create render reaches
 // the library once. The server projection and the enqueue's own waiter both
 // see it finish; between the `song-created` event and onSongCreated (both end
@@ -34,7 +36,7 @@ const {
 const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
 
 test('server-owned render: one submission, and the finished song is delivered once', async () => {
-  localStorage.setItem(OWNER_KEY, 'server');
+  userStorage.setItem(OWNER_KEY, 'server');
   const server: Record<string, unknown>[] = [];
   const calls: string[] = [];
   const saved = globalThis.fetch;
@@ -72,7 +74,7 @@ test('server-owned render: one submission, and the finished song is delivered on
 });
 
 test('a failed song read by the enqueue waiter does not stop the projection delivering it', async () => {
-  localStorage.setItem(OWNER_KEY, 'server');
+  userStorage.setItem(OWNER_KEY, 'server');
   songCreatedEvents.length = 0;
   const server: Record<string, unknown>[] = [];
   let holdStatus = false;

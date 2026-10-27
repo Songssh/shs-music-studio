@@ -95,7 +95,7 @@ test('rollback pause preserves submitted job ids and never replays them', async 
 test('double submit with one key queues and renders once; another request under it is refused', async () => {
   const h = harness();
   const a = h.queue.enqueue({ idempotencyKey: 'song-1', request: req() }, 'u1');
-  const b = h.queue.enqueue({ idempotencyKey: 'song-1', request: req() }, 'u2');
+  const b = h.queue.enqueue({ idempotencyKey: 'song-1', request: req() }, 'u1');
   assert.equal(a.created, true);
   assert.equal(b.created, false);
   assert.equal(b.item.id, a.item.id);
@@ -345,18 +345,18 @@ test('route: auth, validation, created vs existing, unknown item', async () => {
 test('re-import after a rollback pause runs new work; held items stay held (any choice)', async () => {
   for (const choice of ['hold', 'discard', 'resume'] as const) {
     const h = harness();
-    h.queue.setPaused(true);                     // what /migration/rollback-export leaves behind
+    h.queue.setPaused(true, 'u');                     // what /migration/rollback-export leaves behind
     const receipt = h.queue.importLegacy({ backupId: `e5726199-d56b-4528-87de-37af0466259${choice.length}`, choice,
       items: [{ legacyId: 'old', status: 'pending', request: req({ seed: 9 }), meta: {} }] }, 'u');
-    assert.equal(h.queue.state().paused, false, choice);
+    assert.equal(h.queue.state('u').paused, false, choice);
     h.queue.enqueue({ idempotencyKey: 'new', request: req({ seed: 1 }) }, 'u');
     await h.queue.tick();
     const old = h.queue.get(receipt.items[0].itemId).status;
     assert.deepEqual(h.submits.map(s => s.body.seed), choice === 'resume' ? [9, 1] : [1], choice);
     assert.equal(old, choice === 'hold' ? 'held' : choice === 'discard' ? 'cancelled' : 'submitted', choice);
     // Replaying the same import (a reload mid-handoff) also leaves the queue running.
-    h.queue.setPaused(true);
+    h.queue.setPaused(true, 'u');
     h.queue.importLegacy({ backupId: receipt.backupId, choice, items: [] }, 'u');
-    assert.equal(h.queue.state().paused, false, `${choice} replay`);
+    assert.equal(h.queue.state('u').paused, false, `${choice} replay`);
   }
 });

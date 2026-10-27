@@ -1,3 +1,4 @@
+import { userStorage, userStorageKeys } from '../../auth/userStorage';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { yue2SamplerSnapshot } from '../../stores/globalParamsStore';
 import { AlertTriangle, Download, Loader2, Play, RotateCcw, Save, Upload, X } from 'lucide-react';
@@ -52,8 +53,8 @@ const METRIC_CAP = 2000;
 // it. Clear them once per page load, before any other write; a live job's
 // stream replays its history, and the card below keeps only the job on screen.
 try {
-  if (typeof window !== 'undefined') for (const key of Object.keys(window.localStorage)) {
-    if (key.startsWith(JOB_KEY) && key.includes(':metrics:')) window.localStorage.removeItem(key);
+  if (typeof window !== 'undefined') for (const key of userStorageKeys()) {
+    if (key.startsWith(JOB_KEY) && key.includes(':metrics:')) userStorage.removeItem(key);
   }
 } catch { /* storage unavailable */ }
 // `loss` is absent once the planner is frozen: the trainer then reports only
@@ -180,7 +181,7 @@ type PrepareForm = Yue2AitkPrepareRequest;
 function readStored<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
   try {
-    const value = window.localStorage.getItem(key);
+    const value = userStorage.getItem(key);
     return value ? JSON.parse(value) as T : fallback;
   } catch { return fallback; }
 }
@@ -195,7 +196,7 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
   // Vulkan build it would name a device that does not exist.
   if (stored.device === 'CUDA0') stored.device = '';
   const migration = `${FORM_KEY}${datasetId}:defaults-64`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(migration)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(migration)) {
     // Move values that match the former defaults; retain deliberate custom values.
     if (stored.steps === 3000) stored.steps = 400;
     if (stored.saveEvery === 250) stored.saveEvery = 50;
@@ -206,7 +207,7 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
   // Recipe A (2026-09-20): values still sitting on the old defaults move to
   // the new ones; anything the user changed on purpose stays.
   const recipeA = `${FORM_KEY}${datasetId}:defaults-recipe-a`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(recipeA)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(recipeA)) {
     if (stored.rank === 64) stored.rank = 32;
     if (stored.alpha === 64) stored.alpha = 32;
     if (stored.steps === 400) stored.steps = 500;
@@ -220,7 +221,7 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
   // NAR budget (2026-09-21): forms still sitting on Recipe A's values move to
   // the new defaults; anything the user set deliberately stays put.
   const narBudget = `${FORM_KEY}${datasetId}:defaults-nar-budget`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(narBudget)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(narBudget)) {
     if (stored.rank === 32) stored.rank = 64;
     if (stored.alpha === 32) stored.alpha = 64;
     if (stored.steps === 500) stored.steps = 750;
@@ -231,7 +232,7 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
   // Prodigy default (2026-09-21): Recipe A had moved everyone to adamw, so a
   // stored adamw is the old default, not a choice, and moves with it.
   const prodigy = `${FORM_KEY}${datasetId}:defaults-prodigy`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(prodigy)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(prodigy)) {
     if (stored.optimizer === 'adamw') stored.optimizer = 'prodigy';
     writeStored(prodigy, 1);
   }
@@ -239,7 +240,7 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
   // the LoRA default, so it moves; its alpha moves only if it was still the
   // LoRA default 64. A form that picked LoRA or LoKr deliberately stays.
   const lokrDefault = `${FORM_KEY}${datasetId}:defaults-lokr-64-4-256`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(lokrDefault)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(lokrDefault)) {
     if (stored.adapterType === undefined) {
       stored.adapterType = 'lokr'; stored.lokrDim = 64; stored.lokrFactor = 4;
       if (stored.alpha === undefined || stored.alpha === 64) stored.alpha = 256;
@@ -249,7 +250,7 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
   // LoKr stop recipe (2026-09-22): a LoKr form still on LoRA's KL 1.4 moves to
   // the LoKr pair; a deliberately edited target stays.
   const lokrStop = `${FORM_KEY}${datasetId}:defaults-lokr-stop`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(lokrStop)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(lokrStop)) {
     if (stored.adapterType === 'lokr') {
       if (stored.targetKl === undefined || stored.targetKl === 1.4) stored.targetKl = LOKR_STOP.targetKl;
       if (stored.narLrScale === undefined) stored.narLrScale = LOKR_STOP.narLrScale;
@@ -259,7 +260,7 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
   // LoKr recipe 2 (2026-09-22): planner 0.3 -> 0.6, decoder 0.5 -> 1.0, for
   // LoKr forms still on the first recipe's values.
   const lokrRecipe2 = `${FORM_KEY}${datasetId}:defaults-lokr-recipe-2`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(lokrRecipe2)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(lokrRecipe2)) {
     if (stored.adapterType === 'lokr') {
       if (stored.plannerLrScale === undefined || stored.plannerLrScale === 0.3) stored.plannerLrScale = LOKR_STOP.plannerLrScale;
       if (stored.narLrScale === undefined || stored.narLrScale === 0.5) stored.narLrScale = LOKR_STOP.narLrScale;
@@ -268,20 +269,20 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
   }
   // LoKr recipe 3 (2026-09-22): target KL 0.9 -> 1.0.
   const lokrRecipe3 = `${FORM_KEY}${datasetId}:defaults-lokr-recipe-3`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(lokrRecipe3)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(lokrRecipe3)) {
     if (stored.adapterType === 'lokr' && stored.targetKl === 0.9) stored.targetKl = LOKR_STOP.targetKl;
     writeStored(lokrRecipe3, 1);
   }
   // Preview 90 s (2026-09-22): a form still on the old 40 s default moves.
   const preview90 = `${FORM_KEY}${datasetId}:defaults-preview-90`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(preview90)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(preview90)) {
     if (stored.preview && stored.preview.seconds === 40) stored.preview = { ...stored.preview, seconds: 90, previewMaxFrames: 2250 };
     writeStored(preview90, 1);
   }
   // 2026-09-23 defaults: save every 25, cautious on, LoKr KL 1.1. Values still
   // on the previous defaults move; deliberate ones stay.
   const d0923 = `${FORM_KEY}${datasetId}:defaults-2026-09-23`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(d0923)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(d0923)) {
     if (stored.saveEvery === 50) stored.saveEvery = 25;
     if (stored.optimizer !== 'adamw' && (stored.cautious === undefined || stored.cautious === false)) stored.cautious = true;
     if (stored.adapterType === 'lokr' && stored.targetKl === 1.0) stored.targetKl = LOKR_STOP.targetKl;
@@ -290,7 +291,7 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
   // Planner freeze + caption dropout (2026-09-23): fields a form never set
   // take the new defaults; deliberate values stay.
   const freeze = `${FORM_KEY}${datasetId}:defaults-planner-freeze`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(freeze)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(freeze)) {
     if (stored.narExtraSteps === undefined) stored.narExtraSteps = DEFAULT_FORM.narExtraSteps;
     if (stored.captionDropout === undefined) stored.captionDropout = DEFAULT_FORM.captionDropout;
     writeStored(freeze, 1);
@@ -298,29 +299,29 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
   // Presets (2026-09-24): stored forms move to Balanced once.
   // 2026-09-24: presets end at the KL; the decoder trains on during refinement.
   const klEnd = `${FORM_KEY}${datasetId}:defaults-kl-end`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(klEnd)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(klEnd)) {
     if (stored.stopMode === 'kl' && stored.narExtraSteps === stored.steps) stored.narExtraSteps = 0;
     writeStored(klEnd, 1);
   }
   const presets = `${FORM_KEY}${datasetId}:defaults-presets`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(presets)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(presets)) {
     Object.assign(stored, presetValues(PRESETS[2]));
     writeStored(presets, 1);
   }
   const autoRefine = `${FORM_KEY}${datasetId}:defaults-auto-refine`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(autoRefine)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(autoRefine)) {
     if (stored.autoRefine === undefined) stored.autoRefine = DEFAULT_FORM.autoRefine;
     writeStored(autoRefine, 1);
   }
   const recon = `${FORM_KEY}${datasetId}:defaults-recon-stop`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(recon)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(recon)) {
     if (stored.reconStop === undefined) { stored.reconStop = DEFAULT_FORM.reconStop; stored.reconStopWindow = DEFAULT_FORM.reconStopWindow; }
     // The old two-point knee shipped with 3; the fitted knee needs 10 points.
     if (stored.reconStopWindow === 3) stored.reconStopWindow = DEFAULT_FORM.reconStopWindow;
     writeStored(recon, 1);
   }
   const spike = `${FORM_KEY}${datasetId}:defaults-spike-guard`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(spike)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(spike)) {
     if (stored.spikeFactor === undefined) { stored.spikeFactor = DEFAULT_FORM.spikeFactor; stored.spikeStop = DEFAULT_FORM.spikeStop; stored.spikeStopWindow = DEFAULT_FORM.spikeStopWindow; }
     writeStored(spike, 1);
   }
@@ -328,7 +329,7 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
   // touched the schedule, or is still sitting on the old KL 1.2, moves;
   // anything set deliberately stays.
   const d0925 = `${FORM_KEY}${datasetId}:defaults-2026-09-25`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(d0925)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(d0925)) {
     if (stored.lrSchedule === undefined) stored.lrSchedule = 'wsd';
     if (stored.targetKl === 1.2) stored.targetKl = 1.0;
     writeStored(d0925, 1);
@@ -336,7 +337,7 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
   // 2026-09-25 (Rob): checkpoint previews are the Refine tab's job; a primary
   // run renders none by default. Turned off once; tick it again to keep it.
   const previewOff = `${FORM_KEY}${datasetId}:defaults-2026-09-25-preview-off`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(previewOff)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(previewOff)) {
     if (stored.preview?.enabled) stored.preview = { ...stored.preview, enabled: false };
     writeStored(previewOff, 1);
   }
@@ -344,7 +345,7 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
   // stored form moves to it once, on the Balanced preset; the tuned-only
   // knobs are cleared (the server forces them anyway).
   const baseMatched = `${FORM_KEY}${datasetId}:defaults-base-matched-2026-09-27`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(baseMatched)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(baseMatched)) {
     for (const key of TUNED_KEYS) delete (stored as Record<string, unknown>)[key];
     stored.method = 'base-matched'; stored.stopMode = 'steps'; stored.optimizer = 'adamw-lm'; stored.cautious = false;
     stored.autoRefine = false; stored.cursorWeight = 0;
@@ -354,7 +355,7 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
   // 2026-09-27 (Rob): the run's own ladder is previewed and scored on this
   // page, so previews are on and the engine stays up. Turned on once.
   const ladderPreviews = `${FORM_KEY}${datasetId}:defaults-ladder-previews-2026-09-27`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(ladderPreviews)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(ladderPreviews)) {
     stored.preview = { ...LADDER_PREVIEW, ...(stored.preview?.caption ? { caption: stored.preview.caption } : {}), ...(stored.preview?.lyrics ? { lyrics: stored.preview.lyrics } : {}) };
     stored.stopEngine = false;
     writeStored(ladderPreviews, 1);
@@ -365,7 +366,7 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
   // trained at twice the recipe's rate. Every stored form goes back to the
   // recipe defaults once; only the per-run paths survive.
   const resetAll = `${FORM_KEY}${datasetId}:defaults-reset-2026-09-28`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(resetAll)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(resetAll)) {
     for (const key of Object.keys(stored) as (keyof Yue2JointTrainRequest)[]) {
       if (!PRESET_EXCLUDED_KEYS.has(key)) delete stored[key];
     }
@@ -375,7 +376,7 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
   // 2026-10-15: one take per rung by default (was two since 2026-09-30); the
   // count is now a field in the previews section.
   const oneTake = `${FORM_KEY}${datasetId}:defaults-ladder-one-take-2026-10-15`;
-  if (typeof window !== 'undefined' && !window.localStorage.getItem(oneTake)) {
+  if (typeof window !== 'undefined' && !userStorage.getItem(oneTake)) {
     stored.preview = { ...LADDER_PREVIEW, ...stored.preview, takes: 1 };
     writeStored(`${FORM_KEY}${datasetId}`, stored);
     writeStored(oneTake, 1);
@@ -385,7 +386,7 @@ function readStoredForm(datasetId: string): Yue2JointTrainRequest {
 }
 function writeStored(key: string, value: unknown): void {
   if (typeof window === 'undefined') return;
-  try { window.localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage may be full or unavailable */ }
+  try { userStorage.setItem(key, JSON.stringify(value)); } catch { /* storage may be full or unavailable */ }
 }
 
 function isJointJob(job: TrainingJobSummary, datasetId: string): boolean {
@@ -456,7 +457,7 @@ export const Yue2AitkTrainCard: React.FC<{ datasetId: string; legacyManifest?: s
   const [presets, setPresets] = useState<Yue2JointPreset[]>(() => {
     const list = readStored<Yue2JointPreset[]>(YUE2_JOINT_PRESETS_KEY, []);
     const flag = `${YUE2_JOINT_PRESETS_KEY}:lr-reset-2026-09-28`;
-    if (typeof window === 'undefined' || window.localStorage.getItem(flag)) return list;
+    if (typeof window === 'undefined' || userStorage.getItem(flag)) return list;
     const cleaned = list.map(p => {
       if (p.settings.lr !== 2e-4 && p.settings.lr !== 1e-4) return p;
       const { lr: _lr, ...settings } = p.settings;
@@ -618,8 +619,8 @@ export const Yue2AitkTrainCard: React.FC<{ datasetId: string; legacyManifest?: s
     const metricKey = `${JOB_KEY}${datasetId}:metrics:${job.id}`;
     // Only the job on screen keeps a cached chart (see the load-time sweep).
     try {
-      for (const key of Object.keys(window.localStorage)) {
-        if (key.startsWith(JOB_KEY) && key.includes(':metrics:') && !key.startsWith(metricKey)) window.localStorage.removeItem(key);
+      for (const key of userStorageKeys()) {
+        if (key.startsWith(JOB_KEY) && key.includes(':metrics:') && !key.startsWith(metricKey)) userStorage.removeItem(key);
       }
     } catch { /* storage unavailable */ }
     const saved = readStored<{ steps?: JointStepPoint[]; milestones?: JointMilestone[] }>(metricKey, {});

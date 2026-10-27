@@ -6,7 +6,7 @@ import { usePersistedState } from '../../hooks/usePersistedState';
 
 export const Fold: React.FC<{
   title: React.ReactNode;
-  /** localStorage key for the open state. */
+  /** userStorage key for the open state. */
   storageKey: string;
   defaultOpen?: boolean;
   children: React.ReactNode;

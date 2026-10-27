@@ -1,3 +1,5 @@
+import { privateDirectory } from '../auth/privatePaths.js';
+import { ownerId } from '../auth/principal.js';
 // vst.ts — VST3 Post-Processing routes
 //
 // Endpoints:
@@ -62,16 +64,19 @@ function attachVstLog(child: ChildProcess, label: string, args: string[]): void 
 
 // ── Helpers ─────────────────────────────────────────────────
 
+const vstStatesDir = () => privateDirectory('vst/states', config.vst.statesDir);
+const vstChainFile = () => path.join(privateDirectory('vst', path.dirname(config.vst.chainFile)),path.basename(config.vst.chainFile));
+
 function ensureDirs(): void {
-  fs.mkdirSync(config.vst.statesDir, { recursive: true });
-  fs.mkdirSync(path.dirname(config.vst.chainFile), { recursive: true });
+  fs.mkdirSync(vstStatesDir(), { recursive: true });
+  fs.mkdirSync(path.dirname(vstChainFile()), { recursive: true });
 }
 
 function loadChain(): ChainConfig {
   ensureDirs();
   try {
-    if (fs.existsSync(config.vst.chainFile)) {
-      const raw = fs.readFileSync(config.vst.chainFile, 'utf-8');
+    if (fs.existsSync(vstChainFile())) {
+      const raw = fs.readFileSync(vstChainFile(), 'utf-8');
       return JSON.parse(raw) as ChainConfig;
     }
   } catch (err) {
@@ -82,11 +87,12 @@ function loadChain(): ChainConfig {
 
 function saveChain(chain: ChainConfig): void {
   ensureDirs();
-  fs.writeFileSync(config.vst.chainFile, JSON.stringify(chain, null, 2), 'utf-8');
+  fs.writeFileSync(vstChainFile(), JSON.stringify(chain, null, 2), 'utf-8');
 }
 
 function statePathForPlugin(uid: string): string {
-  return path.join(config.vst.statesDir, `${uid}.vststate`);
+  if(!/^[a-zA-Z0-9_-]{1,128}$/.test(uid))throw new Error('Invalid plugin identifier');
+  return path.join(vstStatesDir(), `${uid}.vststate`);
 }
 
 // Cached scan results (scanning 40 plugins takes ~2-3 seconds)
@@ -150,6 +156,7 @@ router.put('/chain', (req, res) => {
     return;
   }
 
+  if(plugins.some(p=>!p || !/^[a-zA-Z0-9_-]{1,128}$/.test(p.uid) || !cachedPlugins?.some(known=>path.resolve(known.path)===path.resolve(p.path)))){res.status(400).json({error:'Scan installed plugins and select a known plugin'});return;}
   // Validate and ensure state paths
   const validated: ChainEntry[] = plugins.map(p => ({
     uid: p.uid,
@@ -157,7 +164,7 @@ router.put('/chain', (req, res) => {
     vendor: p.vendor || '',
     path: p.path,
     enabled: p.enabled !== false,
-    statePath: p.statePath || statePathForPlugin(p.uid),
+    statePath: statePathForPlugin(p.uid),
   }));
 
   const chain: ChainConfig = { plugins: validated };
@@ -183,6 +190,8 @@ router.post('/gui', (req, res) => {
     return;
   }
 
+  if(!cachedPlugins?.some(p=>path.resolve(p.path)===path.resolve(pluginPath)) || !/^[a-zA-Z0-9_-]{1,128}$/.test(uid??'')){res.status(400).json({error:'Select a scanned plugin'});return;}
+  const guiKey=`${ownerId()}:${uid}`;
   const statePath = uid ? statePathForPlugin(uid) : '';
   const args = ['--gui', '--plugin', pluginPath];
   if (statePath) {
@@ -191,7 +200,7 @@ router.post('/gui', (req, res) => {
 
   // One editor process per chain entry: a second click must not spawn a
   // duplicate window that reopens after the user closes the first one.
-  const existing = uid ? guiProcs.get(uid) : undefined;
+  const existing = uid ? guiProcs.get(guiKey) : undefined;
   if (existing && existing.exitCode === null && !existing.killed) {
     res.json({ ok: true, pid: existing.pid, alreadyOpen: true });
     return;
@@ -207,8 +216,8 @@ router.post('/gui', (req, res) => {
   child.unref();
   attachVstLog(child, 'gui', args);
   if (uid) {
-    guiProcs.set(uid, child);
-    const clear = () => { if (guiProcs.get(uid) === child) guiProcs.delete(uid); };
+    guiProcs.set(guiKey, child);
+    const clear = () => { if (guiProcs.get(guiKey) === child) guiProcs.delete(guiKey); };
     child.on('exit', clear);
     child.on('error', clear);
   }
@@ -219,7 +228,7 @@ router.post('/gui', (req, res) => {
 // ── GET /gui/open — uids whose editor process is still running ──
 
 router.get('/gui/open', (_req, res) => {
-  res.json({ uids: [...guiProcs.keys()] });
+  res.json({ uids: [...guiProcs.keys()].filter(k=>k.startsWith(`${ownerId()}:`)).map(k=>k.slice(ownerId().length+1)) });
 });
 
 // ── POST /process — Process audio through the VST chain ─────
@@ -254,7 +263,7 @@ router.post('/process', async (req, res) => {
     }
 
     // Write temporary chain JSON for vst-host.exe
-    const tempChainFile = path.join(config.vst.statesDir, `_temp_chain_${Date.now()}.json`);
+    const tempChainFile = path.join(vstStatesDir(), `_temp_chain_${Date.now()}.json`);
     const chainData = {
       plugins: enabled.map(p => ({
         path: p.path,
@@ -300,10 +309,17 @@ router.post('/process', async (req, res) => {
 // ── Monitor — Real-time playback through VST chain ──────────
 
 let monitorProcess: ChildProcess | null = null;
+let monitorOwner: string | null = null;
+router.use('/monitor',(req,res,next)=>{
+  if(monitorProcess && monitorOwner!==ownerId()){
+    if(req.method==='GET')res.json({running:false,paused:false,pid:null,position:0,duration:0,busy:true});
+    else res.status(409).json({error:'The shared monitor is in use'});return;
+  }next();
+});
 let monitorPaused = false;
 let monitorCurrentTrack = '';  // track path currently loaded in monitor
-const monitorControlFile = () => path.join(config.vst.statesDir, 'monitor_control.json');
-const monitorStatusFile  = () => path.join(config.vst.statesDir, 'monitor_status.json');
+const monitorControlFile = () => path.join(vstStatesDir(), 'monitor_control.json');
+const monitorStatusFile  = () => path.join(vstStatesDir(), 'monitor_status.json');
 
 // Atomic, seq-stamped, merging writes (see vstControl.ts). Pass reset=true only
 // when starting a fresh monitor process.
@@ -387,6 +403,8 @@ router.post('/monitor/start', async (req, res) => {
   }
 
   await monitorTransition(async () => {
+    if(monitorProcess && monitorOwner!==ownerId()){res.status(409).json({error:'The shared monitor is in use'});return;}
+    monitorOwner=ownerId();
     // Stop the existing monitor and wait for it to exit before spawning, so the
     // new control file cannot overwrite its pending stop.
     if (isMonitorAlive()) {
@@ -403,7 +421,7 @@ router.post('/monitor/start', async (req, res) => {
       return;
     }
 
-    const tempChainFile = path.join(config.vst.statesDir, '_monitor_chain.json');
+    const tempChainFile = path.join(vstStatesDir(), '_monitor_chain.json');
     const chainData = {
       plugins: enabled.map(p => ({
         path: p.path,
@@ -452,6 +470,8 @@ router.post('/monitor/start', async (req, res) => {
 // POST /monitor/stop — Stop monitoring
 router.post('/monitor/stop', async (_req, res) => {
   await monitorTransition(async () => {
+    if(monitorProcess && monitorOwner!==ownerId()){res.status(409).json({error:'The shared monitor is in use'});return;}
+    monitorOwner=ownerId();
     if (!isMonitorAlive()) {
       res.json({ ok: true, wasRunning: false } satisfies MonitorStopResponse);
       return;
@@ -556,6 +576,8 @@ router.post('/monitor/resume', (_req, res) => {
 // This is how GUI parameter changes take effect in the monitor.
 router.post('/monitor/restart', async (_req, res) => {
   await monitorTransition(async () => {
+    if(monitorProcess && monitorOwner!==ownerId()){res.status(409).json({error:'The shared monitor is in use'});return;}
+    monitorOwner=ownerId();
     const exe = config.vst.exe;
     const track = monitorCurrentTrack;
 
@@ -585,7 +607,7 @@ router.post('/monitor/restart', async (_req, res) => {
       return;
     }
 
-    const tempChainFile = path.join(config.vst.statesDir, '_monitor_chain.json');
+    const tempChainFile = path.join(vstStatesDir(), '_monitor_chain.json');
     const chainData = {
       plugins: enabled.map(p => ({
         path: p.path,
@@ -660,7 +682,7 @@ export async function applyVstChain(wavPath: string): Promise<boolean> {
 
   // Process in-place: output to temp, then replace
   const tempOut = wavPath + '.vst_processed.wav';
-  const tempChain = path.join(config.vst.statesDir, `_chain_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.json`);  // several chains can run at once
+  const tempChain = path.join(vstStatesDir(), `_chain_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.json`);  // several chains can run at once
 
   try {
     ensureDirs();

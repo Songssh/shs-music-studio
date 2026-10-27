@@ -1,3 +1,4 @@
+import { privateDirectory } from '../../auth/privatePaths.js';
 // training/auditionStore.ts — the codes-audition preview filesystem layer
 //
 // data/training/previews/<previewId>/{base.wav, adapter.wav, preview.json}
@@ -31,7 +32,7 @@ const SLOT_RE = /^(base|adapter)$/;
 const FILE_KEY_RE = /^(base|adapter)(-render(-adapter)?)?$/;
 
 export function previewsRoot(): string {
-  return path.join(config.training.dir, 'previews');
+  return privateDirectory('training/previews',path.join(config.training.dir, 'previews'));
 }
 
 /** `<previews>/<previewId>`. The id is uuid-validated here as well as by the

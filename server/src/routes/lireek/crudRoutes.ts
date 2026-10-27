@@ -1,3 +1,4 @@
+import { privateAdapters } from '../../auth/privatePaths.js';
 // lireek/crudRoutes.ts — CRUD routes for Lyric Studio entities
 //
 // Artists, Lyrics Sets, Genius fetch, Profiles, Generations,
@@ -481,7 +482,7 @@ export function registerCrudRoutes(router: Router): void {
 
   router.post('/presets/update-adapter-references', (_req: Request, res: Response) => {
     try {
-      res.json(updateAdapterReferences(db.getLireekDb(), config.aceServer.adapters));
+      res.json(updateAdapterReferences(db.getLireekDb(), privateAdapters()));
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

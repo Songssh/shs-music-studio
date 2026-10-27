@@ -1,3 +1,4 @@
+import { principalOf } from '../../auth/principal.js';
 // streamSessions — Node's record of the engine audio streams it proxies.
 //
 // The STORM and MM3 stream routes (routes/generate.ts) hand every whole WAV
@@ -64,6 +65,7 @@ interface Recording {
 }
 
 export class StreamSession {
+  readonly userId = principalOf()?.id;
   readonly id = randomUUID();
   readonly createdAt: number;
   endedAt: number | null = null;

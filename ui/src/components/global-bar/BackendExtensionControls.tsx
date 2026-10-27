@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 // BackendExtensionControls.tsx — generic renderer for backend-declared knobs
 //
 // A backend without ACE's Lua plugin registry still has knobs, and it declares
@@ -179,11 +180,11 @@ export const BackendExtensionControls: React.FC<{
   const backendId = capabilities?.backend ?? 'backend';
   const storageKey = `hs-ext-sections:${backendId}:${group}`;
   const [open, setOpenState] = useState<Record<string, boolean>>(() => {
-    try { return JSON.parse(localStorage.getItem(storageKey) || '{}') as Record<string, boolean>; } catch { return {}; }
+    try { return JSON.parse(userStorage.getItem(storageKey) || '{}') as Record<string, boolean>; } catch { return {}; }
   });
   const setOpen = (next: Record<string, boolean>) => {
     setOpenState(next);
-    try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* private mode etc. */ }
+    try { userStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* private mode etc. */ }
   };
   const hintOf = (name: string) => params.find((p) => p.section === name && p.section_hint)?.section_hint;
   const changedIn = (name: string) => params.filter((p) => p.section === name && (() => {

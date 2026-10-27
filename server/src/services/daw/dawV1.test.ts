@@ -15,13 +15,17 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'daw-route-'));
 const { default: dawRouter, dawBodyErrorHandler } = await import('../../routes/dawV1.js');
 const { __setCaller } = await import('./dawFacade.js');
 
+const {initDb,closeDb}=await import('../../auth/dbFixture.js');
+initDb();
+const {principalContext}=await import('../../auth/principal.js');
 const app = express();
+app.use((_req,_res,next)=>principalContext.run({id:'fixture-owner',role:'user',sessionId:'test-fixture'},next));
 app.use(express.json({ limit: '50mb' }));
 app.use('/api/v1/daw', dawRouter, dawBodyErrorHandler);
 const server = http.createServer(app);
 await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/daw`;
-test.after(() => { server.close(); });
+test.after(() => { server.close(); closeDb(); fs.rmSync(process.env.DATA_DIR!,{recursive:true,force:true}); });
 
 const posts: any[] = [];
 __setCaller(async (method, route, body) => {

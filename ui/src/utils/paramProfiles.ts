@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 // paramProfiles.ts — collect/apply the full generation-parameter state
 //
 // One shared implementation behind three features:
@@ -18,7 +19,7 @@ import { writePersistedState } from '../hooks/usePersistedState';
 import { mergeProfileField } from './profileMerge';
 
 // ── Content fields (CreatePanel state, persisted via usePersistedState) ──
-// profile key → localStorage key
+// profile key → userStorage key
 const CONTENT_KEYS: Record<string, string> = {
   caption: 'hs-caption',
   lyrics: 'hs-lyrics',
@@ -37,7 +38,7 @@ const CONTENT_KEYS: Record<string, string> = {
 // ── Store fields captured in a profile, grouped by domain ──
 // Everything that affects generation. Deliberately excluded: adaptersOpen
 // (accordion UI state) and adapterFolder (browse location preference).
-// localStorage key is `hs-<field>` unless overridden in FIELD_KEY_OVERRIDES.
+// userStorage key is `hs-<field>` unless overridden in FIELD_KEY_OVERRIDES.
 // This grouping is the single source of truth for collect/apply AND the
 // profile inspector, so a field added here shows up in every path at once.
 // `ace`: the group is ACE-Step's own (its DiT, adapters and LM), so a profile
@@ -124,7 +125,7 @@ export const PARAM_GROUPS: { title: string; fields: string[]; ace?: true }[] = [
 
 const PROFILE_FIELDS: string[] = PARAM_GROUPS.flatMap(g => g.fields);
 
-// Store fields whose localStorage key is not simply `hs-<field>`
+// Store fields whose userStorage key is not simply `hs-<field>`
 const FIELD_KEY_OVERRIDES: Record<string, string> = {
   whisperLanguage: 'hs-whisperLang',
   whisperBeamSize: 'hs-whisperBeam',
@@ -144,7 +145,7 @@ export type ProfileData = Record<string, unknown>;
 
 function readLS<T>(key: string, fallback: T): T {
   try {
-    const v = localStorage.getItem(key);
+    const v = userStorage.getItem(key);
     return v !== null ? JSON.parse(v) : fallback;
   } catch { return fallback; }
 }
@@ -207,7 +208,7 @@ function mapV1(p: ProfileData): ProfileData {
  * Apply a preset/profile to the live UI — no page reload needed.
  * Content fields go through writePersistedState() so CreatePanel's
  * usePersistedState hooks pick them up in place; store fields are written
- * in one setState plus their hs-* localStorage keys.
+ * in one setState plus their hs-* userStorage keys.
  * Unknown keys are ignored, so both v1 and v2 files are safe.
  */
 export function applyProfileData(raw: ProfileData): void {
@@ -228,14 +229,14 @@ export function applyProfileData(raw: ProfileData): void {
           : p[field];
       value = mergeProfileField(field, value, live[field], p._mergeMaps === true);
       partial[field] = value;
-      try { localStorage.setItem(fieldStorageKey(field), JSON.stringify(value)); } catch { /* full */ }
+      try { userStorage.setItem(fieldStorageKey(field), JSON.stringify(value)); } catch { /* full */ }
     }
   }
   // Profiles saved before the LM-codes step-count mode existed carry only
   // lmCodesStrength; restore them in ratio mode so they behave as saved.
   if (p.lmCodesStrength !== undefined && p.lmCodesMode === undefined) {
     partial.lmCodesMode = 'ratio';
-    try { localStorage.setItem('hs-lmCodesMode', JSON.stringify('ratio')); } catch { /* full */ }
+    try { userStorage.setItem('hs-lmCodesMode', JSON.stringify('ratio')); } catch { /* full */ }
   }
   useGlobalParamsStore.setState(partial);
 }

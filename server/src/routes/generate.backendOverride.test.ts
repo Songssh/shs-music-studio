@@ -1,3 +1,4 @@
+import { principalOf } from '../auth/principal.js';
 // What this guards: the per-job `backendOverride` through the real route entry
 // point (submitGeneration), not just buildEnvelope. Backends are stubbed so no
 // engine or network is touched: `capabilities` and `generate` record calls.
@@ -9,8 +10,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'route-backend-override-'));
-process.env.DATA_DIR = DATA_DIR;
-const database = await import('../db/database.js');
+process.env.DATA_DIR = DATA_DIR;process.env.ACESTEPCPP_PORT='8085';
+const database = await import('../auth/dbFixture.js');
 database.initDb();
 const { setEngineReady } = await import('../engineState.js');
 const registry = await import('../services/backends/registry.js');
@@ -308,7 +309,7 @@ async function callRoute(router: any, method: string, routePath: string, body: u
     json(value: unknown) { out.body = value; res.writableFinished = true; return res; },
     on() { return res; },
   };
-  await layer.route.stack.at(-1).handle({ body, headers, query: {}, params: {} }, res, () => {});
+  await layer.route.stack.at(-1).handle({ principal:principalOf(), body, headers, query: {}, params: {} }, res, () => {});
   return out;
 }
 

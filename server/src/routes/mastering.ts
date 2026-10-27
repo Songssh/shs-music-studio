@@ -1,3 +1,4 @@
+import { assets, claimFile, requireFile } from '../auth/ownership.js';
 // mastering.ts — Mastering routes for reference track management and mastering execution
 //
 // Endpoints:
@@ -210,6 +211,7 @@ router.post('/upload-reference', upload.single('file'), async (req, res) => {
       fs.renameSync(file.path, finalPath);
     }
 
+    claimFile(finalPath,userId);
     console.log(`[Mastering] Reference uploaded: ${finalName}`);
     res.json({
       name: finalName,
@@ -227,10 +229,10 @@ router.post('/upload-reference', upload.single('file'), async (req, res) => {
 });
 
 // ── GET /references ─────────────────────────────────────────
-router.get('/references', (_req, res) => {
+router.get('/references', (req, res) => {
   try {
     const files = fs.readdirSync(refsDir)
-      .filter(f => !f.startsWith('.'))
+      .filter(f => !f.startsWith('.') && assets().owns(path.join(refsDir,f),getUserId(req)!))
       .map(f => ({
         name: f,
         path: path.join(refsDir, f),
@@ -249,7 +251,7 @@ router.delete('/references/:name', (req, res) => {
   if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
 
   const filePath = path.join(refsDir, req.params.name);
-  if (!fs.existsSync(filePath)) {
+  if (!fs.existsSync(filePath) || !assets().owns(filePath,userId)) {
     res.status(404).json({ error: 'Reference not found' });
     return;
   }
@@ -271,6 +273,7 @@ router.post('/run', async (req, res) => {
   if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
 
   const { songId, referenceName } = req.body;
+  if(typeof referenceName==='string'){try{requireFile(path.join(refsDir,referenceName),userId);}catch{res.status(404).json({error:'Reference not found'});return;}}
   if (!songId || !referenceName) {
     res.status(400).json({ error: 'songId and referenceName are required' });
     return;

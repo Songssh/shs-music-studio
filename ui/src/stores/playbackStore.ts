@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 /**
  * playbackStore.ts — what is playing, and what plays next.
  *
@@ -187,7 +188,7 @@ export {
   audioQueueItemToTrack,
 } from './playbackConverters';
 
-// ── localStorage Keys ────────────────────────────────────────────────────────
+// ── userStorage Keys ────────────────────────────────────────────────────────
 
 const PREFS_KEY = 'playback-prefs';
 const TRACKLIST_KEY = 'playback-tracklist';
@@ -213,11 +214,11 @@ const DEFAULT_PREFS: PersistedPrefs = {
 
 function loadPrefs(): PersistedPrefs {
   try {
-    const raw = localStorage.getItem(PREFS_KEY);
+    const raw = userStorage.getItem(PREFS_KEY);
     if (raw) return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
   } catch { /* ignore */ }
   // Migrate legacy volume key
-  const legacyVol = localStorage.getItem('volume');
+  const legacyVol = userStorage.getItem('volume');
   if (legacyVol) {
     const v = parseFloat(legacyVol);
     if (!isNaN(v)) return { ...DEFAULT_PREFS, volume: v };
@@ -226,9 +227,9 @@ function loadPrefs(): PersistedPrefs {
 }
 
 function savePrefs(p: PersistedPrefs): void {
-  localStorage.setItem(PREFS_KEY, JSON.stringify(p));
+  userStorage.setItem(PREFS_KEY, JSON.stringify(p));
   // Keep legacy key in sync for any remaining consumers
-  localStorage.setItem('volume', String(p.volume));
+  userStorage.setItem('volume', String(p.volume));
 }
 
 // ── Persisted Track List ─────────────────────────────────────────────────────
@@ -241,7 +242,7 @@ interface PersistedTrackList {
 
 function loadTrackList(): PersistedTrackList | null {
   try {
-    const raw = localStorage.getItem(TRACKLIST_KEY);
+    const raw = userStorage.getItem(TRACKLIST_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed.trackList)) return parsed;
@@ -261,12 +262,12 @@ function saveTrackList(tl: PersistedTrackList): void {
     coverUrl: t.coverUrl, duration: t.duration, style: t.style,
   }));
   try {
-    localStorage.setItem(TRACKLIST_KEY, JSON.stringify({ ...tl, trackList: slim }));
+    userStorage.setItem(TRACKLIST_KEY, JSON.stringify({ ...tl, trackList: slim }));
   } catch {
     // QuotaExceededError — clear the key and retry with just the current track
     try {
-      localStorage.removeItem(TRACKLIST_KEY);
-      localStorage.setItem(TRACKLIST_KEY, JSON.stringify({ ...tl, trackList: slim.slice(0, 1) }));
+      userStorage.removeItem(TRACKLIST_KEY);
+      userStorage.setItem(TRACKLIST_KEY, JSON.stringify({ ...tl, trackList: slim.slice(0, 1) }));
     } catch { /* give up gracefully — playback still works, just won't persist */ }
   }
 }
@@ -559,7 +560,7 @@ export function togglePlay(): void {
   // NOT — the monitor-start flow pauses us first.
   if (!_state.isPlaying) stopVstMonitorIfActive();
   if (isStreamDeck()) { mm3StreamToggle(); return; }
-  // A track restored from localStorage on page load is selected but has never
+  // A track restored from userStorage on page load is selected but has never
   // been handed to the engine. Pressing play on it means "play this", not
   // "toggle the nothing that is loaded".
   if (engine.getSnapshot().trackId !== track.id) { loadTrack(track); return; }

@@ -1,3 +1,4 @@
+import { privateAdapters } from '../../auth/privatePaths.js';
 /**
  * Adapter directory layout — one hierarchy per training base.
  *
@@ -50,7 +51,7 @@ export function lmSizeFromSlug(dirName: string): LmSize | '' {
 /** Every folder GET /api/adapters/lm scans: the three size roots plus the
  *  legacy flat `lm/` so a pre-migration install keeps working. */
 export function lmAdapterRoots(): Array<{ dir: string; size: LmSize | '' }> {
-  const root = config.aceServer.adapters;
+  const root = privateAdapters();
   return [
     { dir: path.join(root, 'lm-06b'), size: '0.6B' },
     { dir: path.join(root, 'lm-17b'), size: '1.7B' },

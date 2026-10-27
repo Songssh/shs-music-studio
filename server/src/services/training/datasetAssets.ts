@@ -355,7 +355,7 @@ export async function listDatasetsWithAssets(): Promise<TrainingDatasetRow[]> {
   // Artist for the grid filter, via the Lyric Studio set the dataset was exported from.
   const artistBySet = new Map<number, string>();
   try {
-    for (const r of getDb().prepare('SELECT ls.id AS id, a.name AS name FROM lyrics_sets ls JOIN artists a ON a.id = ls.artist_id').all() as Array<{ id: number; name: string }>) artistBySet.set(r.id, r.name);
+    for (const r of getDb().prepare('SELECT ls.id AS id, a.name AS name FROM auth_owned_lyrics_sets ls JOIN auth_owned_artists a ON a.id = ls.artist_id').all() as Array<{ id: number; name: string }>) artistBySet.set(r.id, r.name);
   } catch { /* no Lyric Studio tables: filter falls back to name/album */ }
 
   for (const ds of rows) {

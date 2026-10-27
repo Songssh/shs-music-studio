@@ -1,3 +1,4 @@
+import { getUserId } from './auth.js';
 // download.ts — Audio download route with format conversion + metadata embedding
 //
 // GET /api/songs/:id/download?format=wav|flac|opus|mp3&bitrate=192&version=original|mastered|noadapter
@@ -22,6 +23,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const router = Router();
+router.param('id',(req,res,next,id)=>{if(!getDb().prepare('SELECT 1 FROM songs WHERE id=? AND user_id=?').get(id,getUserId(req))){res.status(404).json({error:'Song not found'});return;}next();});
 
 /** Get mp3-codec binary path (platform-aware: no .exe on macOS/Linux) */
 function getMp3CodecPath(): string {

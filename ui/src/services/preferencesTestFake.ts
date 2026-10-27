@@ -1,3 +1,4 @@
+import { bindUserStorage, userStorage } from '../auth/userStorage';
 // preferencesTestFake.ts — an in-memory /api/preferences for the 7a client
 // tests (presetCollection, settingDocument and the components built on them).
 // Not imported by the app.
@@ -141,14 +142,15 @@ export class MemoryStorage {
 }
 
 /** A fresh browser (localStorage) and server for one test. */
-export async function withBrowser<T>(run: (fake: PreferencesFake, storage: MemoryStorage) => Promise<T>): Promise<T> {
+export async function withBrowser<T>(run: (fake: PreferencesFake, storage: Storage) => Promise<T>): Promise<T> {
   const fake = new PreferencesFake();
   const storage = new MemoryStorage();
   const g = globalThis as { localStorage?: unknown };
   const savedStorage = g.localStorage;
   g.localStorage = storage;
   const uninstall = fake.install();
-  try { return await run(fake, storage); } finally { uninstall(); g.localStorage = savedStorage; }
+  bindUserStorage('fixture-user');
+  try { return await run(fake, userStorage); } finally { uninstall(); g.localStorage = savedStorage; }
 }
 
 /** Let pending promise callbacks run. */

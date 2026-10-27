@@ -145,7 +145,7 @@ export const LyricStudioV2: React.FC = () => {
   const [queueOpen, setQueueOpen] = useState(false);
   // Single source of truth for the provider/model picker: AlbumHeader and
   // ArtistPageSidebar used to each keep their own copy loaded from
-  // localStorage, so picking a provider there never re-rendered this
+  // userStorage, so picking a provider there never re-rendered this
   // component — the tabs/QueuePanel below kept submitting whatever
   // loadSelections() had returned on LyricStudioV2's last unrelated render.
   const [modelSelections, setModelSelections] = useState<ModelSelections>(loadSelections);
@@ -525,7 +525,7 @@ export const LyricStudioV2: React.FC = () => {
   // The album's own source tracks that carry an MM3 Structured Caption. A
   // written song renders under ONE of these by default (nearest tempo), which
   // is what reliably lands in the band's style and reaches a natural ending.
-  // Cached to localStorage because the two render paths — the audio queue and
+  // Cached to userStorage because the two render paths — the audio queue and
   // Send-to-Create — are plain modules with no access to this component's data.
   const mm3SourceTracks = useMemo(
     () => (nav.selectedAlbum ? collectMm3SourceTracks(parseSongs(nav.selectedAlbum.songs)) : []),

@@ -52,8 +52,8 @@ export function updateAdapterReferences(db: Database.Database, adaptersRoot: str
   if (!fs.statSync(adaptersRoot).isDirectory()) throw new Error('Adapters directory is unavailable');
   return db.transaction(() => {
     const presets = db.prepare(`SELECT ap.*, a.name AS artist_name, ls.album
-      FROM album_presets ap JOIN lyrics_sets ls ON ls.id = ap.lyrics_set_id
-      JOIN artists a ON a.id = ls.artist_id`).all() as Preset[];
+      FROM auth_owned_album_presets ap JOIN auth_owned_lyrics_sets ls ON ls.id = ap.lyrics_set_id
+      JOIN auth_owned_artists a ON a.id = ls.artist_id`).all() as Preset[];
     const changes: DroppedAdapterReference[] = [];
     for (const preset of presets) {
       for (const field of fields) {

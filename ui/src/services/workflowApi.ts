@@ -75,7 +75,7 @@ export async function followJob(jobId: string, handlers: FollowHandlers,
     try {
       const token = getAuthToken();
       const response = await fetch(`/api/workflows/jobs/${id(jobId)}/events?after=${last}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: opts.signal,
+        headers: token ? { 'X-Hotstep-User': token } : {}, signal: opts.signal,
       });
       if (!response.ok || !response.body) {
         const value = await response.json().catch(() => ({}));

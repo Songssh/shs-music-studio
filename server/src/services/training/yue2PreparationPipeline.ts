@@ -1,3 +1,4 @@
+import { jobFetch } from '../../auth/jobRequests.js';
 // Durable YuE2 preparation chains. The existing training routes remain the
 // single stage validators and GPU admission point; this module owns ordering.
 import fs from 'fs';
@@ -440,7 +441,7 @@ async function request(snapshot: Snapshot, url: string, init: RequestInit = {}, 
     const worker = getWorker(snapshot.worker.name);
     if (!worker || worker.url !== workerUrl) throw new Error(`Training worker ${snapshot.worker.name} was replaced or removed`);
     response = await workerFetch(worker, url, init);
-  } else response = await fetch(`http://127.0.0.1:${config.server.port}${url}`, init);
+  } else response = await jobFetch(`http://127.0.0.1:${config.server.port}${url}`, init);
   const body = await response.json().catch(() => ({})) as { error?: string };
   if (!response.ok) throw Object.assign(new Error(body.error || `HTTP ${response.status}`), { status: response.status });
   return body;

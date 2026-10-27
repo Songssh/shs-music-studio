@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 // coverStudioUtils.ts — Shared helpers for Cover Studio
 
 // ── Persistence ─────────────────────────────────────────────────────────
@@ -5,12 +6,12 @@ export const STORAGE_PREFIX = 'cover-studio-';
 export const TRACK_CACHE_KEY = 'cover-studio-trackCache';
 
 export function persist(key: string, value: any) {
-  try { localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value)); } catch {}
+  try { userStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value)); } catch {}
 }
 
 export function restore<T>(key: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem(STORAGE_PREFIX + key);
+    const raw = userStorage.getItem(STORAGE_PREFIX + key);
     return raw !== null ? JSON.parse(raw) : fallback;
   } catch { return fallback; }
 }
@@ -28,14 +29,14 @@ export interface TrackCacheEntry {
 }
 
 export function getTrackCache(): Record<string, TrackCacheEntry> {
-  try { return JSON.parse(localStorage.getItem(TRACK_CACHE_KEY) || '{}'); } catch { return {}; }
+  try { return JSON.parse(userStorage.getItem(TRACK_CACHE_KEY) || '{}'); } catch { return {}; }
 }
 
 export function saveTrackCacheEntry(filename: string, entry: Partial<TrackCacheEntry>) {
   try {
     const cache = getTrackCache();
     cache[filename] = { ...(cache[filename] || {}), ...entry } as TrackCacheEntry;
-    localStorage.setItem(TRACK_CACHE_KEY, JSON.stringify(cache));
+    userStorage.setItem(TRACK_CACHE_KEY, JSON.stringify(cache));
   } catch {}
 }
 

@@ -50,7 +50,7 @@ async function withToken<T>(token: string, fn: () => Promise<T>): Promise<T> {
   try { return await fn(); } finally { setAuthToken(null); }
 }
 
-test('get returns the parsed body and sends the bearer from the auth session', async () => {
+test('get returns the parsed body and sends the owner guard from the auth session', async () => {
   const calls: { url: string; headers: Record<string, string> }[] = [];
   (globalThis as any).fetch = async (url: string, init: RequestInit) => {
     calls.push({ url, headers: init.headers as Record<string, string> });
@@ -60,7 +60,7 @@ test('get returns the parsed body and sends the bearer from the auth session', a
   const result = await withToken('tok', () => client.get<{ ok: boolean }>('/songs'));
   assert.deepEqual(result, { ok: true });
   assert.equal(calls[0].url, '/api/songs');
-  assert.equal(calls[0].headers.Authorization, 'Bearer tok');
+  assert.equal(calls[0].headers['X-Hotstep-User'], 'tok');
 });
 
 test('post sends JSON with the exact content type and no auth header when no session is set', async () => {
@@ -73,7 +73,7 @@ test('post sends JSON with the exact content type and no auth header when no ses
   await client.post('/things', { a: 1 });
   assert.equal(seenBody, JSON.stringify({ a: 1 }));
   assert.equal(seenHeaders['Content-Type'], 'application/json');
-  assert.equal(seenHeaders.Authorization, undefined);
+  assert.equal(seenHeaders['X-Hotstep-User'], undefined);
 });
 
 test('a non-OK response throws ApiError carrying status, body and revision/reason', async () => {
@@ -110,7 +110,7 @@ test('delete passes the auth header and no body', async () => {
   await withToken('t', () => client.delete('/songs/1'));
   assert.equal(seenInit.method, 'DELETE');
   assert.equal(seenInit.body, undefined);
-  assert.equal((seenInit.headers as Record<string, string>).Authorization, 'Bearer t');
+  assert.equal((seenInit.headers as Record<string, string>)['X-Hotstep-User'], 't');
 });
 
 test('upload sends fields before files, reports progress, and resolves the parsed body', async () => {
@@ -127,7 +127,7 @@ test('upload sends fields before files, reports progress, and resolves the parse
     const xhr = FakeXhr.made.at(-1)!;
     assert.equal(xhr.method, 'POST');
     assert.equal(xhr.url, '/api/import');
-    assert.equal(xhr.getHeader('Authorization'), 'Bearer tok');
+    assert.equal(xhr.getHeader('X-Hotstep-User'), 'tok');
     xhr.upload.onprogress?.({ lengthComputable: true, loaded: 5, total: 10 });
     xhr.respond(200, { ok: true });
     assert.deepEqual(await result, { ok: true });
@@ -215,7 +215,7 @@ test('streamEvents sends the bearer token in a header, parses frames, and resolv
   const client = new ApiClient();
   const seen: string[] = [];
   await withToken('tok', () => client.streamEvents('/workflows/jobs/1/events', d => seen.push(d)));
-  assert.equal(sent?.headers.Authorization, 'Bearer tok');
+  assert.equal(sent?.headers['X-Hotstep-User'], 'tok');
   assert.equal(sent?.url, '/api/workflows/jobs/1/events');
   assert.deepEqual(seen, ['{"n":1}', '{"n":2}']);
   // The stream ended on its own; cleanup still runs (cancel on an already-done

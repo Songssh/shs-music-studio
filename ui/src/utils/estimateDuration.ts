@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 /**
  * estimateDuration.ts — BPM + lyric-aware duration estimation.
  *
@@ -34,13 +35,13 @@ export function estimateDuration(lyrics: string, bpm: number): number {
   return Math.max(90, Math.min(estimated, 360));
 }
 
-/** localStorage key for the "Use LLM Duration" toggle */
+/** userStorage key for the "Use LLM Duration" toggle */
 export const LLM_DURATION_KEY = 'lireek-useLlmDuration';
 
 /** Read the persisted preference (defaults to true = use LLM duration) */
 export function getUseLlmDuration(): boolean {
   try {
-    const raw = localStorage.getItem(LLM_DURATION_KEY);
+    const raw = userStorage.getItem(LLM_DURATION_KEY);
     return raw !== null ? JSON.parse(raw) : true;
   } catch {
     return true;

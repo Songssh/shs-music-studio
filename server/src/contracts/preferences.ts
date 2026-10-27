@@ -2,11 +2,8 @@
 // AI-continue and YuE2 joint presets, plus STORM's operational tuning
 // knobs. zod 4; clients import the types.
 //
-// Every kind here is installation-scoped (contracts/workflow.ts
-// DocumentScope): none of the source browser keys carry a user id, so there
-// is one shared owner per machine, same as the existing VST active chain and
-// `ace-settings`. See routes/preferences.ts for why these routes skip auth
-// entirely, matching routes/vst.ts.
+// These document shapes are retained while storage and routes use the
+// authenticated account as owner. Legacy installation documents are migrated.
 
 import { z } from 'zod/v4';
 
@@ -38,7 +35,7 @@ export const aiContinuePresetBodySchema = z.object({
 });
 export type AiContinuePresetBody = z.infer<typeof aiContinuePresetBodySchema>;
 
-/** The continuation prompt template. A single installation-wide document;
+/** The continuation prompt template. A single account-owned document;
  *  `hs-ai-continue-template` has no "clear" state (an empty string falls back
  *  to DEFAULT_TEMPLATE client-side), so the body always carries a string. */
 export const aiContinueTemplateBodySchema = z.object({ template: z.string().max(20_000) });
@@ -78,7 +75,7 @@ export interface ResolveYue2PresetResult {
 // `hs-storm-*` tuning keys (seed, solver/scheduler/guidance knobs, extra
 // param maps) describe the single live session's current settings, the same
 // "current value, no revision history" shape as `ace-settings`. One document
-// per installation; every field optional and the whole body passthrough, so
+// per account; every field optional and the whole body passthrough, so
 // an older or newer client's extra fields survive, matching today's direct
 // localStorage readers (they already tolerate missing fields).
 

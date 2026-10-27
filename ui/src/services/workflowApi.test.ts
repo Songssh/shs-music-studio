@@ -13,7 +13,7 @@ import { ApiError } from './apiError';
 import { setAuthToken } from './axiosClient';
 
 test('followJob resumes after a dropped stream without losing or repeating events', async () => {
-  const http = await startWorkflowTestServer();
+  const http = await startWorkflowTestServer({userIdOf:req=>req.headers['x-hotstep-user']==='t'?'u':null});
   const { jobs } = http;
   let release!: () => void;
   const step = new Promise<void>(r => { release = r; });
@@ -80,7 +80,7 @@ test('followJob resumes after a dropped stream without losing or repeating event
 });
 
 test('followJob on a retried job ends at the current attempt, not the first failure', async () => {
-  const http = await startWorkflowTestServer();
+  const http = await startWorkflowTestServer({userIdOf:req=>req.headers['x-hotstep-user']==='t'?'u':null});
   http.jobs.register({
     kind: 'flaky', input: z.object({}),
     run: async ctx => { if (ctx.attempt === 1) throw new Error('first try fails'); return 'ok'; },
@@ -131,7 +131,7 @@ test('revisionedRequest carries the stale revision and the unsupported-version r
     assert.equal(newer.reason, 'unsupported-version');
     assert.equal(newer.message, 'Saved as version 3');
     assert.deepEqual(await revisionedRequest('/api/presets/z'), { ok: true });
-    assert.equal((seen[0].init?.headers as Record<string, string>).Authorization, 'Bearer tok');
+    assert.equal((seen[0].init?.headers as Record<string, string>)['X-Hotstep-User'], 'tok');
     assert.equal(seen[0].init?.body, JSON.stringify({ expectedRevision: 3 }));
   } finally {
     setAuthToken(null);

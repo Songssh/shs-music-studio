@@ -7,7 +7,7 @@ import path from 'node:path';
 test('capture pins provider, overrides and source revisions; invalid batch items remain visible', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'lyric-workflow-'));
   process.env.DATA_DIR = directory;
-  const database = await import('../../db/database.js');
+  const database = await import('../../auth/dbFixture.js');
   const rows = await import('../../db/lireekDb.js');
   const { captureLyricItems, lyricBatchInput, runLyricBatch, overrideLyricWorkflowDeps } = await import('./lyricWorkflow.js');
   const { WorkflowJobs } = await import('../workflows/workflowJobs.js');
@@ -45,7 +45,7 @@ test('capture pins provider, overrides and source revisions; invalid batch items
       cancel: () => { throw new Error('unexpected audio'); },
     } });
     jobs.register({ kind: 'lyric-capture-test', input: lyricBatchInput, run: async ctx => { await hold; return runLyricBatch(ctx); } });
-    const submitted = jobs.submit({ kind: 'lyric-capture-test', idempotencyKey: 'revision', input: { ...batch, items: [generated] } }, 'user').job;
+    const submitted = jobs.submit({ kind: 'lyric-capture-test', idempotencyKey: 'revision', input: { ...batch, items: [generated] } }, 'fixture-owner').job;
     rows.updateProfileData(p.id as number, { ...p.profile_data, themes: ['changed'] });
     const changed = captureLyricItems([{ type: 'generate', targetId: p.id as number, provider: 'fixture-provider' }]).items[0];
     assert.equal(changed.type, 'generate');
@@ -63,7 +63,7 @@ test('capture pins provider, overrides and source revisions; invalid batch items
     }) as any });
     try {
       const pair = captureLyricItems([{ type: 'generate', targetId: p.id as number, provider: 'fixture-provider', count: 2 }]);
-      const run = jobs.submit({ kind: 'lyric-capture-test', idempotencyKey: 'shared-history', input: pair }, 'user').job;
+      const run = jobs.submit({ kind: 'lyric-capture-test', idempotencyKey: 'shared-history', input: pair }, 'fixture-owner').job;
       await jobs.settled();
       assert.equal(jobs.get(run.id).status, 'succeeded');
       assert.equal(seen[0].includes('subject 1'), false);
@@ -94,7 +94,7 @@ test('capture pins provider, overrides and source revisions; invalid batch items
         { type: 'generate', targetId: p.id as number, provider: 'fixture-provider', count: 3 },
         { type: 'generate', targetId: p2.id as number, provider: 'fixture-provider', count: 3 },
       ], 2);
-      const run = jobs.submit({ kind: 'lyric-capture-test', idempotencyKey: 'parallel', input: both }, 'user').job;
+      const run = jobs.submit({ kind: 'lyric-capture-test', idempotencyKey: 'parallel', input: both }, 'fixture-owner').job;
       await jobs.settled();
       const out = jobs.get(run.id).result as { results: Array<{ index: number; status: string }> };
       assert.deepEqual(out.results.map(r => [r.index, r.status]), [0, 1, 2, 3, 4, 5].map(i => [i, 'done']));

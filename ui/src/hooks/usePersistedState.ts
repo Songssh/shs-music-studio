@@ -1,4 +1,5 @@
-// usePersistedState.ts — useState with localStorage persistence
+import { userStorage } from '../auth/userStorage';
+// usePersistedState.ts — useState with userStorage persistence
 //
 // Drop-in replacement for useState that survives page refreshes.
 // Also listens for external storage writes (e.g. from queue stores)
@@ -9,7 +10,7 @@ import { useState, useEffect } from 'react';
 export function usePersistedState<T>(key: string, defaultValue: T): [T, (value: T | ((prev: T) => T)) => void] {
   const [state, setState] = useState<T>(() => {
     try {
-      const stored = localStorage.getItem(key);
+      const stored = userStorage.getItem(key);
       return stored !== null ? JSON.parse(stored) : defaultValue;
     } catch {
       return defaultValue;
@@ -18,7 +19,7 @@ export function usePersistedState<T>(key: string, defaultValue: T): [T, (value: 
 
   useEffect(() => {
     try {
-      localStorage.setItem(key, JSON.stringify(state));
+      userStorage.setItem(key, JSON.stringify(state));
     } catch {
       // Storage full or unavailable
     }
@@ -38,12 +39,12 @@ export function usePersistedState<T>(key: string, defaultValue: T): [T, (value: 
   return [state, setState];
 }
 
-/** Write a value to localStorage AND dispatch a StorageEvent so
+/** Write a value to userStorage AND dispatch a StorageEvent so
  *  usePersistedState hooks in the same tab pick up the change. */
 export function writePersistedState(key: string, value: unknown): void {
   const serialized = JSON.stringify(value);
-  const oldValue = localStorage.getItem(key);
-  localStorage.setItem(key, serialized);
+  const oldValue = userStorage.getItem(key);
+  userStorage.setItem(key, serialized);
   // StorageEvent only fires cross-tab; dispatch manually for same-tab listeners
   window.dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue: serialized }));
 }

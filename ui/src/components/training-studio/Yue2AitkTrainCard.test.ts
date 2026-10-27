@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createPresetLoadGate } from './Yue2AitkTrainCard';
+import { register } from 'node:module';
+register('../../stores/cssStubLoader.mjs',import.meta.url);
+const { createPresetLoadGate }=await import('./Yue2AitkTrainCard');
 
 test('a delayed preset response cannot submit the old form through batch or exposed Start', async () => {
   const gate = createPresetLoadGate();

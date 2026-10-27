@@ -1,3 +1,6 @@
+import { claimFile } from '../../auth/ownership.js';
+import { principalOf } from '../../auth/principal.js';
+import { datasetDir } from './paths.js';
 // training/datasetsRepo.ts — training_datasets CRUD
 //
 // One row per dataset, never per sample (D3): disk is the source of truth for
@@ -99,14 +102,14 @@ const COLUMN_OF: Record<string, string> = {
 
 export function listDatasets(): TrainingDatasetRow[] {
   const rows = getDb()
-    .prepare('SELECT * FROM training_datasets ORDER BY created_at DESC, rowid DESC')
+    .prepare('SELECT * FROM training_datasets WHERE user_id=hotstep_owner() ORDER BY created_at DESC, rowid DESC')
     .all() as DbRow[];
   return rows.map(toRow);
 }
 
 export function getDataset(id: string): TrainingDatasetRow | null {
   const row = getDb()
-    .prepare('SELECT * FROM training_datasets WHERE id = ?')
+    .prepare('SELECT * FROM training_datasets WHERE user_id=hotstep_owner() AND id = ?')
     .get(id) as DbRow | undefined;
   return row ? toRow(row) : null;
 }
@@ -116,8 +119,8 @@ export function getDatasetBySourceDir(dir: string): TrainingDatasetRow | null {
   // are the same folder but different strings (path.resolve preserves casing and
   // the UNIQUE index collates BINARY).
   const sql = process.platform === 'win32'
-    ? 'SELECT * FROM training_datasets WHERE source_dir = ? COLLATE NOCASE'
-    : 'SELECT * FROM training_datasets WHERE source_dir = ?';
+    ? 'SELECT * FROM training_datasets WHERE user_id=hotstep_owner() AND source_dir = ? COLLATE NOCASE'
+    : 'SELECT * FROM training_datasets WHERE user_id=hotstep_owner() AND source_dir = ?';
   const row = getDb().prepare(sql).get(dir) as DbRow | undefined;
   return row ? toRow(row) : null;
 }
@@ -128,6 +131,7 @@ export function listSlugs(): Set<string> {
 }
 
 export function insertDataset(row: TrainingDatasetRow): void {
+  if(principalOf())claimFile(datasetDir(row.slug),undefined,'directory');
   getDb().prepare(`
     INSERT INTO training_datasets (
       id, slug, name, source_dir, recursive, custom_tag, tag_position, genre_ratio,
@@ -178,13 +182,13 @@ export function updateDataset(id: string, patch: Partial<TrainingDatasetRow>): v
   sets.push(`updated_at = @updated_at`);
   params.updated_at = new Date().toISOString();
 
-  getDb().prepare(`UPDATE training_datasets SET ${sets.join(', ')} WHERE id = @id`).run(params);
+  getDb().prepare(`UPDATE training_datasets SET ${sets.join(', ')} WHERE user_id=hotstep_owner() AND id = @id`).run(params);
 }
 
 /** Cache the album name detected from tags. Display-only, so it is not an
  *  edit: updated_at (the dataset revision) stays put. */
 export function cacheAlbumName(id: string, album: string): void {
-  getDb().prepare('UPDATE training_datasets SET album_name = ? WHERE id = ?').run(album, id);
+  getDb().prepare('UPDATE training_datasets SET album_name = ? WHERE user_id=hotstep_owner() AND id = ?').run(album, id);
 }
 
 export function updateCounters(
@@ -195,7 +199,7 @@ export function updateCounters(
     UPDATE training_datasets
        SET sample_count = @sample_count, labeled_count = @labeled_count,
            excluded_count = @excluded_count, status = @status, updated_at = @updated_at
-     WHERE id = @id
+     WHERE user_id=hotstep_owner() AND id = @id
        -- Unchanged counters are not an edit: updated_at is the dataset's
        -- revision, and a read-only view must not invalidate accepted work.
        AND (sample_count IS NOT @sample_count OR labeled_count IS NOT @labeled_count
@@ -211,5 +215,5 @@ export function updateCounters(
 }
 
 export function deleteDataset(id: string): void {
-  getDb().prepare('DELETE FROM training_datasets WHERE id = ?').run(id);
+  getDb().prepare('DELETE FROM training_datasets WHERE user_id=hotstep_owner() AND id = ?').run(id);
 }

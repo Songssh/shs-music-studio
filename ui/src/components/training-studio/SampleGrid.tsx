@@ -1,9 +1,10 @@
+import { userStorage } from '../../auth/userStorage';
 // SampleGrid.tsx — the review table
 //
 // Derived from the SongTable pattern in components/library/SongList.tsx:
 // ColDef list, <colgroup> + tableLayout:'fixed', drag-resize handles, a
 // right-pinned sticky actions column, a columns-visibility dropdown and
-// localStorage persistence (keys are training-specific).
+// userStorage persistence (keys are training-specific).
 //
 // No virtualisation in v1 — the scan is capped at 5000 files, and above 800
 // rows the grid defaults to the unlabeled-first filtered view.
@@ -57,16 +58,16 @@ const VIS_KEY = 'hs-training-colVisibility';
 const BIG_GRID_ROWS = 800;
 
 function loadColWidths(): Record<string, number> {
-  try { const v = localStorage.getItem(WIDTHS_KEY); return v ? JSON.parse(v) : {}; } catch { return {}; }
+  try { const v = userStorage.getItem(WIDTHS_KEY); return v ? JSON.parse(v) : {}; } catch { return {}; }
 }
 function saveColWidths(w: Record<string, number>) {
-  try { localStorage.setItem(WIDTHS_KEY, JSON.stringify(w)); } catch { /* ignore */ }
+  try { userStorage.setItem(WIDTHS_KEY, JSON.stringify(w)); } catch { /* ignore */ }
 }
 function loadColVisibility(): Record<string, boolean> {
-  try { const v = localStorage.getItem(VIS_KEY); return v ? JSON.parse(v) : {}; } catch { return {}; }
+  try { const v = userStorage.getItem(VIS_KEY); return v ? JSON.parse(v) : {}; } catch { return {}; }
 }
 function saveColVisibility(v: Record<string, boolean>) {
-  try { localStorage.setItem(VIS_KEY, JSON.stringify(v)); } catch { /* ignore */ }
+  try { userStorage.setItem(VIS_KEY, JSON.stringify(v)); } catch { /* ignore */ }
 }
 function colDefaultVisible(id: string): boolean {
   if (MANDATORY_COLS.has(id)) return true;

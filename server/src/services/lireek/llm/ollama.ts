@@ -3,7 +3,7 @@
 import { config } from '../../../config.js';
 import { LLMProvider, noThinkSystemPrompt } from './base.js';
 import type { ProviderInfo, ChunkCallback, CallOptions } from './types.js';
-import { skipThinkingSignal } from './types.js';
+import { shouldSkipThinking } from './types.js';
 
 export class OllamaProvider extends LLMProvider {
   id = 'ollama';
@@ -104,7 +104,7 @@ export class OllamaProvider extends LLMProvider {
               if (content) {
                 fullText += content;
                 onChunk(content);
-                if (skipThinkingSignal && fullText.includes('<think>') && !fullText.includes('</think>')) {
+                if (shouldSkipThinking() && fullText.includes('<think>') && !fullText.includes('</think>')) {
                   reader.cancel();
                   return fullText;
                 }

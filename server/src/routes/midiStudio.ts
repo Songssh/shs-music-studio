@@ -1,3 +1,5 @@
+import { claimResource, ownsResource, requireFile } from '../auth/ownership.js';
+import { getUserId } from './auth.js';
 // midiStudio.ts — MIDI Studio audio→MIDI transcription route
 //
 // Transcribes library tracks to multi-instrument MIDI via the NATIVE ace-midi
@@ -41,6 +43,7 @@ import { registerJobsBusyCheck, trackBusy } from '../dataroot/pointer.js';
 import { runOnGpuLane } from '../services/generation/gpuLane.js';
 
 const router = Router();
+router.param('jobId',(req,res,next,id)=>{if(!ownsResource('midi',id,getUserId(req)!)){res.status(404).json({error:'Job not found'});return;}next();});
 
 const midiBaseDir = path.join(config.data.dir, 'midi');
 fs.mkdirSync(midiBaseDir, { recursive: true });
@@ -100,16 +103,8 @@ export function runOnMidiLane(jobId: string, fn: () => Promise<void>): Promise<v
 
 /** Resolve a URL-style audio path to an absolute filesystem path */
 function resolveAudioPath(audioUrl: string): string {
-  if (audioUrl.startsWith('/references/')) {
-    return path.join(config.data.dir, 'references', path.basename(audioUrl));
-  }
-  if (audioUrl.startsWith('/audio/')) {
-    return path.join(config.data.audioDir, path.basename(audioUrl));
-  }
-  if (path.isAbsolute(audioUrl)) {
-    return audioUrl;
-  }
-  return path.join(config.data.dir, 'references', path.basename(audioUrl));
+  return requireFile(audioUrl);
+
 }
 
 function jobDir(id: string): string { return path.join(midiBaseDir, id); }
@@ -382,6 +377,7 @@ router.post('/transcribe', (req: Request, res: Response) => {
     createdAt: Date.now(),
     listeners: new Set(),
   };
+  claimResource('midi',job.id,getUserId(req)!);
   jobs.set(job.id, job);
   // Tracked from enqueue: a queued job deleted from the map still runs later.
   void trackBusy('MIDI', runOnMidiLane(job.id, () => runTranscription(job))).catch((err: any) => {
@@ -403,7 +399,7 @@ router.get('/jobs', (_req: Request, res: Response) => {
     const onDisk = new Set<string>();
     if (fs.existsSync(midiBaseDir)) {
       for (const entry of fs.readdirSync(midiBaseDir, { withFileTypes: true })) {
-        if (!entry.isDirectory()) continue;
+        if (!entry.isDirectory() || !ownsResource('midi',entry.name)) continue;
         const metaPath = path.join(midiBaseDir, entry.name, '_meta.json');
         if (!fs.existsSync(metaPath)) continue;
         try {
@@ -429,7 +425,7 @@ router.get('/jobs', (_req: Request, res: Response) => {
       }
     }
     for (const [, job] of jobs) {
-      if (job.status === 'done' || onDisk.has(job.id)) continue;
+      if (!ownsResource('midi',job.id) || job.status === 'done' || onDisk.has(job.id)) continue;
       summaries.push({
         id: job.id,
         status: job.status,

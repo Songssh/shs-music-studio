@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 import React, { useEffect, useRef, useState } from 'react';
 import abcjs from 'abcjs';
 import 'abcjs/abcjs-audio.css';
@@ -172,8 +173,8 @@ export const Yue2CoverScore: React.FC<Props> = p => {
   const stopRangeRef = useRef<() => void>(() => {});
   // The left pane shows the raw ABC or the same score as a song chart.
   const [view, setView] = useState<'abc' | 'chart'>(() =>
-    localStorage.getItem('cover-studio-abcView') === 'chart' ? 'chart' : 'abc');
-  useEffect(() => { localStorage.setItem('cover-studio-abcView', view); }, [view]);
+    userStorage.getItem('cover-studio-abcView') === 'chart' ? 'chart' : 'abc');
+  useEffect(() => { userStorage.setItem('cover-studio-abcView', view); }, [view]);
   const [playingBar, setPlayingBar] = useState<number | null>(null);
   const onSectionRef = useRef(p.onSection);
   const onMoveRef = useRef(p.onMoveSection);

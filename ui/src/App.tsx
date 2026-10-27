@@ -1,3 +1,4 @@
+import { userStorage } from './auth/userStorage';
 // App.tsx — Root application component
 //
 // Ported from hot-step-9000: 3-panel resizable layout with
@@ -123,7 +124,7 @@ function urlForView(view: string): string {
   if (view === 'lyric-studio') {
     // Restore the last deep URL (artist/album/tab) if we have one
     try {
-      const saved = localStorage.getItem('hs-lastLyricStudioUrl');
+      const saved = userStorage.getItem('hs-lastLyricStudioUrl');
       if (saved) return saved;
     } catch { /* ignore */ }
     return '/lyric-studio';
@@ -137,7 +138,7 @@ function urlForView(view: string): string {
   if (view === 'training-studio') {
     // Restore the last deep URL (dataset/phase) if we have one
     try {
-      const saved = localStorage.getItem('hs-lastTrainingStudioUrl');
+      const saved = userStorage.getItem('hs-lastTrainingStudioUrl');
       if (saved) return saved;
     } catch { /* ignore */ }
     return '/training-studio';
@@ -486,11 +487,11 @@ const AppContent: React.FC = () => {
   const navigateTo = useCallback((view: string) => {
     // Save deep Lyric Studio URL before leaving so we can restore it
     if (activeView === 'lyric-studio' && view !== 'lyric-studio') {
-      try { localStorage.setItem('hs-lastLyricStudioUrl', window.location.pathname); } catch { /* ignore */ }
+      try { userStorage.setItem('hs-lastLyricStudioUrl', window.location.pathname); } catch { /* ignore */ }
     }
     // Same idea for Training Studio: dataset/phase deep link.
     if (activeView === 'training-studio' && view !== 'training-studio') {
-      try { localStorage.setItem('hs-lastTrainingStudioUrl', window.location.pathname); } catch { /* ignore */ }
+      try { userStorage.setItem('hs-lastTrainingStudioUrl', window.location.pathname); } catch { /* ignore */ }
     }
     setActiveView(view);
     const url = urlForView(view);
@@ -506,7 +507,7 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Direct download helper (reads settings from localStorage)
+  // Direct download helper (reads settings from userStorage)
   const handleDownload = useCallback((song: Song) => downloadTrack(song), []);
 
   const showToast = (message: string, type: ToastType = 'success') => {
@@ -1145,7 +1146,7 @@ const AppContent: React.FC = () => {
                 try {
                   const res = await fetch('/api/songs/export-zip', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                    headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Hotstep-User': token } : {}) },
                     body: JSON.stringify({ ids }),
                   });
                   if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || `HTTP ${res.status}`);

@@ -1,8 +1,9 @@
+import { userStorage } from '../../auth/userStorage';
 // FileBrowserModal.tsx — Reusable file/folder browser modal
 //
 // Navigates the server filesystem via /api/adapters/browse.
 // Supports both file-selection and folder-selection modes.
-// Remembers last-visited directory per filter type in localStorage.
+// Remembers last-visited directory per filter type in userStorage.
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -36,17 +37,17 @@ function formatSize(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** localStorage key per filter type */
+/** userStorage key per filter type */
 const STORAGE_KEY_PREFIX = 'hs-fileBrowser-lastDir';
 
 function getLastDir(filter?: string): string {
   const key = filter ? `${STORAGE_KEY_PREFIX}-${filter}` : STORAGE_KEY_PREFIX;
-  try { return localStorage.getItem(key) || ''; } catch { return ''; }
+  try { return userStorage.getItem(key) || ''; } catch { return ''; }
 }
 
 function saveLastDir(dir: string, filter?: string): void {
   const key = filter ? `${STORAGE_KEY_PREFIX}-${filter}` : STORAGE_KEY_PREFIX;
-  try { localStorage.setItem(key, dir); } catch { /* ignore */ }
+  try { userStorage.setItem(key, dir); } catch { /* ignore */ }
 }
 
 export const FileBrowserModal: React.FC<FileBrowserModalProps> = ({

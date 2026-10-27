@@ -1,3 +1,5 @@
+import { authenticatedTestServer } from '../auth/testSupport.js';
+import { AssetOwnership } from '../auth/assets.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -13,13 +15,23 @@ const stemStudioRoutes = (await import('../routes/stemStudio.js')).default;
 const supersepRoutes = (await import('../routes/supersep.js')).default;
 const { STEM_TRACK_NAMES, stemExtractRequestSchema, stemSupersepRequestSchema, supersepSeparateRequestSchema, supersepRecombineRequestSchema } = await import('./stemSeparation.js');
 
+const database=await import('../db/database.js');database.initDb();
 const app = express();
+const fixture=await authenticatedTestServer(app,database.getDb(),DATA_DIR);
+const {server,cookie,user}=fixture;
 app.use(express.json());
 app.use('/api/stem-studio', stemStudioRoutes);
 app.use('/api/supersep', supersepRoutes);
-const server = app.listen(0);
-await new Promise(resolve => server.once('listening', resolve));
 const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+const testFetch=globalThis.fetch;
+globalThis.fetch=(async(input:any,init?:RequestInit)=>{
+  if(String(input).startsWith(base)){const headers=new Headers(init?.headers);headers.set('Cookie',cookie);headers.set('Origin',base);return testFetch(input,{...init,headers});}
+  return testFetch(input,init);
+}) as typeof fetch;
+test.after(()=>{globalThis.fetch=testFetch;database.closeDb();});
+fs.mkdirSync(path.join(DATA_DIR,'references'),{recursive:true});
+new AssetOwnership(database.getDb(),DATA_DIR).register(path.join(DATA_DIR,'references','a.wav'),user.id);
+database.getDb().prepare('INSERT INTO resource_owners VALUES(?,?,?)').run('supersep','job-1',user.id);
 test.after(() => new Promise(resolve => server.close(() => { fs.rmSync(DATA_DIR, { recursive: true, force: true }); resolve(undefined); })));
 
 const post = async (p: string, body: unknown) => {
@@ -127,6 +139,7 @@ test('POST /api/supersep/separate: missing audioUrl is refused before any file r
 // ── HTTP: stemStudio.ts reads from disk, independent of a running job ─────────
 
 function writeFixtureJob(id: string, meta: Record<string, unknown>, stems: Record<string, Buffer> = {}) {
+  database.getDb().prepare('INSERT OR IGNORE INTO resource_owners VALUES(?,?,?)').run('stem',id,user.id);
   const dir = path.join(DATA_DIR, 'stems', id);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, '_meta.json'), JSON.stringify(meta, null, 2));

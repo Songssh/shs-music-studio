@@ -10,6 +10,7 @@ import { useJobBadge } from '../../hooks/useJobProgress';
 import { useCapabilities } from '../../hooks/useCapabilities';
 import { useBackendStore, type BackendCapabilities } from '../../stores/backendStore';
 import { BackendToggle } from '../global-bar/BackendToggle';
+import { AccountMenu } from '../../auth/AccountMenu';
 
 // ── Studios per generation engine ───────────────────────────────────────────
 // A studio that only works on some engines is listed only while one of them
@@ -88,6 +89,7 @@ const SidebarNav: React.FC<SidebarNavProps> = ({
   const available = useStudioAvailable();
   return (
     <nav className="flex-1 flex flex-col gap-2 w-full px-3">
+      <AccountMenu expanded={isExpanded} />
       {/* ── Create section — framed by purple bars ── */}
       {isExpanded && <div className="h-[3px] bg-purple-500/40 mx-1 mt-1" />}
       {isExpanded && (

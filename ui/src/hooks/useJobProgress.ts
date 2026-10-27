@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 /**
  * Generation progress surfaces: tab title, badge data and the
  * "job finished while you were away" notification.
@@ -19,8 +20,8 @@ export function notificationsSupported(): boolean {
 export async function requestNotifyPermissionFromGesture(force = false): Promise<NotificationPermission | 'unsupported'> {
   if (!notificationsSupported()) return 'unsupported';
   if (Notification.permission !== 'default') return Notification.permission;
-  if (!force && localStorage.getItem(ASKED_KEY)) return Notification.permission;
-  localStorage.setItem(ASKED_KEY, '1');
+  if (!force && userStorage.getItem(ASKED_KEY)) return Notification.permission;
+  userStorage.setItem(ASKED_KEY, '1');
   try { return await Notification.requestPermission(); } catch { return Notification.permission; }
 }
 

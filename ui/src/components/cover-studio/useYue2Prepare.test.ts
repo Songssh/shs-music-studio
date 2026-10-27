@@ -1,3 +1,5 @@
+import { bindUserStorage, userStorage } from '../../auth/userStorage';
+bindUserStorage('fixture-user');
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseHTML } from 'linkedom';
@@ -180,7 +182,7 @@ test('mounted hook persists mirror fields, restores on remount, and disables rec
   const { window, document } = parseHTML('<html><body><div id="root"></div></body></html>');
   const storage = new Map<string, string>();
   Object.assign(globalThis, { window, document, IS_REACT_ACT_ENVIRONMENT: true,
-    localStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) } });
+    localStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem:(key:string)=>storage.delete(key) } });
   let hook!: ReturnType<typeof useYue2Prepare>;
   function Harness({ source }: { source: PrepareInitial }) { hook = useYue2Prepare({ ...source, hasRecording: true }); return null; }
   let root = createRoot(document.getElementById('root')!);
@@ -192,7 +194,7 @@ test('mounted hook persists mirror fields, restores on remount, and disables rec
     assert.equal(hook.recordingSeekAvailable, false);
     assert.equal(hook.recordingAlignmentAvailable, false);
     const fields = structuredClone(hook.draftFields);
-    assert.deepEqual(JSON.parse(storage.get(PREPARE_DRAFT_KEY)!), fields[PREPARE_DRAFT_KEY]);
+    assert.deepEqual(JSON.parse(userStorage.getItem(PREPARE_DRAFT_KEY)!), fields[PREPARE_DRAFT_KEY]);
     await act(async () => { hook.undo(); });
     assert.equal(hook.recordingSeekAvailable, true);
     await act(async () => { hook.redo(); });

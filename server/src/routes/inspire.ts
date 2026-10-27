@@ -1,3 +1,6 @@
+import { claimResource, ownsResource } from '../auth/ownership.js';
+import { runOnGpuLane } from '../services/generation/gpuLane.js';
+import { evictOtherFamilies } from '../services/generation/residency.js';
 // inspire.ts — Inspire API endpoint
 //
 // Two inspire paths:
@@ -87,6 +90,9 @@ async function pollUntilDone(aceJobId: string, job: InspireJob, signal: AbortSig
 
 /** Run inspire pipeline */
 async function runInspire(job: InspireJob, params: any): Promise<void> {
+  return runOnGpuLane(async()=>{if(job.status==='cancelled')return;await evictOtherFamilies('ace');await runInspireOnLane(job,params);},{label:`inspire:${job.id}`,family:'ace'});
+}
+async function runInspireOnLane(job: InspireJob, params: any): Promise<void> {
   if (job.status === 'cancelled') return;
 
   const aceReq = translateParams(params);
@@ -168,8 +174,7 @@ async function runInspire(job: InspireJob, params: any): Promise<void> {
 
 // ── Serialization queue (shares the engine with generate) ──
 // Inspire jobs go through the same single-GPU bottleneck.
-// For now we run them independently — they're fast and only use the LM.
-// If contention becomes an issue, we can merge with the generate queue.
+// runInspire acquires the shared GPU lane and preserves the submitting owner.
 
 // POST /api/inspire — start an inspire job
 router.post('/', (req, res) => {
@@ -192,6 +197,7 @@ router.post('/', (req, res) => {
     createdAt: Date.now(),
   };
 
+  claimResource('inspire',job.id,userId);
   inspireJobs.set(job.id, job);
   void trackBusy('inspire', runInspire(job, req.body));
 
@@ -204,7 +210,7 @@ router.post('/', (req, res) => {
 // GET /api/inspire/status/:id — poll inspire job status
 router.get('/status/:id', (req, res) => {
   const job = inspireJobs.get(req.params.id);
-  if (!job) { res.status(404).json({ error: 'Job not found' }); return; }
+  if (!job || !ownsResource('inspire',String(req.params.id))) { res.status(404).json({ error: 'Job not found' }); return; }
 
   res.json({
     jobId: job.id,
@@ -222,7 +228,7 @@ router.get('/status/:id', (req, res) => {
 // POST /api/inspire/cancel/:id — cancel an inspire job
 router.post('/cancel/:id', (req, res) => {
   const job = inspireJobs.get(req.params.id);
-  if (!job) { res.status(404).json({ error: 'Job not found' }); return; }
+  if (!job || !ownsResource('inspire',String(req.params.id))) { res.status(404).json({ error: 'Job not found' }); return; }
 
   job.status = 'cancelled';
   if (job.aceJobId) {

@@ -2,7 +2,7 @@
 // routes/stemStudio.ts (Stem Studio's own extract + SuperSep pipeline,
 // persisted under data/stems/<jobId>/) and routes/supersep.ts (a thin
 // SuperSep-only proxy to ace-server, used by Cover Studio's splitter).
-// Neither route requires auth — this is a local single-user app.
+// Both routes require the authenticated owner for inputs, jobs and files.
 //
 // routes/stemStudio.ts and routes/supersep.ts import the request schemas
 // below instead of their own ad hoc checks, so the published shape is the
@@ -98,9 +98,9 @@ export interface StemStorageStats { totalBytes: number; jobCount: number; stemCo
 /** POST /api/supersep/separate?level=0..5. `audioUrl` must resolve to a file
  *  already on disk under `/references/` or `/audio/`; 400 `audioUrl required
  *  in request body` if missing, 400 `Audio conversion failed: ...` if it
- *  cannot be read into an engine-compatible format. On success, returns
- *  ace-server's own `/supersep/separate` response verbatim (`{ id }` at the
- *  time of writing, but this route does not parse or constrain it). */
+ *  cannot be resolved to an owned file. Returns `{ id }` immediately; the
+ *  server maps that job to the engine after acquiring the shared GPU lane.
+ *  Conversion/engine errors are reported through the progress endpoint. */
 export const supersepSeparateRequestSchema = z.object({ audioUrl: z.string().min(1) });
 export type SupersepSeparateRequest = z.infer<typeof supersepSeparateRequestSchema>;
 

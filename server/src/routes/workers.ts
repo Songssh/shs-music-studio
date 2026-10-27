@@ -7,6 +7,7 @@
 // request bodies stream through untouched; its own JSON routes parse inline.
 
 import express, { Router, type Request, type Response } from 'express';
+import { principalOf } from '../auth/principal.js';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { pipeline } from 'node:stream/promises';
@@ -43,7 +44,7 @@ workerRouter.get('/status', async (_req: Request, res: Response) => {
   const job = activeTraining();
   let engineBuiltAt: string | null = null;
   try { engineBuiltAt = fs.statSync(config.aceServer.exe).mtime.toISOString(); } catch { /* binary absent */ }
-  res.json({ commit: startupCommit, dirty: dirtyCheckout(), version: APP_VERSION, aceServer: { status: engineStatus, version: engineVersion }, engineBuiltAt, gpu, job, idle: job === null });
+  res.json({ commit: startupCommit, dirty: dirtyCheckout(), version: APP_VERSION, aceServer: { status: engineStatus, version: engineVersion }, engineBuiltAt, gpu, job:principalOf()?.role==='admin'?job:null, idle: job === null });
 });
 
 workerRouter.post('/update', async (req: Request, res: Response) => {

@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 // settingDocument.ts — one installation setting from /api/preferences/settings
 // (the AI continue template), as the UI edits it. The modal renders it and
 // the tests drive it.
@@ -5,7 +6,7 @@
 // Rules (Batch 4, 7a):
 // - Hydration and saves run on one queue, so a slow first read can never
 //   land after, and undo, a save.
-// - The local copy (`localStorage`, read synchronously by other components)
+// - The local copy (`userStorage`, read synchronously by other components)
 //   is written only from the user's own value, or from the server's when the
 //   user has not edited: hydration checks for an edit before touching it.
 // - Saves are coalesced: the latest edit is what gets sent.
@@ -188,14 +189,14 @@ export class SettingDocument {
 }
 
 function readLocal(key: string): string | null {
-  try { return localStorage.getItem(key); } catch { return null; }
+  try { return userStorage.getItem(key); } catch { return null; }
 }
 function writeLocal(key: string, value: string): void {
-  try { localStorage.setItem(key, value); } catch { /* storage unavailable */ }
+  try { userStorage.setItem(key, value); } catch { /* storage unavailable */ }
 }
 function readFlag(key: string): boolean {
-  try { return !!localStorage.getItem(key); } catch { return false; }
+  try { return !!userStorage.getItem(key); } catch { return false; }
 }
 function writeFlag(key: string): void {
-  try { localStorage.setItem(key, '1'); } catch { /* storage unavailable */ }
+  try { userStorage.setItem(key, '1'); } catch { /* storage unavailable */ }
 }

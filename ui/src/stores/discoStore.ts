@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 // discoStore.ts — Disco mode state + multi-stem beat detection engine.
 //
 // SYNC STRATEGY: Pre-analyzed disco data is loaded as a tiny JSON file
@@ -37,20 +38,20 @@ interface DiscoData {
   hihat: number[];
 }
 
-// ── localStorage ─────────────────────────────────────────────────────────────
+// ── userStorage ─────────────────────────────────────────────────────────────
 
 const DISCO_PREFS_KEY = 'disco-prefs';
 
 function loadDiscoPrefs(): { discoMode: boolean } {
   try {
-    const raw = localStorage.getItem(DISCO_PREFS_KEY);
+    const raw = userStorage.getItem(DISCO_PREFS_KEY);
     if (raw) return JSON.parse(raw);
   } catch { /* ignore */ }
   return { discoMode: false };
 }
 
 function saveDiscoPrefs(discoMode: boolean): void {
-  localStorage.setItem(DISCO_PREFS_KEY, JSON.stringify({ discoMode }));
+  userStorage.setItem(DISCO_PREFS_KEY, JSON.stringify({ discoMode }));
 }
 
 // ── Disco Data Management ────────────────────────────────────────────────────

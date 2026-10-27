@@ -1,3 +1,4 @@
+import { userStorage } from '../auth/userStorage';
 import { projectQuery } from '../queries/global-models/projection';
 import { vstPresetsApi } from '../queries/global-models/presets';
 import type { MonitorStatus } from '../queries/global-models/options';
@@ -29,7 +30,7 @@ export const MIGRATED_FLAG = 'vst-chain-presets:server-migrated';
 
 function loadLegacyPresetsFromStorage(): Record<string, VstChainEntry[]> {
   try {
-    const v = JSON.parse(localStorage.getItem(PRESETS_KEY) || '{}');
+    const v = JSON.parse(userStorage.getItem(PRESETS_KEY) || '{}');
     return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
   } catch { return {}; }
 }

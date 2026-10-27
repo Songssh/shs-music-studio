@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 import { useQuery } from '@tanstack/react-query';
 import { studioPluginsOptions } from '../../queries/studios/shared';
 // StormPage.tsx — Full-width STORM Streaming performance page
@@ -381,7 +382,7 @@ export const StormPage: React.FC<StormPageProps> = ({ onGenerate, activeJobCount
       ...(cacheRatio > 0       ? { cacheRatio }      : {}),
       ...(cfgCutoffRatio < 1.0 ? { cfgCutoffRatio }  : {}),
       coResident: (() => {
-        try { return JSON.parse(localStorage.getItem('ace-settings') || '{}').coResident === true; }
+        try { return JSON.parse(userStorage.getItem('ace-settings') || '{}').coResident === true; }
         catch { return false; }
       })(),
     };
@@ -390,10 +391,10 @@ export const StormPage: React.FC<StormPageProps> = ({ onGenerate, activeJobCount
     } else if (mode === 'continuous' || mode === 'drift') {
       sa.setXfadeBeats(xfadeBeats); // sync xfadeBeatsRef before stream starts
       if (mode === 'drift') {
-        // Read persisted drift pressure from localStorage
+        // Read persisted drift pressure from userStorage
         let driftPressure: Record<string, unknown> = {};
         try {
-          const stored = localStorage.getItem('hs-storm-drift-pressure');
+          const stored = userStorage.getItem('hs-storm-drift-pressure');
           if (stored) driftPressure = JSON.parse(stored);
         } catch { /* ignore */ }
         sa.start({ ...params, drift: driftPressure });

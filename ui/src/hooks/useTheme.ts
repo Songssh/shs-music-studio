@@ -1,4 +1,5 @@
-// useTheme.ts — theme state hook with localStorage persistence
+import { userStorage } from '../auth/userStorage';
+// useTheme.ts — theme state hook with userStorage persistence
 //
 // Manages light/dark theme by toggling the `dark` class on <html> and
 // updating the <meta name="theme-color"> tag. Defaults to dark mode
@@ -33,7 +34,7 @@ function applyTheme(theme: Theme): void {
 export function useTheme(): { theme: Theme; toggleTheme: () => void } {
   const [theme, setTheme] = useState<Theme>(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = userStorage.getItem(STORAGE_KEY);
       if (stored === 'light' || stored === 'dark') return stored;
     } catch { /* ignore */ }
     return 'dark';
@@ -48,7 +49,7 @@ export function useTheme(): { theme: Theme; toggleTheme: () => void } {
     setTheme(prev => {
       const next: Theme = prev === 'dark' ? 'light' : 'dark';
       try {
-        localStorage.setItem(STORAGE_KEY, next);
+        userStorage.setItem(STORAGE_KEY, next);
       } catch { /* ignore */ }
       return next;
     });

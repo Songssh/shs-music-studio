@@ -1,3 +1,4 @@
+import { requireAdministrator } from '../auth/http.js';
 // generate.ts — Generation orchestration route
 //
 // Orchestrates the two-step generation flow:
@@ -175,7 +176,7 @@ async function runGeneration(
     pollUntilDone,
     hooks: { onEngineJob() {}, onStage() {}, onArtifact() {} },
     pendingJobs: () => Array.from(jobs.values())
-      .filter(j => j.id !== job.id && j.status === 'pending' && j.envelope?.backendId === backendId)
+      .filter(j => j.id !== job.id && j.userId === job.userId && j.status === 'pending' && j.envelope?.backendId === backendId)
       .sort((a, b) => a.createdAt - b.createdAt),
     releaseLane: () => releaseGpuLane(lease),
     nextLaneFamily: gpuLaneNextFamily,
@@ -477,11 +478,12 @@ router.post('/', generateCapture, async (req, res) => {
 // GET /api/generate/status/:id — poll job status
 router.get('/status/:id', (req, res) => {
   const job = jobs.get(req.params.id);
+  if (job && job.userId !== getUserId(req)) { res.status(404).json({error:'Job not found'}); return; }
   if (!job) {
     // Gone from memory: a restart, or the one-hour prune. The ledger says how it ended.
     let entry: LedgerEntry | null = null;
     withLedger('read', ledger => { entry = ledger.get(req.params.id); });
-    if (entry) { res.json(ledgerStatusBody(entry)); return; }
+    if (entry && (entry as LedgerEntry).userId === getUserId(req)) { res.json(ledgerStatusBody(entry)); return; }
     res.status(404).json({ error: 'Job not found' });
     return;
   }
@@ -500,9 +502,9 @@ router.get('/status/:id', (req, res) => {
     // YuE2 queue coalescing: the jobs rendered together in one engine batch,
     // so the queue can box them and show one time for the lot.
     batch: job.coalescedMembers
-      ? { lead: job.id, members: job.coalescedMembers }
+      ? { lead: job.id, members: job.coalescedMembers.filter(id => jobs.get(id)?.userId === job.userId) }
       : job.coalescedInto
-        ? { lead: job.coalescedInto, members: jobs.get(job.coalescedInto)?.coalescedMembers ?? [job.coalescedInto, job.id] }
+        ? { lead: jobs.get(job.coalescedInto)?.userId === job.userId ? job.coalescedInto : job.id, members: (jobs.get(job.coalescedInto)?.coalescedMembers ?? [job.coalescedInto, job.id]).filter(id => jobs.get(id)?.userId === job.userId) }
         : null,
     // MM3 live-audio stream: GET /api/generate/mm3/stream/:id is worth opening
     // only once this is true. Absent/false on every other backend and on every
@@ -535,6 +537,7 @@ router.get('/status/:id', (req, res) => {
 // engine ids and a cancel through the existing /cancel/:id keeps working.
 router.get('/mm3/stream/:id', async (req, res) => {
   const job = jobs.get(req.params.id);
+  if (job && job.userId !== getUserId(req)) { res.status(404).json({error:'Job not found'}); return; }
   if (!job) { res.status(404).json({ error: 'Job not found' }); return; }
   if (!job.aceJobId) {
     // Submitted but not yet handed to the engine. A 409 rather than a wait:
@@ -620,6 +623,7 @@ export function cancelGenerationJob(id: string): boolean {
 }
 
 router.post('/cancel/:id', (req, res) => {
+  if (jobs.get(req.params.id)?.userId !== getUserId(req)) {res.status(404).json({error:'Job not found'});return;}
   if (!cancelGenerationJob(req.params.id)) { res.status(404).json({ error: 'Job not found' }); return; }
   res.json({ success: true, jobId: req.params.id });
 });
@@ -628,14 +632,8 @@ router.post('/cancel/:id', (req, res) => {
 router.post('/cancel-all', (req, res) => {
   let cancelled = 0;
   for (const [, job] of jobs) {
-    if (isActiveJob(job)) {
-      markGenerationJobCancelled(job);
-      if (job.aceJobId) {
-        aceClient.cancelJob(job.aceJobId).catch(() => {});
-      }
-      if ((job as any)._abort) {
-        (job as any)._abort.abort();
-      }
+    if (isActiveJob(job) && job.userId === getUserId(req)) {
+      cancelGenerationJob(job.id);
       cancelled++;
     }
   }
@@ -643,16 +641,16 @@ router.post('/cancel-all', (req, res) => {
 });
 
 // GET /api/generate/queue — queue health / status inspection
-router.get('/queue', (_req, res) => {
-  const activeJob = Array.from(jobs.values()).find(j => isActiveJob(j) && j.status !== 'pending');
+router.get('/queue', (req, res) => {
+  const activeJob = Array.from(jobs.values()).filter(j => j.userId === getUserId(req)).find(j => isActiveJob(j) && j.status !== 'pending');
 
   // Count all non-terminal jobs in the jobs Map (includes pending jobs waiting in queue)
-  const depth = Array.from(jobs.values()).filter(isActiveJob).length;
+  const depth = Array.from(jobs.values()).filter(j => j.userId === getUserId(req) && isActiveJob(j)).length;
 
   res.json({
     depth,
     running: gpuLaneBusy(),
-    owner: gpuLaneOwner()?.label ?? null,
+    owner: gpuLaneBusy() ? 'shared-gpu' : null,
     draining: gpuLaneOwner()?.draining ?? false,
     current: activeJob ? {
       id: activeJob.id,
@@ -667,7 +665,7 @@ router.get('/queue', (_req, res) => {
 });
 
 // POST /api/generate/reset-queue — force-reset: cancel everything, drain queue
-router.post('/reset-queue', (_req, res) => {
+router.post('/reset-queue', requireAdministrator, (_req, res) => {
   let cancelled = 0;
 
   // Cancel all non-terminal jobs in the jobs Map
@@ -791,8 +789,9 @@ router.post('/storm/stream', async (req, res) => {
   }
 
   const baseParams = req.body as Record<string, unknown>;
-  const streamId = typeof baseParams.streamId === 'string' ? baseParams.streamId : 'default';
+  const streamId = JSON.stringify([getUserId(req), typeof baseParams.streamId === 'string' ? baseParams.streamId : 'default']);
 
+  if (streamRunning.get(streamId)) {res.status(409).json({error:'Stream already running'});return;}
   streamRunning.set(streamId, true);
   const ctrl = getStreamControl(streamId);
   // Reset one-shot fields at stream start (sticky base fields persist across restarts)
@@ -980,7 +979,7 @@ router.post('/storm/stream', async (req, res) => {
 // stays held until the engine has finished.
 router.post('/storm/stop', (req, res) => {
   const b = req.body as Record<string, unknown>;
-  const streamId = typeof b.streamId === 'string' ? b.streamId : 'default';
+  const streamId = JSON.stringify([getUserId(req), typeof b.streamId === 'string' ? b.streamId : 'default']);
   stopStream(streamId);
   res.json({ ok: true });
 });
@@ -988,7 +987,7 @@ router.post('/storm/stop', (req, res) => {
 // POST /api/generate/storm/control — live-mutate a stream's next-slot params
 router.post('/storm/control', (req, res) => {
   const b = req.body as Record<string, unknown>;
-  const streamId = typeof b.streamId === 'string' ? b.streamId : 'default';
+  const streamId = JSON.stringify([getUserId(req), typeof b.streamId === 'string' ? b.streamId : 'default']);
   const ctrl = getStreamControl(streamId);
 
   if (typeof b.guidance_scale === 'number') ctrl.guidanceScale = b.guidance_scale;
@@ -1041,7 +1040,7 @@ router.post('/storm/control', (req, res) => {
 
 // GET /api/generate/storm/control — read back a stream's live state
 router.get('/storm/control', (req, res) => {
-  const streamId = typeof req.query.streamId === 'string' ? req.query.streamId : 'default';
+  const streamId = JSON.stringify([getUserId(req), typeof req.query.streamId === 'string' ? req.query.streamId : 'default']);
   const ctrl = getStreamControl(streamId);
   const { drift: _drift, ...ctrlWithoutDrift } = ctrl;
   res.json({

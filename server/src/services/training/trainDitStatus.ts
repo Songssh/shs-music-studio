@@ -1,3 +1,4 @@
+import { privateAdapters } from '../../auth/privatePaths.js';
 // training/trainDitStatus.ts — reads DiT-trainer state off disk
 //
 // A DiT training run has no database row either: its whole state lives in the
@@ -30,7 +31,7 @@ function str(value: unknown): string {
 }
 
 /**
- * `<config.aceServer.adapters>` — the DiT adapter root itself, NOT an `lm/`
+ * `<privateAdapters()>` — the DiT adapter root itself, NOT an `lm/`
  * style subdirectory.
  *
  * This is the folder the Create view's Adapter dropdown scans (POST
@@ -40,7 +41,7 @@ function str(value: unknown): string {
  * level, beside every hand-installed one.
  */
 export function adapterDitRoot(): string {
-  return config.aceServer.adapters;
+  return privateAdapters();
 }
 
 /** `<adapters>/dit-<shorthand>/<name>` — the ARTIST folder of the per-base

@@ -34,11 +34,11 @@ interface SessionRow {
 }
 
 function songExists(songId: string): boolean {
-  return !!getDb().prepare('SELECT 1 FROM songs WHERE id = ?').get(songId);
+  return !!getDb().prepare('SELECT 1 FROM songs WHERE user_id=hotstep_owner() AND id = ?').get(songId);
 }
 
 function getSessionRow(id: string): SessionRow {
-  const row = getDb().prepare('SELECT * FROM compare_sessions WHERE id = ?').get(id) as SessionRow | undefined;
+  const row = getDb().prepare('SELECT * FROM compare_sessions WHERE user_id=hotstep_owner() AND id = ?').get(id) as SessionRow | undefined;
   if (!row) throw new NotFoundError('Session not found');
   return row;
 }
@@ -78,7 +78,7 @@ function summarize(row: SessionRow) {
 }
 
 export function listSessions(opts: { archived?: boolean; group?: string }) {
-  const where: string[] = [];
+  const where: string[] = ['user_id=hotstep_owner()'];
   const args: unknown[] = [];
   if (opts.archived !== undefined) { where.push('archived = ?'); args.push(opts.archived ? 1 : 0); }
   if (opts.group !== undefined) { where.push('group_name = ?'); args.push(opts.group); }
@@ -233,7 +233,7 @@ export function deleteSession(id: string) {
   db.transaction(() => {
     db.prepare('DELETE FROM compare_scores WHERE session_id = ?').run(id);
     db.prepare('DELETE FROM compare_takes WHERE session_id = ?').run(id);
-    db.prepare('DELETE FROM compare_sessions WHERE id = ?').run(id);
+    db.prepare('DELETE FROM compare_sessions WHERE user_id=hotstep_owner() AND id = ?').run(id);
   })();
 }
 
@@ -293,7 +293,7 @@ export function setArchived(id: string, archived: unknown) {
 
 /** Resolve a song's audio file under the served /audio root, or throw. */
 export function songAudioPath(songId: string): string {
-  const song = getDb().prepare('SELECT audio_url FROM songs WHERE id = ?').get(songId) as { audio_url: string } | undefined;
+  const song = getDb().prepare('SELECT audio_url FROM songs WHERE user_id=hotstep_owner() AND id = ?').get(songId) as { audio_url: string } | undefined;
   if (!song) throw new NotFoundError('Song not found');
   const url = (song.audio_url || '').split('?')[0];
   if (!url.startsWith('/audio/')) throw new NotFoundError('Song has no local audio file');
@@ -350,7 +350,7 @@ export function searchSongs(opts: { q?: string; limit?: number; offset?: number 
   const q = (opts.q ?? '').trim();
   const like = `%${q.replace(/[!%_]/g, m => '!' + m)}%`;
   const args = q ? [like, like, like] : [];
-  const whereSql = q ? "WHERE title LIKE ? ESCAPE '!' OR style LIKE ? ESCAPE '!' OR caption LIKE ? ESCAPE '!'" : '';
+  const whereSql = q ? "WHERE user_id=hotstep_owner() AND (title LIKE ? ESCAPE '!' OR style LIKE ? ESCAPE '!' OR caption LIKE ? ESCAPE '!')" : 'WHERE user_id=hotstep_owner()';
   const db = getDb();
   const total = (db.prepare(`SELECT COUNT(*) AS n FROM songs ${whereSql}`).get(...args) as { n: number }).n;
   const rows = db.prepare(

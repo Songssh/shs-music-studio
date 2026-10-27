@@ -1,3 +1,4 @@
+import { privateAdapterNames } from '../auth/adapters.js';
 // models.ts — Model listing route
 //
 // Proxies /props from ace-server and returns available models + adapters.
@@ -17,8 +18,8 @@ router.get('/', async (_req, res) => {
     const props = await aceClient.props();
     res.json({
       models: props.models,
-      adapters: props.adapters,
-      lmAdapters: props.lm_adapters ?? [],
+      adapters: privateAdapterNames(props.adapters),
+      lmAdapters: privateAdapterNames(props.lm_adapters ?? [],true),
       config: props.cli,
       defaults: props.default,
     });

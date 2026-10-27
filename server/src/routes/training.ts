@@ -1,3 +1,5 @@
+import { ownsResource } from '../auth/ownership.js';
+import { privateAdapters } from '../auth/privatePaths.js';
 import { yue2OptimRequest } from '../services/training/yue2Optim.js';
 import { selectYue2Audio, YUE2_AUDIO_EXTS, yue2SeparationAudioDir } from '../services/training/yue2AudioStaging.js';
 // training.ts — Dataset Studio HTTP surface (Training Studio phase 1)
@@ -219,6 +221,11 @@ import type {
 } from '../services/training/types.js';
 
 const router = Router();
+router.use('/datasets/:id',(req,res,next)=>{if(!repo.getDataset(String(req.params.id))){res.status(404).json({error:'Dataset not found'});return;}next();});
+router.use('/jobs/:jobId',(req,res,next)=>{const id=String(req.params.jobId);const job=queue.getJob(id)??queue.listJobs().find(j=>j.id===id);if(!job||!repo.getDataset(job.datasetId)){res.status(404).json({error:'Job not found'});return;}next();});
+router.use('/pipeline/:id',(req,res,next)=>{if(!ownsResource('pipeline',String(req.params.id))){res.status(404).json({error:'Pipeline not found'});return;}next();});
+router.use('/yue2-batch/:id',(req,res,next)=>{if(req.params.id==='finish'){next();return;}if(!ownsResource('yue2-batch',String(req.params.id))){res.status(404).json({error:'Batch not found'});return;}next();});
+
 
 // Node-owned training operations (recipes, preparation, review): each domain
 // registers its handlers in services/training/operations.ts, not here.
@@ -462,7 +469,7 @@ router.post('/datasets', async (req: Request, res: Response) => {
 router.get('/jobs', (req: Request, res: Response) => {
   try {
     const datasetId = typeof req.query.datasetId === 'string' ? req.query.datasetId : undefined;
-    res.json({ jobs: queue.listJobs(datasetId) });
+    res.json({ jobs: queue.listJobs(datasetId).filter(j=>!!repo.getDataset(j.datasetId)) });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -646,7 +653,7 @@ router.post('/pipeline', (req: Request, res: Response) => {
 
 router.get('/pipeline', (_req: Request, res: Response) => {
   try {
-    res.json({ pipelines: listPipelines() });
+    res.json({ pipelines: listPipelines().filter(p=>ownsResource('pipeline',p.id)) });
   } catch (err: any) {
     console.error(`[Training] Pipeline list failed: ${err.message}`);
     res.status(500).json({ error: err.message });
@@ -735,7 +742,7 @@ router.post('/yue2-batch', (req: Request, res: Response) => {
   } catch (err: any) { res.status(500).json({ error: err?.message || String(err) }); }
 });
 router.get('/yue2-batch', (_req: Request, res: Response) => {
-  try { res.json({ batches: listYue2Batches() }); } catch (err: any) { res.status(500).json({ error: err?.message || String(err) }); }
+  try { res.json({ batches: listYue2Batches().filter(b=>ownsResource('yue2-batch',b.id)) }); } catch (err: any) { res.status(500).json({ error: err?.message || String(err) }); }
 });
 router.get('/yue2-batch/:id', (req: Request, res: Response) => {
   const batch = getYue2Batch(req.params.id as string);
@@ -3584,7 +3591,7 @@ router.post('/datasets/:id/yue2-joint-train', async (req: Request, res: Response
       checkpoint = base.checkpoint;
     }
     const dataset = str('dataset');
-    const outDir = str('output') || yue2JointOutputDirectory(config.aceServer.adapters, ds.customTag || ds.slug);
+    const outDir = str('output') || yue2JointOutputDirectory(privateAdapters(), ds.customTag || ds.slug);
     const resume = str('resume');
     const integer = (key: string, fallback: number): number => {
       const value = Number(b[key]);
@@ -5257,7 +5264,7 @@ router.post('/datasets/:id/train-lm', async (req: Request, res: Response) => {
     // never overwrites an earlier adapter. Contain against the adapters root,
     // refusing the root itself and any size root — this path is mkdir'd and
     // written into by a spawned process (§7.8).
-    const adaptersRoot = config.aceServer.adapters;
+    const adaptersRoot = privateAdapters();
     const adapterDir = lmRunDirFor(adapterName, lmSize);
     const isARoot = [adaptersRoot, adapterLmRoot(), ...lmAdapterRoots().map(r => r.dir)]
       .some(r => path.resolve(r) === path.resolve(adapterDir));

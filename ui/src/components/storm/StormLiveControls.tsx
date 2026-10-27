@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 // StormLiveControls.tsx — Shared streaming live controls panel
 // Used by both ContentSection (sidebar) and StormPage (full-width)
 // MDMAchine / A&E Concepts 2026
@@ -244,8 +245,8 @@ export const StormLiveControls: React.FC<StormLiveControlsProps> = ({
   const prevPlayingForAi = React.useRef(0);
 
   const triggerAiContinuation = React.useCallback(async (targetSlot: number) => {
-    const provider = (() => { try { return JSON.parse(localStorage.getItem('hs-customgen-ai-provider') || '""'); } catch { return ''; } })();
-    const model    = (() => { try { return JSON.parse(localStorage.getItem('hs-customgen-ai-model')    || '""'); } catch { return ''; } })();
+    const provider = (() => { try { return JSON.parse(userStorage.getItem('hs-customgen-ai-provider') || '""'); } catch { return ''; } })();
+    const model    = (() => { try { return JSON.parse(userStorage.getItem('hs-customgen-ai-model')    || '""'); } catch { return ''; } })();
     if (!provider) {
       setAiStatus({ msg: 'No AI provider configured — set one in AI Generate settings', type: 'warn' });
       console.warn('[AI ↻] no provider configured');
@@ -348,8 +349,8 @@ export const StormLiveControls: React.FC<StormLiveControlsProps> = ({
   const handlePresetFire = React.useCallback((preset: AiPreset, category: PresetCategory) => {
     setRecentPresets(prev => [preset, ...prev.filter(p => p.id !== preset.id)].slice(0, 3));
     const targetSlot = received + 2;
-    const provider = (() => { try { return JSON.parse(localStorage.getItem('hs-customgen-ai-provider') || '""'); } catch { return ''; } })();
-    const model    = (() => { try { return JSON.parse(localStorage.getItem('hs-customgen-ai-model')    || '""'); } catch { return ''; } })();
+    const provider = (() => { try { return JSON.parse(userStorage.getItem('hs-customgen-ai-provider') || '""'); } catch { return ''; } })();
+    const model    = (() => { try { return JSON.parse(userStorage.getItem('hs-customgen-ai-model')    || '""'); } catch { return ''; } })();
     if (!provider) return;
     // Use most recent slot lyrics for lyric presets, same as triggerAiContinuation
     const recentSlotLyrics = (() => {

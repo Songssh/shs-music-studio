@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 import { serverKey } from '../../queries/keys';
 import { useQuery } from '@tanstack/react-query';
 import { snapshotOptions } from '../../queries/cover-lyrics/reads';
@@ -131,12 +132,12 @@ export const QueuePanel: React.FC<QueuePanelProps> = ({
   const [genNoThink, setGenNoThink] = useState(false);
   // Artists run side by side in a bulk profile/lyric run (per browser).
   const [lyricConcurrency, setLyricConcurrency] = useState(() => {
-    try { return Math.max(1, Math.min(16, parseInt(localStorage.getItem('hs-lyricConcurrency') || '1') || 1)); } catch { return 1; }
+    try { return Math.max(1, Math.min(16, parseInt(userStorage.getItem('hs-lyricConcurrency') || '1') || 1)); } catch { return 1; }
   });
   const changeLyricConcurrency = (value: number) => {
     const next = Math.max(1, Math.min(16, value || 1));
     setLyricConcurrency(next);
-    try { localStorage.setItem('hs-lyricConcurrency', String(next)); } catch { /* per-browser convenience only */ }
+    try { userStorage.setItem('hs-lyricConcurrency', String(next)); } catch { /* per-browser convenience only */ }
   };
 
   // Generation counts for the "generate" tab
@@ -179,7 +180,7 @@ export const QueuePanel: React.FC<QueuePanelProps> = ({
   // Planner-LM adapter bulk assignment (local HOT-Step feature)
   const [lmAdapterPath, setLmAdapterPath] = useState('');
   let lmFolder = '';
-  try { lmFolder = JSON.parse(localStorage.getItem('hs-lmAdapterFolder') || '""') || ''; } catch { /* default */ }
+  try { lmFolder = JSON.parse(userStorage.getItem('hs-lmAdapterFolder') || '""') || ''; } catch { /* default */ }
   const lmQuery = useQuery({
     queryKey: serverKey('global-models/lm-adapters', { filters: { folder: lmFolder } }),
     queryFn: ({ signal }) => adapterApi.lmList(lmFolder || undefined, { signal }),

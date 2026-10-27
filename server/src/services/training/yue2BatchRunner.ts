@@ -1,3 +1,6 @@
+import { claimResource, ownsResource } from '../../auth/ownership.js';
+import { principalOf } from '../../auth/principal.js';
+import { jobFetch } from '../../auth/jobRequests.js';
 // yue2BatchRunner.ts — server-owned bulk YuE2 (AITK joint) training
 //
 // The AS1.5 batch pipeline (pipelineRunner.ts) is the model: the batch is a
@@ -185,6 +188,7 @@ export function startBatch(input: { datasetIds: string[]; lyricTiming: boolean; 
   const state: BatchState = { id: randomUUID(), status: 'running', items, currentDatasetId: null, lyricTiming: input.lyricTiming,
     ...(input.clearCache ? { clearCache: true } : {}),
     recipe, createdAt: Date.now(), finishedAt: null, pauseRequested: false, cancelRequested: false };
+  if(principalOf())claimResource('yue2-batch',state.id);
   batches.set(state.id, state);
   persist(state);
   setImmediate(() => void runBatch(state));
@@ -245,6 +249,7 @@ export function finishScoredLadders(entries: Array<{ datasetId: string; refineRu
   if (!items.length) return { error: 'Nothing to finish' };
   const live = [...batches.values()].find(b => isActive(b.status));
   if (live) {
+    if(principalOf()&&!ownsResource('yue2-batch',live.id))return {error:'Another batch is already running'};
     for (const item of items) if (!live.items.some(i => i.refineRun === item.refineRun)) live.items.push(item);
     persist(live);
     return toSummary(live);
@@ -252,6 +257,7 @@ export function finishScoredLadders(entries: Array<{ datasetId: string; refineRu
   if (hasActivePipeline()) return { error: 'A training pipeline or YuE2 preparation is already running' };
   const state: BatchState = { id: randomUUID(), status: 'running', items, currentDatasetId: null, lyricTiming: true, recipe: {},
     createdAt: Date.now(), finishedAt: null, pauseRequested: false, cancelRequested: false };
+  if(principalOf())claimResource('yue2-batch',state.id);
   batches.set(state.id, state);
   persist(state);
   setImmediate(() => void runBatch(state));
@@ -338,6 +344,7 @@ export function resumeBatch(id: string): 'ok' | 'not_found' | 'busy' {
     for (const s of item.stages) if (s.status !== 'done') { if (s.jobId && s.stage === 'train') s.resumeJobId = s.jobId; s.status = 'pending'; s.jobId = ''; s.error = null; s.startedAt = null; s.finishedAt = null; }
   }
   const state: BatchState = { ...snap, status: 'running', finishedAt: null, pauseRequested: false, currentDatasetId: null, cancelRequested: false };
+  if(principalOf())claimResource('yue2-batch',state.id);
   batches.set(state.id, state);
   persist(state);
   setImmediate(() => void runBatch(state));
@@ -460,7 +467,7 @@ interface ArStatus {
 }
 
 async function readStatus(datasetId: string): Promise<ArStatus> {
-  const r = await fetch(`${self()}/api/training/datasets/${encodeURIComponent(datasetId)}/yue2-ar`);
+  const r = await jobFetch(`${self()}/api/training/datasets/${encodeURIComponent(datasetId)}/yue2-ar`);
   if (!r.ok) throw new Error(`status ${r.status}: ${await errorTextOf(r)}`);
   return await r.json() as ArStatus;
 }
@@ -589,7 +596,7 @@ async function runStage(state: BatchState, item: Yue2BatchItem, result: Yue2Batc
 
   let response: Response;
   try {
-    response = await fetch(`${self()}/api/training/datasets/${encodeURIComponent(item.datasetId)}/${STAGE_PATH[result.stage]}`,
+    response = await jobFetch(`${self()}/api/training/datasets/${encodeURIComponent(item.datasetId)}/${STAGE_PATH[result.stage]}`,
       { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   } catch (err: any) { finishStage(state, result, 'failed', err?.message || String(err)); return; }
   if (!response.ok) { finishStage(state, result, 'failed', await errorTextOf(response)); return; }

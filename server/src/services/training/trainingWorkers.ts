@@ -1,3 +1,8 @@
+import { principalOf, ownerId } from '../../auth/principal.js';
+import { WORKER_OWNER, WORKER_ROLE } from '../../auth/workerIdentity.js';
+import { privateDirectory } from '../../auth/privatePaths.js';
+import { jobFetch } from '../../auth/jobRequests.js';
+import { privateAdapters } from '../../auth/privatePaths.js';
 // training/trainingWorkers.ts — YuE2 training on another PC's GPU
 //
 // A worker is an ordinary HOT-Step server on another machine, started with
@@ -102,7 +107,7 @@ export function workerTokenGate(req: Request, res: Response, next: NextFunction)
   res.status(401).json({ error: 'This HOT-Step is a training worker: the request needs its WORKER_TOKEN' });
 }
 
-export const workerDatasetsDir = () => path.join(trainingBaseDir, 'worker-datasets');
+export const workerDatasetsDir = () => privateDirectory('training/worker-datasets',path.join(trainingBaseDir, 'worker-datasets'));
 const workerDatasetRoot = (slug: string) => path.join(workerDatasetsDir(), slugify(slug));
 
 export function workerDatasetFiles(slug: string): Record<string, FileStamp> {
@@ -156,7 +161,7 @@ export interface WorkerLinkedPair {
  *  so the controller can pull the loss curve back through the same route
  *  that serves the two safetensors. */
 export function workerLinkedPairs(): WorkerLinkedPair[] {
-  const root = config.aceServer.adapters;
+  const root = privateAdapters();
   const stamp = (p: string) => {
     if (!isInside(root, p)) return null;
     try { const st = fs.statSync(p); return { rel: path.relative(root, p).split(path.sep).join('/'), size: st.size, mtimeMs: Math.round(st.mtimeMs) }; } catch { return null; }
@@ -186,7 +191,7 @@ export function workerLinkedPairs(): WorkerLinkedPair[] {
 }
 
 export function workerAdapterFile(rel: string): string {
-  const root = config.aceServer.adapters;
+  const root = privateAdapters();
   const abs = path.resolve(root, rel);
   if (!isInside(root, abs) || !/\.(safetensors|jsonl)$/i.test(abs)) throw Object.assign(new Error('Refused path'), { status: 400 });
   return abs;
@@ -317,7 +322,7 @@ export function deleteWorkerMirrorRun(jobId: string): void {
   // activeJobForDataset above never sees it. The lane has no per-dataset
   // tag, so any current or queued reader blocks any delete.
   if (gpuLaneBusy() || gpuLaneDepth() > 0) throw Object.assign(new Error('The GPU is busy rendering on this worker'), { status: 409 });
-  const ladderRoot = path.resolve(path.join(config.aceServer.adapters, 'yue2-joint-adapters'));
+  const ladderRoot = path.resolve(path.join(privateAdapters(), 'yue2-joint-adapters'));
   const output = path.resolve(run.output);
   // Strict descendant only — isInside treats the root itself as "inside", which
   // would let a corrupted record whose output IS the root delete every ladder.
@@ -345,10 +350,19 @@ export function listWorkers(): WorkerInfo[] {
 
 export const getWorker = (name: string) => listWorkers().find(w => w.name === name);
 
+function checkWorkerTransport(w:WorkerInfo):void {
+  const url=new URL(w.url);
+  const loopback=['127.0.0.1','localhost','[::1]'].includes(url.hostname);
+  if(!loopback&&(url.protocol!=='https:'||config.workers.token.length<32))throw new Error('Remote workers require HTTPS and a WORKER_TOKEN of at least 32 characters');
+}
+
 export function workerFetch(w: WorkerInfo, pathAndQuery: string, init: RequestInit & { duplex?: 'half' } = {}): Promise<globalThis.Response> {
+  checkWorkerTransport(w);
   const headers = new Headers(init.headers);
+  const owner=principalOf();
+  if(owner){headers.set(WORKER_OWNER,owner.id);headers.set(WORKER_ROLE,owner.role);}
   if (config.workers.token) headers.set(TOKEN_HEADER, config.workers.token);
-  return fetch(`${w.url}${pathAndQuery}`, { ...init, headers });
+  return jobFetch(`${w.url}${pathAndQuery}`, { ...init, headers, redirect:'manual' });
 }
 
 export async function workerJson<T>(w: WorkerInfo, pathAndQuery: string, init?: RequestInit): Promise<T> {
@@ -414,12 +428,13 @@ export interface DispatchInput { datasetIds: string[]; lyricTiming: boolean; cle
 // ponytail: in memory; a restart mid-dispatch loses the queue line (not the
 // worker's batch) and the user dispatches the rest again, which re-sends nothing.
 const dispatches = new Map<string, DispatchState & { input: DispatchInput }>();
+const dispatchKey=(worker:string)=>JSON.stringify([ownerId(),worker]);
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 const CAPTION_ATTEMPTS = 3;
 const CAPTION_RETRY_WAIT_MS = 5 * 60_000;
 
 export function getDispatch(worker: string): DispatchState | null {
-  const d = dispatches.get(worker);
+  const d = dispatches.get(dispatchKey(worker));
   if (!d) return null;
   const { input, ...state } = d;
   return state;
@@ -433,13 +448,13 @@ export function startDispatch(w: WorkerInfo, input: DispatchInput): DispatchStat
     items.push({ datasetId: id, name: ds.name || ds.slug, status: 'pending', error: null });
   }
   if (!items.length) return { error: 'Select at least one dataset' };
-  const live = dispatches.get(w.name);
+  const live = dispatches.get(dispatchKey(w.name));
   if (live?.running) {
     for (const item of items) if (!live.items.some(i => i.datasetId === item.datasetId && i.status !== 'failed')) live.items.push(item);
     return getDispatch(w.name)!;
   }
   const state = { worker: w.name, batchId: null, items, running: true, startedAt: Date.now(), input };
-  dispatches.set(w.name, state);
+  dispatches.set(dispatchKey(w.name), state);
   void runDispatch(w, state);
   return getDispatch(w.name)!;
 }
@@ -473,7 +488,7 @@ async function captionHere(ds: TrainingDatasetRow, want: { provider?: string; mo
   for (let attempt = 1; attempt <= CAPTION_ATTEMPTS; attempt++) {
     if (!(await samplesMissingYue2Caption(ds)).length) return;
     if (attempt > 1) await sleep(CAPTION_RETRY_WAIT_MS);
-    const r = await fetch(`http://127.0.0.1:${config.server.port}/api/training/datasets/${encodeURIComponent(ds.id)}/yue2-captions-missing`, jsonInit('POST', body));
+    const r = await jobFetch(`http://127.0.0.1:${config.server.port}/api/training/datasets/${encodeURIComponent(ds.id)}/yue2-captions-missing`, jsonInit('POST', body));
     const payload = await r.json().catch(() => ({})) as { jobId?: string; error?: string };
     if (!r.ok) throw new Error(`Captions: ${payload.error || `HTTP ${r.status}`}`);
     for (let job = payload.jobId ? queue.getJob(payload.jobId) : undefined; job && (job.status === 'queued' || job.status === 'running'); job = queue.getJob(job.id)) await sleep(1500);
@@ -531,7 +546,7 @@ function dropSupersededPull(root: string, old: Yue2LinkedPair | undefined, newAr
  *  machine's presets. Files already here at the same size are not re-sent. */
 export async function pullLinked(w: WorkerInfo): Promise<Array<{ slug: string; status: 'fetched' | 'current' | 'no-dataset'; bytes: number }>> {
   const { linked } = await workerJson<{ linked: ReturnType<typeof workerLinkedPairs> }>(w, '/api/training/worker/linked');
-  const root = config.aceServer.adapters;
+  const root = privateAdapters();
   const out: Array<{ slug: string; status: 'fetched' | 'current' | 'no-dataset'; bytes: number }> = [];
   for (const pair of linked) {
     const ds = repo.listDatasets().find(d => d.slug.toLowerCase() === pair.slug.toLowerCase());
@@ -596,8 +611,8 @@ async function pullLinkedLogs(w: WorkerInfo, slug: string, pair: ReturnType<type
 
 // Proxy: the Training Studio's /api/training calls, sent to a worker.
 
-const DROP_REQUEST = new Set(['host', 'connection', 'content-length', 'transfer-encoding', 'keep-alive', 'upgrade', 'accept-encoding', TOKEN_HEADER]);
-const DROP_RESPONSE = new Set(['connection', 'transfer-encoding', 'keep-alive', 'content-encoding']);
+const DROP_REQUEST = new Set(['host', 'connection', 'content-length', 'transfer-encoding', 'keep-alive', 'upgrade', 'accept-encoding', 'cookie', 'authorization', 'origin', 'x-hotstep-user', WORKER_OWNER, WORKER_ROLE, TOKEN_HEADER]);
+const DROP_RESPONSE = new Set(['connection', 'transfer-encoding', 'keep-alive', 'content-encoding','set-cookie']);
 
 /** Mounted at /api/workers/:name/api. Training routes only. Server-built
  *  /api/training/ URLs in JSON (preview audio) are rewritten to come back
@@ -605,6 +620,7 @@ const DROP_RESPONSE = new Set(['connection', 'transfer-encoding', 'keep-alive', 
 export async function proxyToWorker(req: Request, res: Response): Promise<void> {
   const w = getWorker(req.params.name as string);
   if (!w) { res.status(404).json({ error: `No training worker named ${req.params.name}` }); return; }
+  try{checkWorkerTransport(w);}catch{res.status(502).json({error:'Remote worker requires HTTPS and a configured credential'});return;}
   if (!req.url.startsWith('/training/')) { res.status(403).json({ error: 'Only training routes are forwarded to a worker' }); return; }
   // An operation names its worker in its body and is accepted here; it never
   // travels through "Train on" (contracts/trainingOperation.ts).
@@ -616,11 +632,12 @@ export async function proxyToWorker(req: Request, res: Response): Promise<void> 
   res.on('close', () => ac.abort());
   const headers: Record<string, string> = {};
   for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string' && !DROP_REQUEST.has(k)) headers[k] = v;
+  headers[WORKER_OWNER]=ownerId();headers[WORKER_ROLE]=principalOf()!.role;
   if (config.workers.token) headers[TOKEN_HEADER] = config.workers.token;
   const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
   let r: globalThis.Response;
   try {
-    r = await fetch(`${w.url}/api${req.url}`, {
+    r = await jobFetch(`${w.url}/api${req.url}`, {
       method: req.method, headers, signal: ac.signal, redirect: 'manual',
       ...(hasBody ? { body: Readable.toWeb(req) as ReadableStream, duplex: 'half' } : {}),
     } as RequestInit);

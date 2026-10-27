@@ -29,7 +29,7 @@ test('reads pass the signal through; positional callers are unchanged', async ()
     assert.ok(seen, 'the read carried its signal to the transport');
     ctl.abort();
     assert.equal(seen.aborted, true);
-    assert.equal((calls[0].init?.headers as Record<string, string>).Authorization, 'Bearer tok');
+    assert.equal((calls[0].init?.headers as Record<string, string>)['X-Hotstep-User'], 'tok');
     await generateApi.queueStatus();  // positional caller: no options at all
     assert.notEqual(calls[1].init?.signal, seen, 'a signal-less call gets its own (timeout-only) signal');
   } finally { setAuthToken(null); restore(); }

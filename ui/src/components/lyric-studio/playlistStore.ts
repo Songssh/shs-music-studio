@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 /**
  * playlistStore.ts — ordered Lyric Studio playlist with explicit browser import.
  *
@@ -74,8 +75,8 @@ async function connect(token: string): Promise<void> {
       if (_persistTimer) _persistPlaylistNow();
       const result = await studioDraftsApi.playlist();
       serverDocument = result.document;
-      const legacy = localStorage.getItem(STORAGE_KEY);
-      const pointer = localStorage.getItem(SERVER_POINTER_KEY);
+      const legacy = userStorage.getItem(STORAGE_KEY);
+      const pointer = userStorage.getItem(SERVER_POINTER_KEY);
       if (legacy !== null && (!pointer || !result.document)) {
         initialized = true;
         setStatus({ needsImport: true, replacingServer: !!result.document, saveError: '', saving: false });
@@ -95,7 +96,7 @@ async function connect(token: string): Promise<void> {
 
 async function importBrowserPlaylist(): Promise<void> {
   if (!serverToken) return;
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const raw = userStorage.getItem(STORAGE_KEY);
   if (raw === null) return;
   try {
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
@@ -110,7 +111,7 @@ async function importBrowserPlaylist(): Promise<void> {
     connected = true;
     _snapshot = serverDocument.body.items;
     setStatus({ needsImport: false, replacingServer: false, saveError: '', saving: false });
-    try { localStorage.setItem(SERVER_POINTER_KEY, serverDocument.id); }
+    try { userStorage.setItem(SERVER_POINTER_KEY, serverDocument.id); }
     catch (error) { console.warn('[Playlist] Browser migration marker was not saved:', error); }
   } catch (error) {
     setStatus({ ...status, saveError: error instanceof Error ? error.message : String(error) });
@@ -133,7 +134,7 @@ async function retryPlaylistSave(): Promise<void> {
 function read(): PlaylistItem[] {
   if (_snapshot) return _snapshot;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = userStorage.getItem(STORAGE_KEY);
     _snapshot = raw ? JSON.parse(raw) : [];
   } catch {
     _snapshot = [];
@@ -146,9 +147,9 @@ function _persistPlaylist(): void {
   if (_persistTimer) clearTimeout(_persistTimer);
   _persistTimer = setTimeout(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(_snapshot || []));
+      userStorage.setItem(STORAGE_KEY, JSON.stringify(_snapshot || []));
     } catch (e) {
-      console.error('[Playlist] localStorage write failed (quota?):', e);
+      console.error('[Playlist] userStorage write failed (quota?):', e);
     }
   }, 500);
 }
@@ -157,9 +158,9 @@ function _persistPlaylist(): void {
 function _persistPlaylistNow(): void {
   if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null; }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(_snapshot || []));
+    userStorage.setItem(STORAGE_KEY, JSON.stringify(_snapshot || []));
   } catch (e) {
-    console.error('[Playlist] localStorage write failed (quota?):', e);
+    console.error('[Playlist] userStorage write failed (quota?):', e);
   }
 }
 
@@ -253,7 +254,7 @@ export function usePlaylist() {
 
 // ── Staying in step with post-processing ─────────────────────────────────────
 //
-// Playlist entries are snapshots in localStorage, and nothing used to update
+// Playlist entries are snapshots in userStorage, and nothing used to update
 // them. So removing a track's post-processed version left the playlist still
 // advertising a mastered file that had just been deleted: the row kept
 // offering "Remove Post-Processed Version" (making a revert that had actually

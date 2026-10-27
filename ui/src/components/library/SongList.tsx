@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 // SongList.tsx — Song library display with bulk selection + source filtering
 // Ported from hot-step-9000 visual design with Tailwind.
 
@@ -76,7 +77,7 @@ const PAGE_SIZE_OPTIONS: (number | 'all')[] = [20, 40, 60, 80, 100, 'all'];
 
 function loadPageSize(): number | 'all' {
   try {
-    const v = localStorage.getItem(PAGE_SIZE_KEY);
+    const v = userStorage.getItem(PAGE_SIZE_KEY);
     if (v === 'all') return 'all';
     const n = v ? parseInt(v, 10) : NaN;
     if ((PAGE_SIZE_OPTIONS as (number | string)[]).includes(n)) return n;
@@ -84,7 +85,7 @@ function loadPageSize(): number | 'all' {
   return 40;
 }
 function savePageSize(v: number | 'all') {
-  try { localStorage.setItem(PAGE_SIZE_KEY, String(v)); } catch { /* ignore */ }
+  try { userStorage.setItem(PAGE_SIZE_KEY, String(v)); } catch { /* ignore */ }
 }
 
 
@@ -192,12 +193,12 @@ export const SongList: React.FC<SongListProps> = ({
   // Internal view mode — persisted per context (title), initialized from prop
   const storageKey = `hs-songlist-viewMode-${title}`;
   const [activeViewMode, setActiveViewMode] = useState<'list' | 'grid' | 'table'>(() => {
-    try { const v = localStorage.getItem(storageKey); if (v === 'list' || v === 'grid' || v === 'table') return v; } catch {}
+    try { const v = userStorage.getItem(storageKey); if (v === 'list' || v === 'grid' || v === 'table') return v; } catch {}
     return viewMode ?? 'list';
   });
   const changeViewMode = useCallback((m: 'list' | 'grid' | 'table') => {
     setActiveViewMode(m);
-    try { localStorage.setItem(storageKey, m); } catch {}
+    try { userStorage.setItem(storageKey, m); } catch {}
   }, [storageKey]);
 
   // Client-side source filtering
@@ -883,7 +884,7 @@ interface SongItemProps {
  *
  *  All THREE modes need it, and that is the whole reason this is a hook: the
  *  grid card got it first, the Generations list remembers its view mode in
- *  localStorage, and a user in list mode saw a plain row with no hint that the
+ *  userStorage, and a user in list mode saw a plain row with no hint that the
  *  track was still being written. `frac` is AUDIO RECEIVED over the resolved
  *  duration — what the play button can actually reach — not the engine's stage
  *  percentage, which runs ahead of it. */
@@ -1521,11 +1522,11 @@ const SPACER_COL: ColDef = { id: 'spacer', label: '', defaultW: 0, minW: 0, alig
 const STORAGE_KEY = 'hs-table-colWidths';
 
 function loadColWidths(): Record<string, number> {
-  try { const v = localStorage.getItem(STORAGE_KEY); return v ? JSON.parse(v) : {}; } catch { return {}; }
+  try { const v = userStorage.getItem(STORAGE_KEY); return v ? JSON.parse(v) : {}; } catch { return {}; }
 }
 
 function saveColWidths(w: Record<string, number>) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(w)); } catch { /* ignore */ }
+  try { userStorage.setItem(STORAGE_KEY, JSON.stringify(w)); } catch { /* ignore */ }
 }
 
 // ── Column visibility (user-customizable columns) ────────────────────────────
@@ -1534,10 +1535,10 @@ const COL_VIS_KEY = 'hs-table-colVisibility';
 const MANDATORY_COLS = new Set(['select', 'thumb', 'title', 'spacer', 'actions']);
 
 function loadColVisibility(): Record<string, boolean> {
-  try { const v = localStorage.getItem(COL_VIS_KEY); return v ? JSON.parse(v) : {}; } catch { return {}; }
+  try { const v = userStorage.getItem(COL_VIS_KEY); return v ? JSON.parse(v) : {}; } catch { return {}; }
 }
 function saveColVisibility(v: Record<string, boolean>) {
-  try { localStorage.setItem(COL_VIS_KEY, JSON.stringify(v)); } catch { /* ignore */ }
+  try { userStorage.setItem(COL_VIS_KEY, JSON.stringify(v)); } catch { /* ignore */ }
 }
 
 /** Whether a column shows when the user hasn't explicitly toggled it. */

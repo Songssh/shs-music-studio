@@ -18,7 +18,10 @@ function fixture(t: test.TestContext) {
       yue2_ar_adapter_path TEXT, yue2_nar_adapter_path TEXT,
       adapter_scale REAL DEFAULT 0.7, adapter_group_scales TEXT DEFAULT '{"mlp":0.5}',
       lm_adapter_scale REAL DEFAULT 0.6, reference_track_path TEXT DEFAULT 'reference.wav');
-    INSERT INTO artists VALUES (1, 'Example artist');`);
+    INSERT INTO artists VALUES (1, 'Example artist');
+    CREATE VIEW auth_owned_artists AS SELECT * FROM artists;
+    CREATE VIEW auth_owned_lyrics_sets AS SELECT * FROM lyrics_sets;
+    CREATE VIEW auth_owned_album_presets AS SELECT * FROM album_presets;`);
   const file = (name: string) => {
     const target = path.join(root, name);
     fs.mkdirSync(path.dirname(target), { recursive: true });

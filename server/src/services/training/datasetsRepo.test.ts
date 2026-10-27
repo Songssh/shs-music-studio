@@ -15,16 +15,16 @@ test('a read-only re-sync (same counters, newly cached album) keeps the dataset 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'datasets-repo-'));
   const script = [
     "import assert from 'node:assert/strict';",
-    "import { initDb } from './src/db/database.js';",
+    "import { initDb } from './src/auth/dbFixture.js';",
     "import * as repo from './src/services/training/datasetsRepo.js';",
     "import { syncCounters } from './src/services/training/datasetDetail.js';",
     'initDb();',
     "const at = '2026-01-01T00:00:00.000Z';",
     "repo.insertDataset({ id: 'd1', slug: 'd1', name: 'd1', sourceDir: 'x', recursive: false, customTag: '', tagPosition: 'prepend',",
     "  genreRatio: 0, defaultArtist: '', defaultAlbum: '', defaultGenre: '', defaultLanguage: 'en', sampleCount: 2, labeledCount: 1,",
-    "  excludedCount: 0, status: 'labeled', builtAt: '', datasetJsonPath: '', albumName: '', createdAt: at, updatedAt: at } as any);",
-    "const sample = (caption: string) => ({ caption, excluded: false, fileMissing: false, tagAlbum: 'Album A' }) as any;",
-    "const ds = () => repo.getDataset('d1')!;",
+    "  excludedCount: 0, status: 'labeled', builtAt: '', datasetJsonPath: '', albumName: '', createdAt: at, updatedAt: at });",
+    "const sample = (caption) => ({ caption, excluded: false, fileMissing: false, tagAlbum: 'Album A' });",
+    "const ds = () => repo.getDataset('d1');",
     // A read-only view: same counters, album detected for the first time.
     "assert.equal(syncCounters(ds(), [sample('x'), sample('')]), at);",
     "assert.equal(ds().updatedAt, at);",

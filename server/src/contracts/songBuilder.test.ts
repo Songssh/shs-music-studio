@@ -1,3 +1,4 @@
+import { authenticatedTestServer } from '../auth/testSupport.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -21,17 +22,16 @@ const sectionOps = await import('../services/songBuilder/sectionOps.js');
 type View = import('./songBuilder.js').BuilderProjectView;
 
 const app = express();
+const fixture = await authenticatedTestServer(app,database.getDb(),DATA_DIR);
+const {server,cookie,user}=fixture;
 app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/builder', builderRoutes);
-const server = app.listen(0);
-await new Promise(resolve => server.once('listening', resolve));
 const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api`;
 test.after(() => new Promise(resolve => server.close(() => { database.closeDb(); fs.rmSync(DATA_DIR, { recursive: true, force: true }); resolve(undefined); })));
 
-const { token, user } = await (await fetch(`${base}/auth/auto`)).json() as { token: string; user: { id: string } };
 const call = async (method: string, p: string, body?: unknown) => {
-  const res = await fetch(`${base}/builder${p}`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+  const res = await fetch(`${base}/builder${p}`, { method, headers: { Cookie: cookie, Origin: fixture.base, 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body) });
   return { status: res.status, body: await res.json() as any };
 };

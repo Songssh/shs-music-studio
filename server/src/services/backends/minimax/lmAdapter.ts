@@ -1,3 +1,4 @@
+import { privateAdapters } from '../../../auth/privatePaths.js';
 // minimax/lmAdapter.ts — MM3 LM LoRA adapters (runtime, engine-applied).
 //
 // Adapters are PEFT safetensors from SimpleTuner's LM-training mode
@@ -60,7 +61,7 @@ export const MM3_LM_ADAPTER_DEFAULT_SCALES: Mm3LmAdapterScales = {
 };
 
 export function mm3LmAdapterDir(): string {
-  return path.join(config.aceServer.adapters, 'mm3-lm-adapters');
+  return path.join(privateAdapters(), 'mm3-lm-adapters');
 }
 
 /** Resolve an adapter reference to an absolute path INSIDE the adapter

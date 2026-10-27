@@ -1,3 +1,5 @@
+import { claimResource, ownsResource } from '../auth/ownership.js';
+import { principalOf } from '../auth/principal.js';
 // routes/dawV1.ts - /api/v1/daw: a small, versioned facade for DAW clients.
 //
 // Every response carries api:1; errors use { api, error: { code, message } }.
@@ -16,9 +18,11 @@ import {
 import { DawError, errorBody, modeNeedsSource, parseDawRequest, resolveDitModel, toGenerateParams } from '../services/daw/dawSchema.js';
 
 const router = Router();
+router.param('id',(req,res,next,id)=>{if(!ownsResource('daw',String(id))){res.status(404).json(errorBody('not_found','Job not found'));return;}next();});
 startSweeper();
 
 router.use((req: Request, res: Response, next: NextFunction) => {
+  if(principalOf(req)){next();return;}
   const err = dawAuthError(dawKey(), req.get('X-DAW-Key'), req.socket.remoteAddress,
     { xff: req.get('x-forwarded-for'), realIp: req.get('x-real-ip'), forwarded: req.get('forwarded') });
   if (err) { res.status(401).json(errorBody('unauthorized', err)); return; }
@@ -47,7 +51,7 @@ const upload = multer({
   },
 });
 
-const assignId = (req: Request, _res: Response, next: NextFunction) => { (req as any).dawId = newId(); next(); };
+const assignId = (req: Request, _res: Response, next: NextFunction) => { (req as any).dawId = newId(); claimResource('daw',(req as any).dawId); next(); };
 
 function fail(res: Response, err: any): void {
   if (err instanceof DawError) { res.status(err.status).json(errorBody(err.code, err.message)); return; }

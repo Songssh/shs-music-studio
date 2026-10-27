@@ -34,7 +34,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { runOnGpuLane } from '../generation/gpuLane.js';
+import { onTrainingGpu as runOnGpuLane } from './sharedGpu.js';
 import { evictOtherFamilies } from '../generation/residency.js';
 import { saveDatasetCoverAbc } from '../coverDatasetSource.js';
 import { YUE2_LICENSE_NOTICE } from '../backends/yue2/index.js';

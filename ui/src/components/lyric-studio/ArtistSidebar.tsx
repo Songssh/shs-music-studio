@@ -1,3 +1,4 @@
+import { userSessionStorage } from '../../auth/userStorage';
 import React, { useRef, useEffect, useCallback, useMemo, useState } from 'react';
 import { ChevronLeft, Search, X } from 'lucide-react';
 import type { Artist } from '../../services/lireekApi';
@@ -32,7 +33,7 @@ export const ArtistSidebar: React.FC<ArtistSidebarProps> = ({
 
   // Filter text survives navigating into an album and back (the sidebar remounts)
   const [query, setQuery] = useState(() => {
-    try { return sessionStorage.getItem(FILTER_KEY) ?? ''; } catch { return ''; }
+    try { return userSessionStorage.getItem(FILTER_KEY) ?? ''; } catch { return ''; }
   });
 
   // Sort + filter run on the REAL names — disguise mode is display-only
@@ -50,7 +51,7 @@ export const ArtistSidebar: React.FC<ArtistSidebarProps> = ({
 
   const setFilter = useCallback((value: string) => {
     setQuery(value);
-    try { sessionStorage.setItem(FILTER_KEY, value); } catch { /* ignore */ }
+    try { userSessionStorage.setItem(FILTER_KEY, value); } catch { /* ignore */ }
     // Jump back to the top of the (now different) list
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, []);
@@ -60,7 +61,7 @@ export const ArtistSidebar: React.FC<ArtistSidebarProps> = ({
     const el = scrollRef.current;
     if (!el) return;
     try {
-      const saved = sessionStorage.getItem(SCROLL_KEY);
+      const saved = userSessionStorage.getItem(SCROLL_KEY);
       if (saved) el.scrollTop = Number(saved);
     } catch { /* ignore */ }
   }, []);
@@ -71,7 +72,7 @@ export const ArtistSidebar: React.FC<ArtistSidebarProps> = ({
     saveTimer.current = setTimeout(() => {
       try {
         const el = scrollRef.current;
-        if (el) sessionStorage.setItem(SCROLL_KEY, String(el.scrollTop));
+        if (el) userSessionStorage.setItem(SCROLL_KEY, String(el.scrollTop));
       } catch { /* ignore */ }
     }, 150);
   }, []);

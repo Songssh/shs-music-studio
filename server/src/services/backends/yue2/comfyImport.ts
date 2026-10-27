@@ -1,3 +1,4 @@
+import { privateAdapters } from '../../../auth/privatePaths.js';
 // comfyImport.ts — bring a ComfyUI / ai-toolkit YuE2 adapter into the app.
 //
 // Those tools save one or both halves in the upstream module tree:
@@ -114,7 +115,7 @@ export interface Yue2ComfyImport {
 }
 
 /** Split `src` into native AR + NAR files under the joint-adapter tree. */
-export function importYue2ComfyAdapter(src: string, adaptersRoot = config.aceServer.adapters): Yue2ComfyImport {
+export function importYue2ComfyAdapter(src: string, adaptersRoot = privateAdapters()): Yue2ComfyImport {
   if (!path.isAbsolute(src) || !/\.safetensors$/i.test(src) || !fs.existsSync(src) || !fs.statSync(src).isFile()) {
     throw new Error(`Needs an absolute path to an existing .safetensors file: ${src}`);
   }

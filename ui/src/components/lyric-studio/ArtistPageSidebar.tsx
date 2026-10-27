@@ -1,3 +1,4 @@
+import { userStorage } from '../../auth/userStorage';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, ListOrdered, Code2, Download, Clock, Shuffle, Brain, Disc3 } from 'lucide-react';
@@ -15,13 +16,13 @@ import { useCapabilities } from '../../hooks/useCapabilities';
 function useLocalPersistedState<T>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
   const [state, setState] = useState<T>(() => {
     try {
-      const raw = localStorage.getItem(key);
+      const raw = userStorage.getItem(key);
       return raw !== null ? JSON.parse(raw) : defaultValue;
     } catch { return defaultValue; }
   });
 
   useEffect(() => {
-    localStorage.setItem(key, JSON.stringify(state));
+    userStorage.setItem(key, JSON.stringify(state));
   }, [key, state]);
 
   return [state, setState];

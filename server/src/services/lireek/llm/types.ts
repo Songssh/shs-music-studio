@@ -1,3 +1,4 @@
+import { principalOf } from '../../../auth/principal.js';
 // llm/types.ts — Shared types for the LLM provider system
 
 export interface ProviderInfo {
@@ -59,12 +60,14 @@ export interface CallOptions {
   [key: string]: any;
 }
 
-// Global skip thinking signal
+// Legacy system-only value; authenticated requests use their own account.
 export let skipThinkingSignal = false;
+const skippedOwners=new Set<string>();
+export function shouldSkipThinking(){const id=principalOf()?.id;return id?skippedOwners.has(id):skipThinkingSignal;}
 export function setSkipThinking() {
-  skipThinkingSignal = true;
+  const id=principalOf()?.id;if(id)skippedOwners.add(id);else skipThinkingSignal = true;
   console.log('[LLM] Skip-thinking signal received');
 }
 export function resetSkipThinking() {
-  skipThinkingSignal = false;
+  const id=principalOf()?.id;if(id)skippedOwners.delete(id);else skipThinkingSignal = false;
 }

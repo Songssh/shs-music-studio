@@ -1,15 +1,17 @@
+import { bindUserStorage, userStorage } from '../../auth/userStorage';
+bindUserStorage('fixture-user');
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const store = new Map<string, string>();
 (globalThis as any).localStorage = {
-  getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v),
+  getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem:(k:string)=>void store.delete(k),
 };
 const { buildCaption, cropNeedsMode, finishSavedBuild, moveCropEdge, onBuildSaved, settingsSummary, submittedCaption } = await import('./Yue2Build');
-const saved = () => JSON.parse(store.get('cover-studio-buildSessionId') ?? '""');
+const saved = () => JSON.parse(userStorage.getItem('cover-studio-buildSessionId') ?? '""');
 
 test('a Save finishing after the studio was rebuilt clears its build and tells the mounted studio', () => {
-  store.set('cover-studio-buildSessionId', '"a"');
+  userStorage.setItem('cover-studio-buildSessionId', '"a"');
   const seen: string[] = [];
   const off = onBuildSaved(id => seen.push(id));
   assert.equal(finishSavedBuild('a'), true);
@@ -19,7 +21,7 @@ test('a Save finishing after the studio was rebuilt clears its build and tells t
 });
 
 test('a Save finishing after a newer build began leaves the newer build', () => {
-  store.set('cover-studio-buildSessionId', '"b"');
+  userStorage.setItem('cover-studio-buildSessionId', '"b"');
   const seen: string[] = [];
   const off = onBuildSaved(id => seen.push(id));
   assert.equal(finishSavedBuild('a'), false);

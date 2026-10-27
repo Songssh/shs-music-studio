@@ -1,3 +1,6 @@
+import { principalOf } from '../../auth/principal.js';
+import { privateFile } from '../../auth/privatePaths.js';
+import { privateAdapters } from '../../auth/privatePaths.js';
 // yue2Mirror.ts — copy each training worker's YuE2 runs down to this machine.
 //
 // A worker trains and renders previews, nothing else. As each checkpoint and
@@ -42,7 +45,7 @@ const errorText = (err: unknown) => (err as any)?.cause?.code || (err as any)?.m
 // ── Tombstones: runs discarded here that the next pass must not recreate ────
 
 type Tombstone = { worker: string; remoteJobId: string };
-const tombstonesPath = () => path.join(trainingBaseDir, 'yue2-mirror-tombstones.json');
+const tombstonesPath = () => privateFile('training',path.join(trainingBaseDir, 'yue2-mirror-tombstones.json'));
 
 function readTombstones(): Tombstone[] {
   try {
@@ -179,17 +182,18 @@ interface WorkerState { status: MirrorStatus; pass: Promise<MirrorStatus> | null
 const states = new Map<string, WorkerState>();
 
 function stateFor(worker: string): WorkerState {
-  let s = states.get(worker);
+  const key=JSON.stringify([principalOf()?.id??'system',worker]);
+  let s = states.get(key);
   if (!s) {
     s = { status: { worker, running: false, lastPassAt: null, lastError: null, online: false, pendingFiles: 0, pendingBytes: 0, runs: 0 },
       pass: null, offline: false, active: false, warned: new Set() };
-    states.set(worker, s);
+    states.set(key, s);
   }
   return s;
 }
 
 export function yue2MirrorStatus(worker: string): MirrorStatus | null {
-  const s = states.get(worker);
+  const s = states.get(JSON.stringify([principalOf()?.id??'system',worker]));
   return s ? { ...s.status } : null;
 }
 
@@ -255,7 +259,7 @@ async function mirrorRun(w: WorkerInfo, run: MirrorRun, st: WorkerState, errors:
     const local = listAllYue2AitkRuns().find(r => r.jobId === jobId);
     if (local && !ours(local)) throw new Error(`a run trained here already has the id ${jobId}`);
     if (local && yue2RunFinished(local.output)) { await retire(); return 'idle'; }
-    const output = local?.output ?? freeYue2RunDirectory(path.join(config.aceServer.adapters, 'yue2-joint-adapters', run.folder));
+    const output = local?.output ?? freeYue2RunDirectory(path.join(privateAdapters(), 'yue2-joint-adapters', run.folder));
     const record = (): Yue2AitkRunRecord => ({
       version: 1, jobId, datasetId: ds.id, datasetSlug: ds.slug, method: 'aitk', output, options: run.options ?? {},
       status: run.status, createdAt: run.createdAt, updatedAt: run.updatedAt, checkpoints: [], blindLabels: run.blindLabels,
@@ -315,7 +319,7 @@ async function mirrorRun(w: WorkerInfo, run: MirrorRun, st: WorkerState, errors:
   });
 }
 
-let started = false;
+const started = new Set<string>();
 
 /** One background loop per configured worker: every 15 s while a worker run
  *  is changing or not fully copied, every 120 s otherwise. The migration of
@@ -324,8 +328,9 @@ let started = false;
  *  ponytail: the worker list is read once; a worker added in Settings starts
  *  mirroring at the next server start. */
 export async function startYue2Mirror(): Promise<void> {
-  if (started) return;
-  started = true;
+  const owner=principalOf()?.id??'system';
+  if(started.has(owner))return;
+  started.add(owner);
   await migrateYue2OriginRuns();
   for (const { name } of listWorkers()) {
     const tick = async () => {
@@ -372,7 +377,7 @@ async function relocateRun(run: Yue2AitkRunRecord, target: string): Promise<void
  *  jobId stays (rung scores are keyed by it); the mirror finds the run through
  *  `origin.remoteJobId` and fills in what the worker still holds. Idempotent. */
 export async function migrateYue2OriginRuns(): Promise<{ moved: number; errors: string[] }> {
-  const joint = path.join(config.aceServer.adapters, 'yue2-joint-adapters');
+  const joint = path.join(privateAdapters(), 'yue2-joint-adapters');
   const staging = path.join(joint, '_remote');
   let moved = 0;
   const errors: string[] = [];

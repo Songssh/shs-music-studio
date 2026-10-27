@@ -5,7 +5,7 @@
 // Values are stored in a flat { "pluginName:key": value } map.
 //
 // Renders as a collapsible accordion, collapsed by default.
-// Open/closed state is persisted per-plugin via localStorage.
+// Open/closed state is persisted per-plugin via userStorage.
 //
 // A param's `hint` is its explanation and now lands in a hover card off a "?"
 // beside the label, not as a paragraph underneath. Plugins need no change for

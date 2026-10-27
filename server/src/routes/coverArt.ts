@@ -1,3 +1,5 @@
+import { claimResource, ownsResource } from '../auth/ownership.js';
+import { randomUUID } from 'node:crypto';
 // coverArt.ts — API routes for AI cover art generation
 //
 // Endpoints:
@@ -141,8 +143,7 @@ router.post('/prompt-preview', async (req, res) => {
 // ── POST /generate — Generate cover art for a song ──────────────────────
 
 router.post('/generate', async (req, res) => {
-  // No auth required — this is a local-only app and context menu
-  // calls this endpoint without auth headers.
+  // Session and song ownership are checked by the API boundary.
 
   const { songId, title, style, lyrics, subject, prompt } = req.body;
   if (!songId) {
@@ -161,13 +162,14 @@ router.post('/generate', async (req, res) => {
   }
 
   // Create job
-  const jobId = `ca-${Date.now().toString(36)}`;
+  const jobId = `ca-${randomUUID()}`;
   const job: CoverArtJob = {
     id: jobId,
     songId,
     status: 'pending',
     createdAt: Date.now(),
   };
+  claimResource('cover-art',jobId);
   jobs.set(jobId, job);
   cleanupJobs();
 
@@ -198,7 +200,7 @@ router.post('/generate', async (req, res) => {
 
 router.get('/generate/:jobId', (req, res) => {
   const job = jobs.get(req.params.jobId);
-  if (!job) {
+  if (!job || !ownsResource('cover-art',String(req.params.jobId))) {
     res.status(404).json({ error: 'Job not found' });
     return;
   }

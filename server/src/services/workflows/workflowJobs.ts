@@ -1,3 +1,4 @@
+import { principalContext } from '../../auth/principal.js';
 // workflows/workflowJobs.ts — durable workflow jobs with a bounded,
 // replayable event stream.
 //
@@ -417,7 +418,7 @@ export class WorkflowJobs {
       () => resolve({ ok: false, error: message(signal.reason) }), { once: true }));
     // Started synchronously, as a claim is followed by its first step at once.
     let started: Promise<unknown>;
-    try { started = Promise.resolve(def.run(ctx)); } catch (err) { started = Promise.reject(err); }
+    try { started = Promise.resolve(principalContext.run({id:r.user_id,role:'user',sessionId:'server-job'},()=>def.run(ctx))); } catch (err) { started = Promise.reject(err); }
     const stepped = started.then(
       (result): Outcome => ({ ok: true, result }),
       (err): Outcome => ({ ok: false, error: message(signal.aborted ? signal.reason : err) }));

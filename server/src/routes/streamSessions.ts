@@ -1,3 +1,4 @@
+import { getUserId } from './auth.js';
 // routes/streamSessions.ts — /api/stream-sessions: Batch 5 row 8a.
 //
 //   GET    /                          sessions, newest first
@@ -8,7 +9,7 @@
 // Sessions are created by the stream routes themselves (POST
 // /api/generate/storm/stream, GET /api/generate/mm3/stream/:id), which name
 // theirs in the X-Stream-Session response header. Same access policy as those
-// routes: installation-scoped, no per-user auth. See services/streamSessions.
+// routes: authenticated owner only. See services/streamSessions.
 import { Router, type Request, type Response } from 'express';
 import fs from 'fs';
 import { exportQuerySchema, recordingCommandSchema } from '../contracts/streamSessions.js';
@@ -20,7 +21,8 @@ export function createStreamSessionsRouter(store: () => StreamSessions): Router 
     if (err instanceof StreamSessionError) { res.status(err.status).json({ error: err.message }); return; }
     res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   };
-  router.get('/', (_req, res) => { res.json({ sessions: store().list() }); });
+  router.get('/', (req, res) => { res.json({ sessions: store().list().filter(item => store().get(item.id).userId === getUserId(req)) }); });
+  router.param('id',(req,res,next,id)=>{try{if(store().get(id).userId !== getUserId(req)){res.status(404).json({error:'Not found'});return;}next();}catch{res.status(404).json({error:'Not found'});}});
   router.get('/:id', (req, res) => {
     try { res.json({ session: store().get(String(req.params.id)).summary() }); } catch (err) { fail(res, err); }
   });

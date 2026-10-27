@@ -1,3 +1,4 @@
+import { principalContext } from './auth/principal.js';
 // index.ts — HOT-Step CPP Server
 //
 // Express server that:
@@ -14,7 +15,11 @@ import { fileURLToPath } from 'url';
 
 import { config, PROJECT_ROOT, PORTABLE_MODE, APP_VERSION, DATA_ROOT } from './config.js';
 import { initLogger, closeLogger } from './services/logger.js';
-import { initDb, closeDb } from './db/database.js';
+import { initDb, closeDb, getDb } from './db/database.js';
+import { createIdentityService } from './auth/service.js';
+import { installIdentityHTTP, requireAdministrator } from './auth/http.js';
+import { assets } from './auth/ownership.js';
+import { roleBoundary, personalInputBoundary } from './auth/boundary.js';
 // lireekDb is now part of the unified hotstep.db — no separate init needed
 import authRoutes from './routes/auth.js';
 import songRoutes from './routes/songs.js';
@@ -81,23 +86,36 @@ console.log(`[Logger] Session logs: ${logDir}`);
 
 // Initialize databases
 initDb();
-reconcileYue2AitkRunsAtStartup();
+
 // Moves any old pulled ladders out of _remote, then copies each worker's runs here as they land.
-void startYue2Mirror();
+
 // lireek tables are created in initDb() — no separate init
 
 // Create Express app
 const app = express();
 
 // Middleware
-app.use(cors());
+const identity = await createIdentityService({ db: getDb(), dataDir: config.data.dir,
+  baseURL: process.env.HOT_STEP_AUTH_URL || `https://localhost:${config.server.port}`,
+  secret: process.env.BETTER_AUTH_SECRET,
+  workerToken: config.workers.acceptToken, allowHttpLoopback: process.env.HOT_STEP_AUTH_HTTP_LOOPBACK === '1' });
+app.use(cors({ origin: identity.origin, credentials: true }));
+installIdentityHTTP(app, identity);
+// Personal schemas and identity must exist before disk reconciliation reads datasets.
+getDb().prepare("UPDATE assistant_messages SET status='interrupted' WHERE status='streaming'").run();
+for(const account of getDb().prepare('SELECT id FROM users WHERE banned=0').all() as {id:string}[]) principalContext.run({id:account.id,role:'user',sessionId:'startup-maintenance'},()=>{
+  reconcileYue2AitkRunsAtStartup();
+  void startYue2Mirror().catch(err=>console.error('[Training] Startup reconciliation failed:',err.message));
+});
 // Training on another PC: a worker checks its token first; the controller's
 // proxy goes before the body parsers so proxied bodies stream through.
 app.use('/api', workerTokenGate);
 app.use('/api', workerUpdateGate);
+app.use('/api', roleBoundary);
 app.use('/api/workers', workerRoutes);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use('/api', roleBoundary, personalInputBoundary);
 
 // API routes
 app.use('/api/auth', authRoutes);
@@ -148,8 +166,10 @@ app.use('/api/v1/daw', dawBodyErrorHandler);
 app.use('/api', backendsRoutes);
 
 // Serve audio files from data/audio/
-app.use('/audio', express.static(config.data.audioDir, {
+app.use('/audio', assets().middleware, express.static(config.data.audioDir, {
   setHeaders: (res, filePath) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
     if (filePath.endsWith('.mp3')) {
       res.setHeader('Content-Type', 'audio/mpeg');
     } else if (filePath.endsWith('.wav')) {
@@ -160,13 +180,15 @@ app.use('/audio', express.static(config.data.audioDir, {
 
 // Serve ear-test score sheets from _experiments/_LISTENING/<folder>/ and
 // accept their scores.json saves — loopback-only, see routes/listening.ts.
-app.use('/listening', listeningRoutes);
+app.use('/listening', requireAdministrator, listeningRoutes);
 
 // Serve reference audio files from data/references/
 const refsDir = path.join(config.data.dir, 'references');
 fs.mkdirSync(refsDir, { recursive: true });
-app.use('/references', express.static(refsDir, {
+app.use('/references', assets().middleware, express.static(refsDir, {
   setHeaders: (res, filePath) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
     if (filePath.endsWith('.mp3')) {
       res.setHeader('Content-Type', 'audio/mpeg');
     } else if (filePath.endsWith('.wav')) {
