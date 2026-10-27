@@ -21,10 +21,11 @@ import { Toggle } from '../shared/Toggle';
 import { useBackendStore } from '../../stores/backendStore';
 
 interface ProfilesModalProps {
+  embedded?: boolean;
   onClose: () => void;
 }
 
-export const ProfilesModal: React.FC<ProfilesModalProps> = ({ onClose }) => {
+export const ProfilesModal: React.FC<ProfilesModalProps> = ({ onClose, embedded = false }) => {
   const { t } = useTranslation();
   const { token } = useAuth();
   const client = useQueryClient();
@@ -146,10 +147,10 @@ export const ProfilesModal: React.FC<ProfilesModalProps> = ({ onClose }) => {
 
   // Portal to body: the global bar's backdrop-filter makes it the containing
   // block for fixed descendants, which would pin this overlay to the bar.
-  return createPortal(
-    <div data-portal-layer className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+  const content = (
+    <div data-portal-layer className={embedded ? "h-full flex flex-col" : "fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm"}
          onClick={onClose}>
-      <div className="w-full max-w-xl max-h-[80vh] flex flex-col bg-zinc-50 dark:bg-zinc-900/95 rounded-2xl border border-zinc-200 dark:border-white/10 shadow-2xl overflow-hidden"
+      <div className={embedded ? "w-full flex flex-col bg-zinc-50 dark:bg-zinc-900" : "w-full max-w-xl max-h-[80vh] flex flex-col bg-zinc-50 dark:bg-zinc-900/95 rounded-2xl border border-zinc-200 dark:border-white/10 shadow-2xl overflow-hidden"}
            onClick={e => e.stopPropagation()}>
 
         {/* Header */}
@@ -315,9 +316,9 @@ export const ProfilesModal: React.FC<ProfilesModalProps> = ({ onClose }) => {
         onCancel={() => setConfirmAction(null)}
         />
       </div>
-    </div>,
-    document.body
+    </div>
   );
+  return embedded ? content : createPortal(content, document.body);
 };
 
 export default ProfilesModal;

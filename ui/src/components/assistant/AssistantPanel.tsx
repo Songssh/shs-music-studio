@@ -52,7 +52,7 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({ onClose, activeV
 
   // ── Chat state ──
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = usePersistedState('hs-assistant-input', '');
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState('');
 
@@ -201,11 +201,11 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({ onClose, activeV
     );
 
     abortRef.current = abort;
-  }, [input, isStreaming, selectedProvider, selectedModel, globalParams, buildHistory]);
+  }, [input, isStreaming, selectedProvider, selectedModel, globalParams, buildHistory, activeView]);
 
   // ── Handle Enter key ──
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) {
       e.preventDefault();
       handleSend();
     }

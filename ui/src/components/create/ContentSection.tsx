@@ -1,3 +1,4 @@
+import { useWorkspaceTool } from '../../workspace/WorkspaceContext';
 // ContentSection.tsx — Caption + Lyrics input area with optional metadata fields
 // Ported to Tailwind styling matching hot-step-9000.
 
@@ -65,6 +66,7 @@ export const ContentSection: React.FC<ContentSectionProps> = ({
   afterStyle,
 }) => {
   const { t } = useTranslation();
+  const workspace = useWorkspaceTool()?.workspace;
   const hasMetadata = !!(title || artist || subject);
   const [showMetadata, setShowMetadata] = usePersistedState('hs-create-fold-songInfo', hasMetadata);
   const styleRef = React.useRef<HTMLTextAreaElement>(null);
@@ -318,8 +320,8 @@ export const ContentSection: React.FC<ContentSectionProps> = ({
         </div>
       )}
 
-      {/* Negative Prompt — folded away on YuE2 */}
-      {yue2Mode ? (
+      {/* Negative Prompt — folded away on YuE2 / Workspace */}
+      {yue2Mode || workspace ? (
         <Fold title="Negative Prompt" storageKey="hs-create-fold-negative">
           <textarea
             className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/10 text-sm text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:border-red-500/50 focus:ring-1 focus:ring-red-500/20 outline-none resize-none transition-colors"

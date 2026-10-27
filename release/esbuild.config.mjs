@@ -28,10 +28,13 @@ const nodeExternals = [
 const result = await esbuild.build({
   entryPoints: [path.join(projectRoot, 'server/src/index.ts')],
   bundle: true,
+  // Preserve package exports, dynamic loaders and native assets. The release
+  // installs the entire locked production graph in its own node_modules.
+  packages: process.platform === 'win32' ? 'external' : undefined,
   platform: 'node',
   target: 'node22',
   format: 'esm',
-  outdir: path.join(projectRoot, 'release/staging/server'),
+  outdir: path.join(process.env.HOT_STEP_RELEASE_STAGING || path.join(projectRoot, 'release/staging'), 'server'),
   splitting: true,
   entryNames: 'server',
   chunkNames: 'chunks/[name]-[hash]',

@@ -19,6 +19,7 @@ import { modelManagerApi } from '../../services/api';
 import { usePersistedState } from '../../hooks/usePersistedState';
 
 interface Props {
+  embedded?: boolean;
   onClose: () => void;
 }
 
@@ -41,7 +42,7 @@ function getStoredHfToken(): string | undefined {
   }
 }
 
-export const ModelManagerModal: React.FC<Props> = ({ onClose }) => {
+export const ModelManagerModal: React.FC<Props> = ({ onClose, embedded = false }) => {
   const { t } = useTranslation();
   const client = useQueryClient();
   const { registry, loading, error, getPackFiles, installedFiles } = useModelRegistry();
@@ -121,13 +122,13 @@ export const ModelManagerModal: React.FC<Props> = ({ onClose }) => {
 
   // ── Render ──────────────────────────────────────────────────
 
-  return createPortal(
-    <div data-portal-layer className="fixed inset-0 z-[70] flex items-start justify-center">
+  const content = (
+    <div data-portal-layer className={embedded ? "h-full flex flex-col overflow-auto" : "fixed inset-0 z-[70] flex items-start justify-center"}>
       {/* Backdrop — does NOT close on click; only the X button closes the modal */}
-      <div className="absolute inset-0 bg-black/20 dark:bg-black/40 dark:bg-black/70 backdrop-blur-sm" />
+      <div hidden={embedded} className="absolute inset-0 bg-black/20 dark:bg-black/40 dark:bg-black/70 backdrop-blur-sm" />
 
       {/* Modal */}
-      <div className="relative w-full max-w-5xl max-h-[90vh] mt-[5vh] mx-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/10 shadow-2xl flex flex-col overflow-hidden">
+      <div className={embedded ? "w-full h-full bg-white dark:bg-zinc-900 flex flex-col overflow-auto" : "relative w-full max-w-5xl max-h-[90vh] mt-[5vh] mx-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/10 shadow-2xl flex flex-col overflow-hidden"}>
         {/* ── Header ───────────────────────────────────────── */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-white/5 flex-shrink-0">
           <div>
@@ -257,7 +258,7 @@ export const ModelManagerModal: React.FC<Props> = ({ onClose }) => {
           )}
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
   );
+  return embedded ? content : createPortal(content, document.body);
 };

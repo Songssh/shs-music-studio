@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import abcjs from 'abcjs';
 import { withChoirVocal } from '../../utils/abcChoirVocal';
 import { Toggle } from '../shared/Toggle';
+import { useWorkspacePlaybackLease } from '../../workspace/WorkspaceContext';
 import { barTimes, spanSeconds } from './prepareView';
 
 const btn = 'rounded-md border border-zinc-300 dark:border-white/10 px-2 py-1 text-xs text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-white/5 disabled:opacity-40';
@@ -76,6 +77,7 @@ type Synth = InstanceType<typeof abcjs.synth.CreateSynth>;
 export function useSectionPlayer(abc: string, recordingUrl: string) {
   const clock = useMemo(() => barTimes(abc), [abc]);
   const [playing, setPlaying] = useState<'score' | 'recording' | null>(null);
+  useWorkspacePlaybackLease(playing !== null);
   const synth = useRef<{ abc: string; ready: Promise<Synth> } | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);

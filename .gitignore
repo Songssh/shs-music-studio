@@ -222,3 +222,54 @@ tools/vocal-end/out/
 server/tsconfig.tsbuildinfo
 # Project rules file kept on disk, not tracked
 AGENTS.md
+
+# Windows Workspace launchers and reproducible browser checks
+!tools/workspace/
+/server/workspace-*.log
+
+# Portable build caches and local settings
+/release/.npm-cache/
+/release/portable.json
+!/release/package-lock.json
+/release/*.log
+/release/.layout-temp/
+
+# SHS Music Studio publication: local review evidence and runtime secrets
+/.publish-audit/
+/development/
+/.aws/
+*.log
+*.tsbuildinfo
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.pfx
+*.p12
+*.pem
+*.key
+*.crt
+*.cer
+*.keystore
+*.jks
+*.zip
+*.7z
+.env.*
+!.env.example
+!.env.docker
+!.env.*.example
+auth-private/
+credentials.json
+*-credentials.json
+*browser-session.json
+*storage-state.json
+portable.json
+bootstrap-token
+session-secret
+/docs/implementation/*-screenshots/
+/docs/implementation/*-checks.json
+/docs/implementation/windows-workspace*-report.md
+/docs/implementation/multi-user-auth-report.md
+# Source checkout uses the Essentia build recipe; binary redistribution needs review.
+/Essentia/*.exe
+!tools/publication/

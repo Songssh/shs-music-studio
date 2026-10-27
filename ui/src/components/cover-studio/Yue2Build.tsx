@@ -464,7 +464,12 @@ export const Yue2BuildPage: React.FC<PageProps> = p => {
   const sourceBars = (i: number): [number, number] => [p.sections[i].startBar, (p.sections[i + 1]?.startBar ?? p.totalBars + 1) - 1];
 
   // Each section starts from the build's caption.
-  useEffect(() => { setTarget(null); setCaption(p.caption); }, [next, s?.id, p.caption]);
+  const captionOwner = useRef<string | null>(null);
+  useEffect(() => {
+    const owner = JSON.stringify([next, s?.id, p.caption]);
+    if (captionOwner.current === owner) return;
+    captionOwner.current = owner; setTarget(null); setCaption(p.caption);
+  }, [next, s?.id, p.caption]);
   // Sections just added from the source bar arrive selected, so Generate is ready.
   const selectAdded = useRef(false);
   const lastItem = items.at(-1)?.id;
@@ -474,9 +479,18 @@ export const Yue2BuildPage: React.FC<PageProps> = p => {
     setTarget(lastItem);
   }, [items.length, lastItem]);
   // Crops belong to the takes of the section being built.
-  useEffect(() => { setCrops({}); setKeptCrop(null); }, [spine?.id, s?.id]);
+  const cropOwner = useRef<string | null>(null);
+  useEffect(() => {
+    const owner = JSON.stringify([spine?.id, s?.id]);
+    if (cropOwner.current === owner) return;
+    cropOwner.current = owner; setCrops({}); setKeptCrop(null);
+  }, [spine?.id, s?.id]);
   // Lyric drafts belong to the build they were typed in.
-  useEffect(() => { setDrafts({}); }, [s?.id]);
+  const draftOwner = useRef(s?.id);
+  useEffect(() => {
+    if (draftOwner.current === s?.id) return;
+    draftOwner.current = s?.id; setDrafts({});
+  }, [s?.id]);
   useEffect(() => {
     const up = () => { dragging.current = false; };
     window.addEventListener('pointerup', up);

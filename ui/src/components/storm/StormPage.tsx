@@ -1,3 +1,5 @@
+import { useContext } from 'react';
+import { StreamControllersContext } from '../../workspace/StreamControllers';
 import { userStorage } from '../../auth/userStorage';
 import { useQuery } from '@tanstack/react-query';
 import { studioPluginsOptions } from '../../queries/studios/shared';
@@ -251,6 +253,7 @@ interface StormPageProps {
 }
 
 export const StormPage: React.FC<StormPageProps> = ({ onGenerate, activeJobCount: _activeJobCount }) => {
+  const workspaceStreams = useContext(StreamControllersContext);
   const gp = useGlobalParams();
   const [mode, setMode] = usePersistedState<StormMode>('hs-storm-page-mode', 'continuous');
 
@@ -259,7 +262,7 @@ export const StormPage: React.FC<StormPageProps> = ({ onGenerate, activeJobCount
 
   // Stop stream when leaving the page — prevents orphan GPU renders
   React.useEffect(() => {
-    return () => { sa.stop(); };
+    return () => { if (!workspaceStreams) void sa.stop(); };
   }, []);
   const [streamPrompt,   setStreamPrompt]   = React.useState('');
   const [streamLyricsNS, setStreamLyricsNS] = React.useState('');

@@ -1,3 +1,4 @@
+import { useWorkspacePlaybackLease } from '../../workspace/WorkspaceContext';
 // CoverStudio.tsx — Main Cover Studio orchestrator
 // Composes: SourcePanel, ArtistSettingsPanel
 
@@ -252,6 +253,7 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
   const [scoreHighlight, setScoreHighlight] = useState<[number, number] | null>(null);
   const [scorePlay, setScorePlay] = useState<{ range: ScoreRange | null } | null>(null);
   const [scorePlaying, setScorePlaying] = useState(false);
+  useWorkspacePlaybackLease(scorePlaying);
   // Every start of the score player, so the recording can be silenced by any of them.
   const [scoreStarts, setScoreStarts] = useState(0);
   const onScorePlaying = (playing: boolean) => { setScorePlaying(playing); if (playing) setScoreStarts(n => n + 1); };

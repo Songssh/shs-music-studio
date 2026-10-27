@@ -46,7 +46,7 @@ test('fresh release from unrelated cwd reuses data across version folders', asyn
     fs.writeFileSync(path.join(app, 'server', 'data', 'model-registry.json'), 'bundled');
     const env = { HOT_STEP_ROOT: app, HOT_STEP_PROFILE_DIR: path.join(base, 'profile') };
     const first = await resolveRuntime({ env, log: () => {} });
-    assert.ok(first.ok);
+    assert.ok(first.ok, JSON.stringify(first));
     const layout = dataLayout(path.join(base, 'HOT-Step-Data'));
     assert.equal(first.runtime.dataRoot, layout.root);
     for (const writable of Object.values(layoutDefaults(layout))) {
@@ -79,15 +79,18 @@ test('Windows launcher restarts a stub server using the profile marker from anot
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'hs-launcher-'));
   try {
     const app = path.join(base, 'app with spaces');
-    const profile = path.join(base, 'profile with spaces');
+    const data = path.join(base, 'data with spaces');
+    const profile = path.join(data, 'profile');
     for (const dir of ['runtime', 'server']) fs.mkdirSync(path.join(app, dir), { recursive: true });
-    fs.mkdirSync(profile);
+    fs.mkdirSync(profile, { recursive: true });
     fs.copyFileSync(process.execPath, path.join(app, 'runtime', 'node.exe'));
     fs.copyFileSync(path.join(repo, 'release', 'profile-path.mjs'), path.join(app, 'profile-path.mjs'));
+    fs.copyFileSync(path.join(repo, 'release', 'portable.mjs'), path.join(app, 'portable.mjs'));
+    fs.writeFileSync(path.join(app, 'portable.json'), JSON.stringify({ dataDir: data, url:'https://localhost:443', host:'127.0.0.1', port:44381, enginePort:44382, tls:'proxy' }));
     // Disable desktop browser opening and the final interactive pause only.
     const launcher = fs.readFileSync(path.join(repo, 'release/HOT-Step.bat'), 'utf8')
       .replace(/^start \/MIN .*$/m, 'REM Browser disabled in fixture')
-      .replace('pause >nul', 'exit /b 0');
+      .replace(/^pause$/m, 'REM No interactive pause in fixture');
     fs.writeFileSync(path.join(app, 'HOT-Step.bat'), launcher.replace(/\r?\n/g, '\r\n'));
     fs.writeFileSync(path.join(app, 'server', 'server.mjs'), `
       import fs from 'node:fs';
@@ -98,11 +101,11 @@ test('Windows launcher restarts a stub server using the profile marker from anot
       fs.appendFileSync(trace, process.env.HOT_STEP_ROOT + '\\n');
       if (first) fs.writeFileSync(restartMarker(), 'restart');
     `);
-    const output = execFileSync('cmd.exe', ['/d', '/c', path.join(app, 'HOT-Step.bat')], {
+    const output = execFileSync('cmd.exe', ['/d', '/c', path.join(app, 'HOT-Step.bat'), '--no-browser'], {
       cwd: base, encoding: 'utf8', timeout: 15_000,
       env: { ...process.env, HOT_STEP_PROFILE_DIR: profile },
     });
-    assert.match(output, /Restarting/);
+    assert.match(output, /HOT-Step stopped/);
     assert.equal(fs.readFileSync(path.join(profile, 'starts'), 'utf8').trim().split('\n').length, 2);
     assert.ok(!fs.existsSync(path.join(profile, 'restart-requested')));
     assert.ok(!fs.existsSync(path.join(app, 'models')));

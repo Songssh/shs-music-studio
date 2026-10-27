@@ -50,8 +50,10 @@ concurrency:
   group: rocm-build-${{ github.ref }}
   cancel-in-progress: true
 
+# SHS preview: upstream automation stays disabled in forks until separately adapted.
 jobs:
   build-rocm:
+    if: github.repository == 'scragnog/HOT-Step-CPP'
     name: Compile engine under ROCm/HIP
     runs-on: ubuntu-22.04   # jammy — matches build-linux in release.yml, and is
                             # a supported target for the ROCm apt repo below.

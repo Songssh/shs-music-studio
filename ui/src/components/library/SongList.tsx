@@ -1,3 +1,4 @@
+import { workspaceOwnsKeyboard } from '../../workspace/keyboard';
 import { userStorage } from '../../auth/userStorage';
 // SongList.tsx — Song library display with bulk selection + source filtering
 // Ported from hot-step-9000 visual design with Tailwind.
@@ -200,12 +201,17 @@ export const SongList: React.FC<SongListProps> = ({
     setActiveViewMode(m);
     try { userStorage.setItem(storageKey, m); } catch {}
   }, [storageKey]);
+  // Windows reuses this Library instance when switching back to Generations.
+  useEffect(() => {
+    const saved = userStorage.getItem(storageKey);
+    setActiveViewMode(saved === 'list' || saved === 'grid' || saved === 'table' ? saved : viewMode);
+  }, [storageKey, viewMode]);
 
   // Client-side source filtering
   const filteredSongs = useMemo(() => {
-    if (sourceFilter === 'all') return songs;
+    if (!showFilters || sourceFilter === 'all') return songs;
     return songs.filter(s => getSongSource(s) === sourceFilter);
-  }, [songs, sourceFilter]);
+  }, [songs, sourceFilter, showFilters]);
 
   // Count songs per source for filter badges. Keys are derived from
   // SOURCE_FILTERS so adding a new source can't drift out of sync.
@@ -335,6 +341,7 @@ export const SongList: React.FC<SongListProps> = ({
   }, [focusedId, pagedOrder, activeViewMode]);
   useEffect(() => {
     const onHotkey = (ev: Event) => {
+      if (!workspaceOwnsKeyboard('library') || ev.defaultPrevented) return;
       const root = rowsRef.current;
       // Only the visible list handles keys (several SongLists can be mounted).
       if (!root || root.offsetParent === null) return;
@@ -1057,10 +1064,10 @@ const SongItem: React.FC<SongItemProps> = ({
             />
           </div>
         )}
-        <div className="text-xs text-zinc-500 truncate mt-0.5">
+        <div className="ws-song-description text-xs text-zinc-500 truncate mt-0.5">
           {isDisguised ? '' : (displaySubtext(song) || t('library.noDescription'))}
         </div>
-        <SongParameterBadges song={song} />
+        <WorkspaceSongIdentity song={song} /><SongParameterBadges song={song} />
       </div>
 
       {/* Metadata Badges */}
@@ -1321,9 +1328,9 @@ const SongCard: React.FC<SongCardProps> = ({
           </div>
         )}
 
-        <SongParameterBadges song={song} />
+        <WorkspaceSongIdentity song={song} /><SongParameterBadges song={song} />
         {/* Subject, or the caption when there is no subject */}
-        <div className="text-[11px] text-zinc-600 dark:text-white/55 leading-snug line-clamp-2 min-h-[2rem]">
+        <div className="ws-song-description text-[11px] text-zinc-600 dark:text-white/55 leading-snug line-clamp-2 min-h-[2rem]">
           {isDisguised ? '' : (displaySubtext(song) || t('library.noDescription'))}
         </div>
 
@@ -1773,7 +1780,7 @@ const SongTable: React.FC<SongTableProps> = ({
 
               title: <div className="min-w-0">
                 <TableTitleCell song={song} isActive={isActive} onRename={onRename ? (newTitle) => onRename(song, newTitle) : undefined} disguiseTitle={disguiseTitle} />
-                <SongParameterBadges song={song} />
+                <WorkspaceSongIdentity song={song} /><SongParameterBadges song={song} />
               </div>,
               style: <TableStyleCell text={isDisguised ? '—' : (displaySubtext(song) || '—')} />,
               source: badge ? <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${badge.cls}`}>{badge.label}</span> : null,
@@ -1866,3 +1873,9 @@ const SongTable: React.FC<SongTableProps> = ({
 };
 
 
+
+function WorkspaceSongIdentity({ song }: { song: Song }) {
+  const params = (song.generationParams ?? song.generation_params ?? {}) as Record<string, unknown>;
+  const engine = String(params.backendOverride ?? params.backendId ?? params.backend ?? (params.yue2Pick ? 'YuE2' : 'ACE-Step'));
+  return <div className="ws-song-identity" title={String(song.created_at ?? song.createdAt ?? '')}>{new Date(song.created_at || song.createdAt || 0).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {engine}</div>;
+}

@@ -31,9 +31,11 @@ concurrency:
   group: cache-warm-${{ github.ref }}
   cancel-in-progress: true
 
+# SHS preview: upstream automation stays disabled in forks until separately adapted.
 jobs:
   # ── Windows (must match release.yml build-windows: runner, deps, flags, keys) ──
   warm-windows:
+    if: github.repository == 'scragnog/HOT-Step-CPP'
     runs-on: windows-2022
     strategy:
       fail-fast: false
@@ -242,6 +244,7 @@ jobs:
 
   # ── Linux (must match release.yml build-linux: runner, deps, flags, keys) ──
   warm-linux:
+    if: github.repository == 'scragnog/HOT-Step-CPP'
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false

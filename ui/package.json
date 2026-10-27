@@ -18,6 +18,7 @@
     "abcjs": "^6.7.0",
     "audiomotion-analyzer": "^4.5.4",
     "axios": "^1.20.0",
+    "dockview": "8.7.0",
     "fflate": "^0.8.3",
     "i18next": "^26.0.10",
     "i18next-browser-languagedetector": "^8.2.1",

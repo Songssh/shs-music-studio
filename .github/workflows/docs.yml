@@ -8,8 +8,10 @@ on:
     branches: [master]
   pull_request:
 
+# SHS preview: upstream automation stays disabled in forks until separately adapted.
 jobs:
   check:
+    if: github.repository == 'scragnog/HOT-Step-CPP'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -1,3 +1,4 @@
+import { workspaceOwnsKeyboard, editorOwnsKeyboard } from '../../workspace/keyboard';
 // SessionView.tsx - one Compare session: sticky transport, take rows, diff trace.
 // Keys: Space play/pause, 1-9 switch active take, B (or Tab) A/B quick switch.
 
@@ -87,6 +88,7 @@ export const SessionView: React.FC<Props> = ({ session, onBack }) => {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (!workspaceOwnsKeyboard('compare-studio') || editorOwnsKeyboard(e)) return;
       const el = e.target as HTMLElement | null;
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
       if (e.code === 'Space') { e.preventDefault(); void engine.unlock().then(() => engine.toggle()); return; }

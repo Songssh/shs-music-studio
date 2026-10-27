@@ -119,7 +119,7 @@ const SheetSection: React.FC<SheetSectionProps> = ({
   );
 };
 
-export const GlobalParamBar: React.FC<{ onOpenMobileNav?: () => void }> = ({ onOpenMobileNav }) => {
+export const GlobalParamBar: React.FC<{ onOpenMobileNav?: () => void; embedded?: boolean }> = ({ onOpenMobileNav, embedded = false }) => {
   const { t } = useTranslation();
   const [openSection, setOpenSection] = useState<SectionId>(null);
   const gp = useGlobalParams();
@@ -248,6 +248,7 @@ export const GlobalParamBar: React.FC<{ onOpenMobileNav?: () => void }> = ({ onO
   const modelsQuery = useQuery(aceModelsOptions());
   const availableModels = modelsQuery.data;
   useEffect(() => {
+    if (embedded) return;
     const models = availableModels?.models;
     if (!models) return;
     const params = useGlobalParamsStore.getState();
@@ -261,7 +262,7 @@ export const GlobalParamBar: React.FC<{ onOpenMobileNav?: () => void }> = ({ onO
   // Separate from auto-select — only opens the modal if, after giving
   // the engine time to start, there are genuinely no models available.
   useEffect(() => {
-    if (userSessionStorage.getItem('mm-auto-dismissed')) return;
+    if (embedded || userSessionStorage.getItem('mm-auto-dismissed')) return;
 
     const timer = setTimeout(() => {
       if (modelsQuery.isPending) return;
@@ -314,6 +315,95 @@ export const GlobalParamBar: React.FC<{ onOpenMobileNav?: () => void }> = ({ onO
   const toggleSheetSection = useCallback((id: SectionId) => {
     setSheetOpenSection(prev => prev === id ? null : id);
   }, []);
+
+  if (embedded) return <div className="ws-settings">
+    <div className="flex gap-2 mb-3"><button className="px-3 py-2 rounded border border-zinc-500/30" onClick={() => setShowProfiles(v => !v)}>Profiles</button></div>
+    {showProfiles ? <ProfilesModal embedded onClose={() => setShowProfiles(false)} /> : <div className="space-y-3">
+              {showModels && (
+                <SheetSection
+                  label={t('globalBar.models')}
+                  icon={<Cpu size={14} />}
+                  badge={useBackendModelPicker ? <BackendModelsBadge /> : <ModelsBadge />}
+                  accentColor="pink"
+                  isOpen={sheetOpenSection === 'models'}
+                  onToggle={() => toggleSheetSection('models')}
+                >
+                  {useBackendModelPicker ? <BackendModelsDropdown /> : <ModelsDropdown />}
+                </SheetSection>
+              )}
+              <SheetSection
+                label={t('globalBar.adapters')}
+                icon={<Plug size={14} />}
+                badge={adaptersSupported ? <AdaptersBadge />
+                     : lmAdaptersAreEngineState ? <Yue2LmAdapterBadge />
+                     : lmAdaptersSupported ? <Mm3LmAdapterBadge />
+                     : <UnsupportedBadge />}
+                accentColor="emerald"
+                isOpen={sheetOpenSection === 'adapters'}
+                onToggle={() => toggleSheetSection('adapters')}
+              >
+                {adaptersSupported
+                  ? <AdaptersDropdown />
+                  : lmAdaptersAreEngineState
+                  ? <Yue2LmAdapterDropdown />
+                  : lmAdaptersSupported
+                  ? <Mm3LmAdapterDropdown />
+                  : <NotYetPanel feature="Adapters" />}
+              </SheetSection>
+              {showGeneration && (
+                <SheetSection
+                  label={t('globalBar.generation')}
+                  icon={<Sliders size={14} />}
+                  badge={useBackendGenPicker ? <BackendGenerationBadge /> : <GenerationBadge />}
+                  accentColor="sky"
+                  isOpen={sheetOpenSection === 'generation'}
+                  onToggle={() => toggleSheetSection('generation')}
+                >
+                  {useBackendGenPicker ? <BackendGenerationDropdown /> : <GenerationDropdown />}
+                </SheetSection>
+              )}
+              {showLm && (
+                <SheetSection
+                  label={t('globalBar.lm')}
+                  icon={<Brain size={14} />}
+                  badge={aceLm ? <LmThinkingBadge /> : <BackendLmBadge />}
+                  accentColor="purple"
+                  isOpen={sheetOpenSection === 'lm'}
+                  onToggle={() => toggleSheetSection('lm')}
+                  headerToggle={aceLm ? (
+                    <ToggleSwitch
+                      checked={!gp.skipLm}
+                      onChange={(on) => gp.setSkipLm(!on)}
+                      accentColor="purple"
+                    />
+                  ) : undefined}
+                >
+                  {aceLm ? <LmThinkingDropdown /> : <BackendLmDropdown />}
+                </SheetSection>
+              )}
+              {showPostProcessing && (
+                <SheetSection
+                  label={t('globalBar.postProcessing')}
+                  icon={<AudioWaveform size={14} />}
+                  badge={postProcessingSupported ? <PostProcessingBadge /> : <UnsupportedBadge />}
+                  accentColor="amber"
+                  isOpen={sheetOpenSection === 'postprocessing'}
+                  onToggle={() => toggleSheetSection('postprocessing')}
+                  headerToggle={postProcessingSupported ? (
+                    <ToggleSwitch
+                      checked={gp.postProcessingEnabled}
+                      onChange={(on) => gp.setPostProcessingEnabled(on)}
+                      accentColor="amber"
+                    />
+                  ) : undefined}
+                >
+                  {postProcessingSupported
+                    ? <PostProcessingDropdown />
+                    : <NotYetPanel feature="Post-processing" />}
+                </SheetSection>
+              )}
+    </div>}
+  </div>;
 
   return (
     <div className="flex-shrink-0 relative z-40 bg-white/95 dark:bg-zinc-900/95 border-b border-zinc-200 dark:border-white/5"

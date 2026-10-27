@@ -1,6 +1,6 @@
 // Release gate: boot a freshly built server.mjs and require it to reach ready.
 // Usage: node release/smoke-boot.mjs <server.mjs> [timeoutSeconds]
-// Run it with the same node the release ships. Exits 0 only if /api/health answers.
+// Run it with the same node the release ships. Exits 0 only if /api/account/status answers.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -30,7 +30,9 @@ const child = spawn(process.execPath, [bundle], {
   stdio: ['ignore', 'pipe', 'pipe'],
   env: {
     ...process.env, HOT_STEP_ROOT: root, HOT_STEP_DATA_ROOT: dataRoot, HOT_STEP_PROFILE_DIR: path.join(tmp, 'profile'),
-    ACESTEPCPP_EXE: path.join(engineDir, 'ace-server-absent'), SERVER_PORT: String(port), ACESTEPCPP_PORT: String(enginePort),
+    ACESTEPCPP_EXE: path.join(engineDir, 'ace-server-absent'), SERVER_PORT: String(port), SERVER_HOST: '127.0.0.1', ACESTEPCPP_PORT: String(enginePort),
+    HOT_STEP_AUTH_URL: `http://127.0.0.1:${port}`, HOT_STEP_AUTH_HTTP_LOOPBACK: '1',
+    HOT_STEP_TLS_PFX: '', HOT_STEP_TLS_CERT: '', HOT_STEP_TLS_KEY: '',
   },
 });
 let log = '';
@@ -40,16 +42,16 @@ const exited = new Promise(res => child.once('exit', (code, sig) => res({ code, 
 const timeout = new Promise(res => setTimeout(() => res('timeout'), Number(secs) * 1000));
 const ready = (async () => {
   for (;;) {
-    try { if ((await fetch(`http://127.0.0.1:${port}/api/health`)).ok) return 'ready'; } catch { /* not up yet */ }
+    try { if ((await fetch(`http://127.0.0.1:${port}/api/account/status`)).ok) return 'ready'; } catch { /* not up yet */ }
     await new Promise(r => setTimeout(r, 500));
   }
 })();
 
 const result = await Promise.race([ready, exited, timeout]);
 if (result === 'ready') {
-  console.log(`smoke-boot: PASS - ${bundle} answered /api/health on port ${port}`);
+  console.log(`smoke-boot: PASS - ${bundle} answered /api/account/status on port ${port}`);
 } else {
-  const why = result === 'timeout' ? `no /api/health answer within ${secs}s`
+  const why = result === 'timeout' ? `no /api/account/status answer within ${secs}s`
     : `exited before ready (code ${result.code}, signal ${result.sig})`;
   console.error(`smoke-boot: FAIL - ${why}\n--- server output (last 40 lines) ---\n${log.split('\n').slice(-40).join('\n')}`);
 }

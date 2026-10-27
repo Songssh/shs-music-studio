@@ -1,3 +1,5 @@
+import { useWorkspace } from '../../workspace/WorkspaceContext';
+import { openImagePickerForSong, useSongAsBackground } from '../../workspace/Personalization';
 // SongActionsMenu.tsx — the one 3-dot menu for a generated track.
 //
 // Every surface that lists songs (Library, Recent Songs, the Lyric Studio
@@ -328,6 +330,7 @@ export const SongActionsMenu: React.FC<SongActionsMenuProps> = ({
   trigger,
 }) => {
   const { t } = useTranslation();
+  const ws=useWorkspace();
   const [open, setOpen] = useState(false);
   const isMobile = useIsMobile();
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -475,6 +478,7 @@ export const SongActionsMenu: React.FC<SongActionsMenuProps> = ({
             />
           )}
 
+          {ws?.eligible&&<><Item icon={<Image size={14}/>} label="내 이미지에서 커버 선택" onClick={()=>act(()=>openImagePickerForSong(song.id))}/>{(song.coverUrl||song.cover_url)&&<Item icon={<Image size={14}/>} label="바탕화면으로 설정" onClick={()=>act(()=>useSongAsBackground(song.id))}/>}</>}
           {extraItems}
 
           {!compact && (

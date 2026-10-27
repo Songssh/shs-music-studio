@@ -1,3 +1,4 @@
+import { useWorkspaceTool } from '../../workspace/WorkspaceContext';
 import { userStorage } from '../../auth/userStorage';
 import { extractResultOptions } from '../../queries/studios/resources';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -43,6 +44,7 @@ function getBaseModels(ditModels: string[]): string[] {
 }
 
 export const StemStudio: React.FC = () => {
+  const workspace = useWorkspaceTool()?.workspace;
   const { t } = useTranslation();
   const client = useQueryClient();
   const selectedResult = React.useRef<string | null>(null);
@@ -441,7 +443,7 @@ export const StemStudio: React.FC = () => {
         {/* Right — Recent Extractions + Queue */}
         <div
           className={`h-full flex-shrink-0 border-l border-zinc-200 dark:border-white/5 overflow-hidden flex-col ${!isPortrait ? 'min-[1024px]:flex' : ''} max-[1023px]:!w-full ${narrowPane === 'recent' ? 'flex' : 'hidden'}`}
-          style={{ width: sidebarWidth }}
+          style={{ width: workspace ? Math.min(260, sidebarWidth) : sidebarWidth }}
         >
           <Section
             title={t('stem.recentExtractions')}

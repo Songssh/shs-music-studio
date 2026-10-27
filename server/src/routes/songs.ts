@@ -1,3 +1,4 @@
+import { isLibraryImage } from '../services/images/library.js';
 import { assets, requireFile } from '../auth/ownership.js';
 // songs.ts — Song CRUD routes + audio file serving
 //
@@ -493,7 +494,7 @@ router.post('/nuke-generations', (req, res) => {
       const url = song[col];
       if (url && !url.startsWith('extracting:')) {
         const filepath = path.join(config.data.audioDir, path.basename(url));
-        if (fs.existsSync(filepath)) {
+        if (fs.existsSync(filepath) && !isLibraryImage(filepath)) {
           try { fs.unlinkSync(filepath); filesDeleted++; } catch { /* best effort */ }
         }
       }
@@ -537,7 +538,7 @@ router.post('/nuke-generations', (req, res) => {
         const filePath = path.join(config.data.audioDir, file);
         try {
           const stat = fs.statSync(filePath);
-          if (stat.isFile() && assets().owns(filePath,userId)) {
+          if (stat.isFile() && assets().owns(filePath,userId) && !isLibraryImage(filePath)) {
             fs.unlinkSync(filePath);
             orphansDeleted++;
           }

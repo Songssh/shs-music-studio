@@ -140,9 +140,9 @@ async function stopEverything(restart: boolean): Promise<void> {
   closeDb();
   closeLogger();
   if (!restart) killVite();
-  // Portable restart: HOT-Step.bat runs node directly, so our parent IS the
-  // restart loop — exiting is enough there. Every other case needs the tree kill.
-  if (!restart || !PORTABLE_MODE) killSelf();
+  // Portable launchers run Node directly. Both Quit and Restart must leave
+  // their parent alive (it may also be a verifier or a user's terminal).
+  if (!PORTABLE_MODE) killSelf();
   setTimeout(() => {
     console.log(restart ? '[Server] Exiting for restart.' : '[Server] Exiting.');
     process.exit(0);

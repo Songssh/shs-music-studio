@@ -1,10 +1,10 @@
-# release/build-release.ps1 — Build a complete portable release of HOT-Step CPP
+﻿# release/build-release.ps1 — Build a complete portable release of HOT-Step CPP
 #
 # Usage:
 #   .\release\build-release.ps1 [-Version "1.5.0"] [-SkipEngine] [-SkipUI] [-Variant cuda] [-BuildBackend all]
 #
 # Produces:
-#   release/out/HOT-Step-CPP-v{version}-win-x64-{variant}.zip
+#   release/out/SHS-Music-Studio-v{version}-win-x64-{variant}.zip
 #
 # Requirements:
 #   - Node.js 24 LTS (for building with correct native module ABI)
@@ -16,6 +16,7 @@ param(
     [string]$Version = "0.0.0",
     [switch]$SkipEngine,
     [switch]$SkipUI,
+    [string]$EngineSource = "",
     [ValidateSet("cuda", "vulkan", "cpu")]
     [string]$Variant = "cuda",       # Packaged backend
     [ValidateSet("all", "cuda", "vulkan", "cpu")]
@@ -42,14 +43,15 @@ $NodeUrl = "https://nodejs.org/dist/v${NodeVersion}/${NodeZipName}"
 $NodeExe = Join-Path (Join-Path $NodeCacheDir "node-v${NodeVersion}-win-x64") "node.exe"
 
 Write-Host "`n════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  HOT-Step CPP Release Builder" -ForegroundColor Cyan
+Write-Host "  SHS Music Studio Release Builder" -ForegroundColor Cyan
 Write-Host "  Version: $Version | Variant: $Variant" -ForegroundColor Cyan
 Write-Host "════════════════════════════════════════════════════════`n" -ForegroundColor Cyan
 
 # ── Phase 0: Clean staging ────────────────────────────────────────────
 
 Write-Host "[Phase 0] Cleaning staging directory..." -ForegroundColor Yellow
-if (Test-Path $StagingDir) { Remove-Item -Recurse -Force $StagingDir }
+if ([IO.Path]::GetFullPath($StagingDir) -ne [IO.Path]::GetFullPath((Join-Path $ReleaseDir "staging"))) { throw "Unsafe staging path" }
+if (Test-Path -LiteralPath $StagingDir) { Remove-Item -LiteralPath $StagingDir -Recurse -Force }
 New-Item -ItemType Directory -Force $StagingDir | Out-Null
 New-Item -ItemType Directory -Force $OutputDir | Out-Null
 
@@ -66,6 +68,10 @@ if (-not (Test-Path $NodeExe)) {
         Invoke-WebRequest -Uri $NodeUrl -OutFile $zipPath -UseBasicParsing
     }
 
+    $sums = (Invoke-WebRequest -Uri "https://nodejs.org/dist/v${NodeVersion}/SHASUMS256.txt" -UseBasicParsing).Content
+    if ($sums -is [byte[]]) { $sums = [Text.Encoding]::UTF8.GetString($sums) }
+    $expected = ($sums -split "`n" | Where-Object { $_.Trim().EndsWith("  $NodeZipName") }) -replace '\s+.*$', ''
+    if (!$expected -or (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash -ne $expected) { throw 'Node archive SHA256 mismatch' }
     Write-Host "  Extracting..."
     Expand-Archive -Path $zipPath -DestinationPath $NodeCacheDir -Force
     Remove-Item $zipPath -ErrorAction SilentlyContinue
@@ -152,89 +158,34 @@ if (-not $SkipEngine) {
 
 Write-Host "`n[Phase 3] Bundling server..." -ForegroundColor Yellow
 
-# Install server deps with system npm (dev machine only)
-Write-Host "  Installing server dependencies..."
-Push-Location (Join-Path $ProjectRoot "server")
-try {
-    # Use cmd /c to prevent PS treating npm stderr warnings as errors
-    cmd /c "npm install --ignore-scripts 2>&1" | Out-Null
-    # Verify portable Node works
-    & $NodeExe --version | Out-Null
-    Write-Host "  Dependencies installed" -ForegroundColor Green
-} finally {
-    Pop-Location
-}
-
-# Rebuild better-sqlite3 native addon for the portable Node.js ABI
-# Match the staged native addon to the portable Node 24 runtime (ABI 137).
-# IMPORTANT: We backup and restore the original .node file so the dev environment
-# is not contaminated by the release build.
-Write-Host "  Rebuilding better-sqlite3 for Node $NodeVersion..."
-$bsqlPkg = Join-Path (Join-Path $ProjectRoot "server") "node_modules\better-sqlite3"
-$nativeAddon = Join-Path $bsqlPkg "build\Release\better_sqlite3.node"
-$nativeBackup = Join-Path $bsqlPkg "build\Release\better_sqlite3.node.dev-backup"
-
-# Backup the dev machine's native addon
-if (Test-Path $nativeAddon) {
-    Copy-Item $nativeAddon $nativeBackup -Force
-    Write-Host "    Backed up dev addon"
-}
-
-Push-Location $bsqlPkg
-try {
-    cmd /c "npx prebuild-install --runtime node --target $NodeVersion --arch x64 --platform win32 2>&1"
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "  prebuild-install failed, trying npm rebuild..."
-        Pop-Location
-        Push-Location (Join-Path $ProjectRoot "server")
-        cmd /c "npm rebuild better-sqlite3 2>&1" | Out-Null
-    }
-    Write-Host "  Native addon rebuilt for Node $NodeVersion" -ForegroundColor Green
-} finally {
-    Pop-Location
-}
-
-# Copy the Node 24 addon to staging before restoring dev version
-$stagingBsqlBuild = Join-Path $StagingDir "server\node_modules\better-sqlite3\build\Release"
-New-Item -ItemType Directory -Force $stagingBsqlBuild | Out-Null
-Copy-Item $nativeAddon (Join-Path $stagingBsqlBuild "better_sqlite3.node") -Force -ErrorAction SilentlyContinue
-
-# Restore the dev machine's native addon
-if (Test-Path $nativeBackup) {
-    Copy-Item $nativeBackup $nativeAddon -Force
-    Remove-Item $nativeBackup -Force
-    Write-Host "    Restored dev addon"
-}
-
-# Install esbuild in release dir (dev dependency for bundling)
-Write-Host "  Installing esbuild..."
+# Source bundling and dependency installation use the same portable runtime.
+$npmCli = Join-Path (Split-Path -Parent $NodeExe) 'node_modules/npm/bin/npm-cli.js'
+$previousPath = $env:PATH
+$env:PATH = (Split-Path -Parent $NodeExe) + ';' + $env:PATH
 Push-Location $ReleaseDir
 try {
-    if (-not (Test-Path (Join-Path $ReleaseDir "node_modules\esbuild"))) {
-        npm install esbuild --save-dev 2>&1 | Out-Null
-    }
-} finally {
-    Pop-Location
-}
-
-# Run esbuild (cmd /c prevents PS from treating esbuild stderr warnings as fatal)
-Write-Host "  Running esbuild..."
-cmd /c "node `"$(Join-Path $ReleaseDir 'esbuild.config.mjs')`" 2>&1"
-if ($LASTEXITCODE -ne 0) { throw "esbuild bundle failed" }
-
-Write-Host "  Server bundle complete" -ForegroundColor Green
+    & $NodeExe $npmCli ci --no-audit --no-fund
+    if ($LASTEXITCODE -ne 0) { throw 'Release tooling installation failed' }
+} finally { Pop-Location; $env:PATH = $previousPath }
+& $NodeExe (Join-Path $ReleaseDir 'esbuild.config.mjs')
+if ($LASTEXITCODE -ne 0) { throw 'Server bundling failed' }
+& (Join-Path $ReleaseDir 'stage-runtime.ps1') -NodeExe $NodeExe -Destination (Join-Path $StagingDir 'server')
 
 # ── Phase 4: Build UI ─────────────────────────────────────────────────
 
 if (-not $SkipUI) {
     Write-Host "`n[Phase 4] Building UI..." -ForegroundColor Yellow
 
+    $uiPreviousPath = $env:PATH
+    $env:PATH = (Split-Path -Parent $NodeExe) + ";" + $env:PATH
     Push-Location (Join-Path $ProjectRoot "ui")
     try {
-        cmd /c "npm install 2>&1" | Out-Null
-        cmd /c "npm run build 2>&1"
+        & $NodeExe $npmCli ci --no-audit --no-fund
+        if ($LASTEXITCODE -ne 0) { throw "UI dependency installation failed" }
+        & $NodeExe $npmCli run build
         if ($LASTEXITCODE -ne 0) { throw "UI build failed" }
     } finally {
+        $env:PATH = $uiPreviousPath
         Pop-Location
     }
 
@@ -258,12 +209,12 @@ Copy-Item $NodeExe (Join-Path $dist "runtime\node.exe")
 Write-Host "  Copying engine binaries..."
 $engineOut = Join-Path $dist "engine"
 New-Item -ItemType Directory -Force $engineOut | Out-Null
-$buildRelease = Join-Path (Join-Path $ProjectRoot "engine") "build\Release"
+$buildRelease = if ($EngineSource) { (Resolve-Path -LiteralPath $EngineSource).Path } else { Join-Path (Join-Path $ProjectRoot "engine") "build\Release" }
 
 $engineFiles = @(
     "ace-server.exe", "ace-train.exe", "ace-midi.exe", "ace-caption.exe", "mastering.exe", "mp3-codec.exe",
     "neural-codec.exe", "vst-host.exe", "quantize.exe",
-    "ggml.dll", "ggml-base.dll", "ggml-cpu.dll"
+    "ggml.dll", "ggml-base.dll"
 )
 
 # Add variant-specific DLLs
@@ -307,71 +258,41 @@ if (Test-Path $communityPluginsSrc) {
     Write-Host "    Community plugins dir copied (plugins/)" -ForegroundColor Green
 }
 
-# MSVC C++ Runtime - bundle so the app works on clean machines without VC++ Redistributable
-$msvcRedist = Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter "vcruntime140.dll" -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -match 'x64' -and $_.FullName -notmatch 'debug' -and $_.FullName -match 'Redist' } |
-    Select-Object -First 1
-if ($msvcRedist) {
-    $msvcDir = $msvcRedist.DirectoryName
-    foreach ($dll in @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")) {
-        $src = Join-Path $msvcDir $dll
-        if (Test-Path $src) {
-            Copy-Item $src (Join-Path $engineOut $dll)
-        }
+# Include app-local native runtimes for the engine, Node addons and Essentia.
+# EngineSource must be a complete official engine binary distribution.
+$runtimeNames = @('vcruntime140.dll','vcruntime140_1.dll','msvcp140.dll')
+foreach ($dll in $runtimeNames) {
+    $src = Join-Path $buildRelease $dll
+    if (!(Test-Path -LiteralPath $src)) {
+        $found = Get-ChildItem 'C:\Program Files\Microsoft Visual Studio','C:\Program Files (x86)\Microsoft Visual Studio' -Recurse -Filter $dll -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match 'Redist.*x64' -and $_.FullName -notmatch 'debug' } | Select-Object -First 1
+        if (!$found) { throw "Missing redistributable DLL: $dll. Supply a complete -EngineSource." }
+        $src = $found.FullName
     }
-    Write-Host "  Bundled MSVC runtime DLLs"
-} else {
-    Write-Warning "  MSVC Redist not found - vcruntime DLLs not bundled"
+    Copy-Item -LiteralPath $src -Destination $engineOut -Force
+    Copy-Item -LiteralPath $src -Destination (Join-Path $dist 'runtime') -Force
 }
-
-# Server: bundled JS + native deps
-Write-Host "  Copying server..."
-$serverOut = Join-Path $dist "server"
-# server.mjs was already placed by esbuild into staging/server/
-# Copy better-sqlite3 minimal package
-$bsqlSrc = Join-Path (Join-Path $ProjectRoot "server") "node_modules\better-sqlite3"
-$bsqlDst = Join-Path $serverOut "node_modules\better-sqlite3"
-New-Item -ItemType Directory -Force $bsqlDst | Out-Null
-
-# Copy the JS package + native binding
-Copy-Item (Join-Path $bsqlSrc "package.json") (Join-Path $bsqlDst "package.json")
-New-Item -ItemType Directory -Force (Join-Path $bsqlDst "lib") | Out-Null
-Copy-Item -Recurse (Join-Path $bsqlSrc "lib\*") (Join-Path $bsqlDst "lib")
-# NOTE: Do NOT copy build/Release/better_sqlite3.node from source tree here!
-# The correct Node 24 addon was already staged at Phase 3 (line ~166).
-# Copying from $bsqlSrc would overwrite the addon selected for the portable runtime.
-# See: https://github.com/scragnog/HOT-Step-CPP/issues/18
-
-# Copy better-sqlite3 runtime dependencies: bindings + file-uri-to-path
-$nmSrc = Join-Path (Join-Path $ProjectRoot "server") "node_modules"
-foreach ($dep in @("bindings", "file-uri-to-path")) {
-    $depSrc = Join-Path $nmSrc $dep
-    $depDst = Join-Path $serverOut "node_modules\$dep"
-    if (Test-Path $depSrc) {
-        Copy-Item -Recurse $depSrc $depDst
-        Write-Host "    Copied $dep"
-    } else {
-        Write-Warning "  Missing dependency: $dep"
+Get-ChildItem -LiteralPath $buildRelease -Filter '*.dll' | Where-Object { $_.Name -match '^(vcomp|msvcp|vcruntime)' } | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination $engineOut -Force
+    Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $dist 'runtime') -Force
+}
+if (!(Get-ChildItem -LiteralPath $engineOut -Filter 'ggml-cpu*.dll')) { throw 'No CPU backend packaged' }
+if ($Variant -eq 'cuda') {
+    foreach ($pattern in @('cudart64_*.dll','cublas64_*.dll','cublasLt64_*.dll')) {
+        $files = @(Get-ChildItem -LiteralPath $buildRelease -Filter $pattern)
+        if (!$files.Count) { throw "Missing offline CUDA runtime: $pattern" }
+        $files | Copy-Item -Destination $engineOut -Force
     }
+    Copy-Item -LiteralPath (Join-Path $buildRelease '.cuda-version') -Destination $engineOut
 }
-
-# Copy ffmpeg.exe
-$ffmpegSrc = Join-Path (Join-Path (Join-Path $ProjectRoot "server") "node_modules\ffmpeg-static") "ffmpeg.exe"
-if (Test-Path $ffmpegSrc) {
-    Copy-Item $ffmpegSrc (Join-Path $serverOut "ffmpeg.exe")
-} else {
-    Write-Warning "  ffmpeg.exe not found - audio conversion will be limited"
-}
+Set-Content -LiteralPath (Join-Path $engineOut '.variant') -Value $Variant -NoNewline -Encoding ASCII
+# Production packages and ffmpeg were already installed in isolation.
+$serverOut = Join-Path $dist 'server'
 
 # Copy data files (model-registry.json, assistant-knowledge.md)
 $dataOut = Join-Path $serverOut "data"
 New-Item -ItemType Directory -Force $dataOut | Out-Null
 Copy-Item (Join-Path $ProjectRoot "server/src/data/*") $dataOut -Recurse -Force
-
-# Gate: the bundle must boot before anything is zipped; runs after the addon and its deps are staged (a bad bundle once shipped with exit 13).
-Write-Host "  Boot-testing server.mjs with the portable runtime..."
-& $NodeExe (Join-Path $ReleaseDir "smoke-boot.mjs") (Join-Path $StagingDir "server\server.mjs")
-if ($LASTEXITCODE -ne 0) { throw "Server bundle failed its boot test - not releasing" }
 
 # UI: pre-built dist
 Write-Host "  Copying UI..."
@@ -381,7 +302,7 @@ if (Test-Path $uiSrc) {
     New-Item -ItemType Directory -Force (Join-Path $dist "ui") | Out-Null
     Copy-Item -Recurse $uiSrc $uiDst
 } else {
-    Write-Warning "  UI dist not found - skipping"
+    throw "UI dist not found"
 }
 
 # Essentia
@@ -389,6 +310,7 @@ $essentiaSrc = Join-Path $ProjectRoot "Essentia"
 if (Test-Path $essentiaSrc) {
     Write-Host "  Copying Essentia..."
     Copy-Item -Recurse $essentiaSrc (Join-Path $dist "Essentia")
+    Get-ChildItem -LiteralPath (Join-Path $dist 'runtime') -Filter '*.dll' | Copy-Item -Destination (Join-Path $dist 'Essentia')
 }
 
 # Noise samples
@@ -406,13 +328,26 @@ Copy-Item (Join-Path $ReleaseDir "HOT-Step.bat") (Join-Path $dist "HOT-Step.bat"
 Copy-Item (Join-Path $ReleaseDir "README.txt") (Join-Path $dist "README.txt")
 Copy-Item (Join-Path $ProjectRoot "open-browser-if-needed.mjs") (Join-Path $dist "open-browser-if-needed.mjs")
 
+foreach ($file in @('portable.mjs','Setup.bat','create-certificate.ps1','verify-portable.mjs','Verify.bat','SHS-Music-Studio.bat')) {
+    Copy-Item -LiteralPath (Join-Path $ReleaseDir $file) -Destination $dist
+}
+Copy-Item -LiteralPath (Join-Path $ProjectRoot 'LICENSE') -Destination $dist
+Copy-Item -LiteralPath (Join-Path $ProjectRoot 'THIRD_PARTY.md') -Destination $dist
+Copy-Item -LiteralPath (Join-Path $ProjectRoot 'engine/LICENSE') -Destination (Join-Path $engineOut 'LICENSE')
+Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $NodeExe) 'LICENSE') -Destination (Join-Path $dist 'runtime/Node-LICENSE.txt')
+Set-Content -LiteralPath (Join-Path $dist 'VERSION') -Value $Version -NoNewline -Encoding ASCII
+& $NodeExe (Join-Path $ReleaseDir 'release-manifest.mjs') $dist $Version $Variant $buildRelease
+if ($LASTEXITCODE -ne 0) { throw 'Manifest generation failed' }
+Write-Host 'Verifying the assembled portable server...'
+& (Join-Path $dist 'runtime/node.exe') (Join-Path $dist 'verify-portable.mjs') --report (Join-Path $OutputDir "verification-$Version-$Variant.json")
+if ($LASTEXITCODE -ne 0) { throw 'Portable verification failed; archive will not be created' }
 Write-Host "  Assembly complete" -ForegroundColor Green
 
 # ── Phase 6: Package ──────────────────────────────────────────────────
 
 Write-Host "`n[Phase 6] Packaging..." -ForegroundColor Yellow
 
-$zipName = "HOT-Step-CPP-v${Version}-win-x64-${Variant}.zip"
+$zipName = "SHS-Music-Studio-v${Version}-win-x64-${Variant}.zip"
 $zipPath = Join-Path $OutputDir $zipName
 
 if (Test-Path $zipPath) { Remove-Item $zipPath }

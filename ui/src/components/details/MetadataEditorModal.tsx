@@ -1,3 +1,5 @@
+import { useWorkspace } from '../../workspace/WorkspaceContext';
+import { ImagePicker, CoverCrop, type LibraryImage } from '../../workspace/ImageLibrary';
 // MetadataEditorModal.tsx — edit a track's embed metadata + cover (#60).
 //
 // Shows the auto-populated metadata and lets the user change it. Title / genre /
@@ -37,6 +39,7 @@ const Field: React.FC<{ label: string; value: string; onChange: (v: string) => v
 
 export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({ song, onClose, onSaved }) => {
   const { t } = useTranslation();
+  const ws=useWorkspace();const [picker,setPicker]=useState(false),[image,setImage]=useState<LibraryImage|null>(null);
   const gp: any = song.generationParams || {};
   const overrides: any = (() => {
     try { return song.metadata_overrides ? JSON.parse(song.metadata_overrides) : {}; } catch { return {}; }
@@ -114,6 +117,8 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({ song, 
         </div>
 
         <div className="p-5 space-y-4">
+          {picker&&<ImagePicker onClose={()=>setPicker(false)} onSelect={item=>{setImage(item);setPicker(false);}}/>}
+          {image&&<CoverCrop image={image} songId={song.id} onClose={()=>setImage(null)} onApplied={setCoverUrl}/>}
           {/* Cover */}
           <div className="flex items-center gap-4">
             <div className="relative w-24 h-24 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center flex-shrink-0">
@@ -135,11 +140,11 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({ song, 
                 onChange={e => { const f = e.target.files?.[0]; if (f) handleCoverFile(f); e.currentTarget.value = ''; }}
               />
               <button
-                onClick={() => fileRef.current?.click()}
+                onClick={() => ws?.eligible?setPicker(true):fileRef.current?.click()}
                 disabled={uploading}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 transition-colors disabled:opacity-50"
               >
-                {t('metadata.replaceCover', 'Replace cover image')}
+                {ws?.eligible?'내 이미지 선택 / 업로드':t('metadata.replaceCover', 'Replace cover image')}
               </button>
               <p className="text-[11px] text-zinc-500 mt-1.5 leading-relaxed">
                 {t('metadata.coverHint', 'PNG/JPG. Embedded into MP3/FLAC downloads.')}

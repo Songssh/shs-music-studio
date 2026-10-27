@@ -13,8 +13,10 @@ concurrency:
   group: runpod-image
   cancel-in-progress: false
 
+# SHS preview: upstream automation stays disabled in forks until separately adapted.
 jobs:
   build:
+    if: github.repository == 'scragnog/HOT-Step-CPP'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:

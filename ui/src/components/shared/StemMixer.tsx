@@ -6,6 +6,7 @@
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Download } from 'lucide-react';
+import { useWorkspacePlaybackLease } from '../../workspace/WorkspaceContext';
 
 export interface MixerStemInfo {
   name: string;
@@ -48,6 +49,7 @@ export const StemMixer: React.FC<StemMixerProps> = ({ jobId, stems, controls, on
   const buffersRef = useRef<Map<number, AudioBuffer>>(new Map());
   const [loadedStems, setLoadedStems] = useState<Set<number>>(new Set());
   const [loadingStems, setLoadingStems] = useState(false);
+  const visible = useWorkspacePlaybackLease(isPlaying || loadingStems);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const playbackOffsetRef = useRef(0);
@@ -55,7 +57,10 @@ export const StemMixer: React.FC<StemMixerProps> = ({ jobId, stems, controls, on
   const animationFrameRef = useRef<number | undefined>(undefined);
 
   // Reset buffers AND stop playback when stems change (different job loaded)
+  const loadedJob = useRef<string | null>(null);
   useEffect(() => {
+    if (loadedJob.current === jobId) return;
+    loadedJob.current = jobId;
     // Stop any active playback — null onended first to prevent stale callbacks
     sourceNodesRef.current.forEach(({ source }) => {
       source.onended = null;
@@ -108,7 +113,7 @@ export const StemMixer: React.FC<StemMixerProps> = ({ jobId, stems, controls, on
 
   // Load audio buffers for preview
   const loadBuffers = useCallback(async () => {
-    if (!audioContextRef.current) {
+    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
       audioContextRef.current = new AudioContext({ sampleRate: 44100 });
     }
     const ctx = audioContextRef.current;
@@ -156,13 +161,13 @@ export const StemMixer: React.FC<StemMixerProps> = ({ jobId, stems, controls, on
   }, [isPlaying, duration]);
 
   useEffect(() => {
-    if (isPlaying) {
+    if (isPlaying && visible) {
       animationFrameRef.current = requestAnimationFrame(updateProgress);
     } else {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     }
     return () => { if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current); };
-  }, [isPlaying, updateProgress]);
+  }, [isPlaying, visible, updateProgress]);
 
   // Start/stop preview playback
   const togglePlayback = useCallback(async () => {
@@ -281,9 +286,14 @@ export const StemMixer: React.FC<StemMixerProps> = ({ jobId, stems, controls, on
   useEffect(() => {
     return () => {
       sourceNodesRef.current.forEach(({ source }) => {
+        source.onended = null;
         try { source.stop(); } catch {}
       });
-      audioContextRef.current?.close();
+      sourceNodesRef.current.clear();
+      void audioContextRef.current?.close().catch(() => {});
+      audioContextRef.current = null;
+      buffersRef.current.clear();
+      setLoadedStems(new Set());
     };
   }, []);
 

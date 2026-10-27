@@ -1,3 +1,5 @@
+import { useContext } from 'react';
+import { StreamControllersContext } from '../workspace/StreamControllers';
 import { useRef, useState, useCallback, useEffect } from 'react';
 // Moved out to utils/wavStream.ts when the MM3 player needed the same parser —
 // same function, same behaviour, one copy.
@@ -29,6 +31,13 @@ const DEFAULT_MAX_BUFFER = 900;
 
 
 export function useStreamAudio(streamId = 'default') {
+  const controllers = useContext(StreamControllersContext);
+  const local = useStreamAudioController(streamId);
+  return controllers?.[streamId] ?? local;
+}
+
+export function useStreamAudioController(streamId = 'default', visible = true) {
+  const visibleRef = useRef(visible); visibleRef.current = visible;
   const [state, setState] = useState<StreamState>({
     isPlaying: false, currentSlot: 0, playingSlot: 0,
     currentTime: 0, bufferedTime: 0,
@@ -43,6 +52,7 @@ export function useStreamAudio(streamId = 'default') {
   const startRef       = useRef(0);
   const abortRef       = useRef<AbortController|null>(null);
   const rafRef         = useRef(0);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const aliveRef       = useRef(false);
   const xfadeBeatsRef  = useRef(4);
   const bpmRef         = useRef(120);
@@ -85,10 +95,12 @@ export function useStreamAudio(streamId = 'default') {
       }).catch(() => {});
     }
 
-    rafRef.current = requestAnimationFrame(tick);
+    if (visibleRef.current) rafRef.current = requestAnimationFrame(tick);
+    else idleTimerRef.current = setTimeout(tick, 250); // buffer gate only; no hidden visual RAF
   }, [streamId]);
 
   const start = useCallback(async (params: Record<string, unknown>) => {
+    if (aliveRef.current) return; // a rapid second Start must not create a second stream
     const ac = new AudioContext({ sampleRate: 48000 });
     acRef.current = ac;
     startRef.current = ac.currentTime + 0.3;
@@ -216,13 +228,16 @@ export function useStreamAudio(streamId = 'default') {
     } finally {
       aliveRef.current = false;
       cancelAnimationFrame(rafRef.current);
+      clearTimeout(idleTimerRef.current);
       // Auto-stop recording when stream ends
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
       }
       if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
       setState(p => ({ ...p, isPlaying: false, bufferPaused: false, isRecording: false, recordingTime: 0 }));
-      try { ac.close(); } catch {}
+      // Stop and stream completion can converge here. close() rejects asynchronously
+      // when the other path already closed the context.
+      try { await ac.close(); } catch {}
       acRef.current = null; gainRef.current = null; recordingDestRef.current = null;
     }
   }, [state.volume, tick]);
@@ -230,13 +245,14 @@ export function useStreamAudio(streamId = 'default') {
   const stop = useCallback(async () => {
     aliveRef.current = false;
     cancelAnimationFrame(rafRef.current);
+    clearTimeout(idleTimerRef.current);
     try { await fetch('/api/generate/storm/stop', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ streamId }),
     }); } catch {}
     abortRef.current?.abort();
-    try { acRef.current?.close(); } catch {}
+    try { await acRef.current?.close(); } catch {}
     acRef.current = null; gainRef.current = null;
     slotTimesRef.current = [];
     slotDurationsRef.current = [];
@@ -343,8 +359,10 @@ export function useStreamAudio(streamId = 'default') {
   useEffect(() => () => {
     aliveRef.current = false;
     cancelAnimationFrame(rafRef.current);
+    clearTimeout(idleTimerRef.current);
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     abortRef.current?.abort();
-    try { acRef.current?.close(); } catch {}
+    void acRef.current?.close().catch(() => {});
   }, []);
 
   return { ...state, start, stop, setVolume, setXfadeBeats, setBpm, setMaxBuffer, sendControl, startRecording, stopRecording, setCrossfadeGain, shiftNextSlot, getNextBeatTime };

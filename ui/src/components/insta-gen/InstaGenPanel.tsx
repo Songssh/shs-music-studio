@@ -1,3 +1,4 @@
+import { writePersistedState } from '../../hooks/usePersistedState';
 import { userStorage } from '../../auth/userStorage';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { inspireProvidersOptions, inspirePromptOptions } from '../../queries/studios/resources';
@@ -12,7 +13,7 @@ import { queryManager } from '../../queries/invalidation';
 //
 // State machine: Input → (optional) Preview → Generate
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Sparkles, Music, Eye, EyeOff, Mic, MicOff, Bot, PenLine, Code2, Save, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
@@ -149,15 +150,17 @@ export const InstaGenPanel: React.FC<InstaGenPanelProps> = ({ onSongCreated, act
   }, [setSubject]);
 
   const [previewDocument, setPreviewDocument] = useState<{ id: string; revision: number; lyrics: string; caption: string } | null>(null);
+  const restoredPreview = useRef<string | null>(null);
   // Recover a saved preview after a browser reconnect. The server document
   // remains authoritative, including edits made by another client.
   useEffect(() => {
     if (!token) return;
     const id = userStorage.getItem('hs-instagen-preview-document');
-    if (!id) return;
+    if (!id || restoredPreview.current === id) return;
     let alive = true;
     instaWorkflowApi.getDocument(id).then(({ document }) => {
       if (!alive || document.kind !== 'insta-preview') return;
+      restoredPreview.current = id;
       const data = document.data as { result: InspireResult; edits: { lyrics: string; caption: string } };
       setPreviewDocument({ id, revision: document.revision, lyrics: data.edits.lyrics, caption: data.edits.caption });
       setInspireResult(data.result);
@@ -280,21 +283,21 @@ export const InstaGenPanel: React.FC<InstaGenPanelProps> = ({ onSongCreated, act
     if (!inspireResult) return;
     try {
       // Write to the same userStorage keys that CreatePanel's usePersistedState reads
-      userStorage.setItem('hs-caption', JSON.stringify(editedCaption));
-      userStorage.setItem('hs-lyrics', JSON.stringify(editedLyrics));
-      userStorage.setItem('hs-instrumental', JSON.stringify(lyricMode === 'instrumental'));
-      if (inspireResult.bpm) userStorage.setItem('hs-bpm', JSON.stringify(inspireResult.bpm));
+      writePersistedState('hs-caption', editedCaption);
+      writePersistedState('hs-lyrics', editedLyrics);
+      writePersistedState('hs-instrumental', lyricMode === 'instrumental');
+      if (inspireResult.bpm) writePersistedState('hs-bpm', inspireResult.bpm);
       // Not in MM3 mode: the Create panel hides its duration control there, so
       // writing one would leave a number in a box nobody can see or clear.
       if (inspireResult.duration && !isAutoDurationRender()) {
-        userStorage.setItem('hs-duration', JSON.stringify(inspireResult.duration));
+        writePersistedState('hs-duration', inspireResult.duration);
       }
-      if (inspireResult.keyScale) userStorage.setItem('hs-keyScale', JSON.stringify(inspireResult.keyScale));
-      if (inspireResult.timeSignature) userStorage.setItem('hs-timeSignature', JSON.stringify(inspireResult.timeSignature));
-      if (vocalLanguage) userStorage.setItem('hs-vocalLanguage', JSON.stringify(vocalLanguage));
+      if (inspireResult.keyScale) writePersistedState('hs-keyScale', inspireResult.keyScale);
+      if (inspireResult.timeSignature) writePersistedState('hs-timeSignature', inspireResult.timeSignature);
+      if (vocalLanguage) writePersistedState('hs-vocalLanguage', vocalLanguage);
       // Title from LLM or derived
       const title = inspireResult.title || '';
-      if (title) userStorage.setItem('hs-title', JSON.stringify(title));
+      if (title) writePersistedState('hs-title', title);
     } catch { /* ignore storage errors */ }
 
     userStorage.removeItem('hs-instagen-preview-document');

@@ -43,8 +43,10 @@ env:
 # ─────────────────────────────────────────────────────────────────────────────
 # Windows builds (CUDA / Vulkan / CPU) — run in parallel via matrix strategy
 # ─────────────────────────────────────────────────────────────────────────────
+# SHS preview: upstream automation stays disabled in forks until separately adapted.
 jobs:
   prepare:
+    if: github.repository == 'scragnog/HOT-Step-CPP'
     runs-on: windows-2022
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -64,6 +66,7 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
 
   build-windows:
+    if: github.repository == 'scragnog/HOT-Step-CPP'
     needs: [prepare]
     env:
       RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
@@ -596,30 +599,9 @@ jobs:
           if (-not (Test-Path "$serverOut/server.mjs")) {
             throw "esbuild failed: server.mjs not found in $serverOut"
           }
-          # Copy better-sqlite3 minimal package
-          $bsqlSrc = "server/node_modules/better-sqlite3"
-          $bsqlDst = "$serverOut/node_modules/better-sqlite3"
-          New-Item -ItemType Directory -Force $bsqlDst | Out-Null
-          Copy-Item "$bsqlSrc/package.json" "$bsqlDst/package.json"
-          New-Item -ItemType Directory -Force "$bsqlDst/lib" | Out-Null
-          Copy-Item -Recurse "$bsqlSrc/lib/*" "$bsqlDst/lib"
-          # Copy pre-built native addon (already rebuilt for Node 24 in earlier step)
-          New-Item -ItemType Directory -Force "$bsqlDst/build/Release" | Out-Null
-          Copy-Item "$bsqlSrc/build/Release/better_sqlite3.node" "$bsqlDst/build/Release/better_sqlite3.node"
-
-          # better-sqlite3 runtime deps
-          foreach ($dep in @("bindings", "file-uri-to-path")) {
-            $depSrc = "server/node_modules/$dep"
-            if (Test-Path $depSrc) {
-              Copy-Item -Recurse $depSrc "$serverOut/node_modules/$dep"
-            }
-          }
-
-          # ffmpeg
-          $ffmpegSrc = "server/node_modules/ffmpeg-static/ffmpeg.exe"
-          if (Test-Path $ffmpegSrc) {
-            Copy-Item $ffmpegSrc "$serverOut/ffmpeg.exe"
-          }
+          # Full locked production graph, including Better Auth and Sharp native assets.
+          & ./release/stage-runtime.ps1 -NodeExe "release/.node-cache/node-v${{ env.NODE_VERSION }}-win-x64/node.exe" -Destination $serverOut
+          Get-ChildItem "$dist/engine/*.dll" | Where-Object { $_.Name -match '^(vcruntime|msvcp|vcomp)' } | Copy-Item -Destination "$dist/runtime" -Force
 
           # Data files
           $dataOut = "$serverOut/data"
@@ -667,6 +649,9 @@ jobs:
           Copy-Item "release/HOT-Step.bat" "$dist/HOT-Step.bat"
           Copy-Item "open-browser-if-needed.mjs" "$dist/open-browser-if-needed.mjs"
           Copy-Item "release/README.txt" "$dist/README.txt"
+          foreach ($file in @('portable.mjs','Setup.bat','create-certificate.ps1','verify-portable.mjs','Verify.bat')) {
+            Copy-Item "release/$file" "$dist/$file"
+          }
 
       - name: Smoke test packaged engine
         shell: bash
@@ -762,7 +747,7 @@ jobs:
 
   # Opt-in measurement only. Release creation does not depend on this job.
   cpu-generation-trial:
-    if: github.event_name == 'workflow_dispatch' && inputs.cpu_generation_trial
+    if: github.repository == 'scragnog/HOT-Step-CPP' && (github.event_name == 'workflow_dispatch' && inputs.cpu_generation_trial)
     needs: [prepare, build-windows]
     runs-on: windows-2022
     timeout-minutes: 25
@@ -1019,6 +1004,7 @@ jobs:
 
   # A separate hosted VM per archive: no build outputs or toolkit setup.
   test-windows-artifacts:
+    if: github.repository == 'scragnog/HOT-Step-CPP'
     needs: [prepare, build-windows]
     runs-on: windows-2022
     timeout-minutes: 30
@@ -1106,7 +1092,7 @@ jobs:
   # macOS build (Apple Silicon / Metal)
   # ─────────────────────────────────────────────────────────────────────────
   build-macos:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'scragnog/HOT-Step-CPP' && (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     needs: [essentia]
     runs-on: macos-15  # Apple Silicon — needs Xcode 16+ for std::from_chars<float>
     steps:
@@ -1458,7 +1444,7 @@ jobs:
   # Linux builds (CUDA / Vulkan / CPU) — run in parallel via matrix strategy
   # ─────────────────────────────────────────────────────────────────────────
   build-linux:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'scragnog/HOT-Step-CPP' && (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     needs: [essentia]
     runs-on: ubuntu-22.04   # 22.04 for wider glibc compatibility across distros
     strategy:
@@ -1984,11 +1970,11 @@ jobs:
   # tab; both bundles are cached on the recipe hash and uploaded as tarballs
   # the packaging steps below unpack. See tools/essentia/ and #104 / #144.
   essentia:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'scragnog/HOT-Step-CPP' && (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     uses: ./.github/workflows/essentia.yml
 
   release:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'scragnog/HOT-Step-CPP' && (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     needs: [build-windows, test-windows-artifacts, build-macos, build-linux]
     runs-on: ubuntu-latest
     permissions:

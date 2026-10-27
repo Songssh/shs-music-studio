@@ -1,3 +1,16 @@
+import { PersonalizationProvider } from './workspace/Personalization';
+import { ImageLibrary } from './workspace/ImageLibrary';
+import { ImageDialogs } from './workspace/PersonalizationPanel';
+import { AccountHub } from './workspace/AccountHub';
+import { WorkspaceProvider, WorkspacePortals, WorkspaceSlot, useWorkspace } from './workspace/WorkspaceContext';
+import { WorkspaceDesktop } from './workspace/WorkspaceDesktop';
+import { WorkspaceServices } from './workspace/WorkspaceServices';
+import { WorkspaceGenerationSummary } from './workspace/WorkspaceGenerationSummary';
+import { isWindowId, type WindowId } from './workspace/registry';
+import { PlaylistSidebar } from './components/playlist/PlaylistSidebar';
+import { InlineAudioQueue } from './components/lyric-studio/InlineAudioQueue';
+import { TerminalPanel } from './components/terminal/TerminalPanel';
+import { ModelManagerModal } from './components/model-manager/ModelManagerModal';
 import { userStorage } from './auth/userStorage';
 // App.tsx — Root application component
 //
@@ -291,9 +304,10 @@ const JobProgressWatcher: React.FC = () => {
 };
 
 const AppContent: React.FC = () => {
+  const ws = useWorkspace();
   const { t } = useTranslation();
   // sessionEpoch re-renders this component when the auth-scoped keys move.
-  const { token, sessionEpoch, isLoading } = useAuth();
+  const { token, sessionEpoch, isLoading, user } = useAuth();
   void sessionEpoch;
   const queryClient = useQueryClient();
   const [activeView, setActiveView] = useState(() => viewFromUrl());
@@ -301,6 +315,10 @@ const AppContent: React.FC = () => {
   const songs = songsQuery.data?.songs ?? NO_SONGS;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
+  const [pinnedDetail, setPinnedDetail] = useState<Song | null>(null);
+  const [cardSize, setCardSize] = usePersistedState("hs-workspace-card-size", 190);
+  const [librarySearch, setLibrarySearch] = useState('');
+  const [librarySort, setLibrarySort] = usePersistedState('hs-workspace-library-sort', 'newest');
 
   // Resizable panel widths (persisted)
   const [createPanelWidth, setCreatePanelWidth] = usePersistedState('ace-createPanelWidth', 490);
@@ -316,7 +334,7 @@ const AppContent: React.FC = () => {
   const [settings, setSettings] = usePersistedState<AppSettings>('ace-settings', DEFAULT_SETTINGS);
 
   // Theme state
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, chooseTheme } = useTheme();
 
 
   // ── Playback (from unified store — each selector only re-renders when its value changes) ──
@@ -485,6 +503,7 @@ const AppContent: React.FC = () => {
 
   // ── URL-based routing ──────────────────────────────────────
   const navigateTo = useCallback((view: string) => {
+    if (ws.enabled && isWindowId(view)) ws.commands.current?.open(view);
     // Save deep Lyric Studio URL before leaving so we can restore it
     if (activeView === 'lyric-studio' && view !== 'lyric-studio') {
       try { userStorage.setItem('hs-lastLyricStudioUrl', window.location.pathname); } catch { /* ignore */ }
@@ -498,14 +517,14 @@ const AppContent: React.FC = () => {
     if (window.location.pathname !== url) {
       window.history.pushState(null, '', url);
     }
-  }, [activeView]);
+  }, [activeView, ws.enabled]);
 
   // Handle browser back/forward
   useEffect(() => {
-    const handlePopState = () => setActiveView(viewFromUrl());
+    const handlePopState = () => { const view = viewFromUrl(); setActiveView(view); if (ws.enabled && isWindowId(view)) ws.commands.current?.open(view); };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [ws.enabled]);
 
   // Direct download helper (reads settings from userStorage)
   const handleDownload = useCallback((song: Song) => downloadTrack(song), []);
@@ -908,11 +927,31 @@ const AppContent: React.FC = () => {
     return <ServerOfflineOverlay />;
   }
   // Main content renderer
-  const renderContent = () => {
-    if (activeView === 'settings') {
-      return (
-        <DiscoPulseWrapper hue={DISCO.activity} className="flex-1 overflow-y-auto">
-          <SettingsPanel
+  const tool = (id: WindowId, fallback: React.ReactNode) => ws.eligible ? <WorkspaceSlot id={id} /> : fallback;
+  const detailSong = ws.enabled && pinnedDetail ? songs.find(s => s.id === pinnedDetail.id) ?? pinnedDetail : selectedSong;
+  const fullLibrary = ws.enabled || activeView === 'library';
+  const workspaceSongs = useMemo(() => {
+    const query = librarySearch.trim().toLocaleLowerCase();
+    return songs.filter(song => !query || [song.title, song.artistName, song.style, song.lyrics].some(value => value?.toLocaleLowerCase().includes(query)))
+      .sort((a, b) => librarySort === 'title' ? (a.title || '').localeCompare(b.title || '')
+        : librarySort === 'duration' ? Number(b.duration || 0) - Number(a.duration || 0)
+        : (librarySort === 'oldest' ? 1 : -1) * (new Date(a.createdAt || a.created_at || 0).getTime() - new Date(b.createdAt || b.created_at || 0).getTime()));
+  }, [songs, librarySearch, librarySort]);
+  const renderTool = (id: WindowId): React.ReactNode => {
+    switch (id) {
+      case 'images': return <ImageLibrary />;
+      case 'account': return <AccountHub theme={theme} onTheme={chooseTheme} />;
+      case 'create': return <div className="ws-content">{ws.enabled && <WorkspaceGenerationSummary />}<CreatePanel
+            onGenerate={handleGenerate}
+            activeJobCount={activeJobCount}
+            reuseData={reuseData}
+          /></div>;
+      case 'insta-gen': return <InstaGenPanel
+              onSongCreated={handleSongCreated}
+              activeJobCount={activeJobCount}
+              onNavigate={navigateTo}
+            />;
+      case 'settings': return <SettingsPanel
             settings={settings}
             onSettingsChange={setSettings}
             onNukeComplete={() => {
@@ -923,7 +962,107 @@ const AppContent: React.FC = () => {
               // cache, so it survives the nuke unless explicitly cleared.
               clearFinishedFromAudioQueue();
             }}
-          />
+          />;
+      case 'lyric-studio': return <LyricStudioV2 />;
+      case 'cover-studio': return <CoverStudio coverSource={coverSource} />;
+      case 'stem-studio': return <StemStudio />;
+      case 'stem-builder': return <StemBuilder />;
+      case 'storm': return <StormPage onGenerate={handleGenerate} activeJobCount={activeJobCount} />;
+      case 'midi-studio': return <MidiStudio />;
+      case 'training-studio': return <TrainingStudio />;
+      case 'compare-studio': return <CompareStudio />;
+      case 'repaint': return <RepaintStudio />;
+      case 'song-builder': return <SongBuilder />;
+      case 'library': return <div className="ws-content" style={{ '--ws-card-size': `${cardSize}px` } as React.CSSProperties}>
+        {ws.enabled && <div className="ws-subtoolbar"><span>{selectedSong ? `선택: ${selectedSong.title}` : '곡을 선택하면 열린 상세 창이 따라갑니다.'}</span>
+          <button disabled={!selectedSong} onClick={() => ws.commands.current?.open('details')}>상세 보기</button>
+          <label>카드 크기 <input aria-label="카드 크기" type="range" min="150" max="300" step="10" value={cardSize} onChange={e => setCardSize(Number(e.target.value))} /></label>
+        </div>}{ws.enabled && <div className="ws-subtoolbar ws-library-controls">
+          <input aria-label="내 음악 검색" placeholder="제목 · 아티스트 · 스타일 · 가사 검색" value={librarySearch} onChange={e => setLibrarySearch(e.target.value)} />
+          <select aria-label="내 음악 정렬" value={librarySort} onChange={e => setLibrarySort(e.target.value)}><option value="newest">최신순</option><option value="oldest">오래된순</option><option value="title">제목순</option><option value="duration">긴 곡부터</option></select>
+        </div>}<SongList
+              songs={ws.enabled ? workspaceSongs : fullLibrary ? songs : songs.filter(s => getSongSource(s) === (activeView === 'insta-gen' ? 'insta-gen' : 'create'))}
+              showFilters={fullLibrary}
+              viewMode={fullLibrary ? undefined : 'grid'}
+              title={fullLibrary ? undefined : t('app.generations')}
+              currentSongId={currentSong?.id}
+              onPlay={playSong}
+              onDelete={handleDelete}
+              onBulkDelete={handleBulkDelete}
+              onCompare={(ids) => { setPendingCompareSongs(ids); navigateTo('compare-studio'); }}
+              onExportZip={async (ids) => {
+                try {
+                  const res = await fetch('/api/songs/export-zip', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Hotstep-User': token } : {}) },
+                    body: JSON.stringify({ ids }),
+                  });
+                  if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || `HTTP ${res.status}`);
+                  const blob = await res.blob();
+                  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1] || 'hotstep-library.zip';
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+                  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+                } catch (e) {
+                  showToast(t('library.exportZipFailed', 'Zip export failed: {{error}}', { error: (e as Error).message }), 'error');
+                }
+              }}
+              onSelect={song => { setSelectedSong(song); if (!ws.enabled) setShowRightSidebar(true); }}
+              onReuse={handleReuse} onSendToCover={handleSendToCover} onEditMetadata={handleEditMetadata}
+              onDownload={handleDownload}
+              onRename={handleRename}
+              showImport={fullLibrary}
+              onAddToPlaylist={(song) => {
+                addToPlaylist({
+                  id: song.id,
+                  title: song.title || 'Untitled',
+                  audioUrl: song.audioUrl || song.audio_url || '',
+                  masteredAudioUrl: song.masteredAudioUrl || song.mastered_audio_url || '',
+                  noAdapterAudioUrl: song.noAdapterAudioUrl || song.noadapter_audio_url || '',
+                  artistName: song.artistName || '',
+                  coverUrl: song.coverUrl || song.cover_url || '',
+                  duration: typeof song.duration === 'number' ? song.duration : undefined,
+                  style: song.style || '',
+                });
+                showToast(t('app.addedToPlaylist'), 'success');
+              }}
+            /></div>;
+      case 'details': return <div className="ws-content">{ws.enabled && <div className="ws-subtoolbar"><button disabled={!detailSong} aria-pressed={!!pinnedDetail} onClick={() => setPinnedDetail(pinnedDetail ? null : detailSong)}>{pinnedDetail ? '고정 해제' : '상세 고정'}</button><span>{pinnedDetail ? '이 곡의 상세를 고정했습니다.' : '목록 선택을 따라갑니다.'}</span></div>}{detailSong ? <RightSidebar
+                  song={detailSong}
+                  onClose={() => ws.enabled ? ws.commands.current?.close('details') : setShowRightSidebar(false)}
+                  onReuse={handleReuse} onSendToCover={handleSendToCover} onEditMetadata={handleEditMetadata}
+                  onDelete={handleDelete}
+                  onPlay={playSong}
+                  isPlaying={isPlaying && currentTrack?.id === detailSong?.id}
+                  onDownload={handleDownload}
+                  onRename={handleRename}
+                /> : <p className="ws-empty">내 음악에서 곡을 선택해 주세요.</p>}</div>;
+      case 'playlist': return <PlaylistSidebar embedded />;
+      case 'queue': return <div className="h-full overflow-auto p-3"><InlineAudioQueue /></div>;
+      case 'terminal': return user?.role === 'admin' ? <TerminalPanel embedded /> : null;
+      case 'assistant': return <div className="ws-content">{ws.enabled && <div className="ws-subtoolbar">설정 적용 대상: Custom-Gen · 공통 모델·생성 설정</div>}<AssistantPanel onClose={() => ws.enabled ? ws.commands.current?.close('assistant') : setShowAssistant(false)} activeView={ws.enabled ? 'create' : activeView} /></div>;
+      case 'parameters': return <GlobalParamBar embedded />;
+      case 'model-manager': return <ModelManagerModal embedded onClose={() => ws.commands.current?.close('model-manager')} />;
+    }
+  };
+
+  const renderContent = () => {
+    if (activeView === 'settings') {
+      return (
+        <DiscoPulseWrapper hue={DISCO.activity} className="flex-1 overflow-y-auto">
+          {tool('settings', <SettingsPanel
+            settings={settings}
+            onSettingsChange={setSettings}
+            onNukeComplete={() => {
+              patchLibrary(queryClient, () => []);
+              void invalidateSongs(queryClient);
+              setSelectedSong(null);
+              // The queue is a persisted singleton store outside the song
+              // cache, so it survives the nuke unless explicitly cleared.
+              clearFinishedFromAudioQueue();
+            }}
+          />)}
         </DiscoPulseWrapper>
       );
     }
@@ -931,7 +1070,7 @@ const AppContent: React.FC = () => {
     if (activeView === 'lyric-studio') {
       return (
         <DiscoPulseWrapper hue={DISCO.songGrid} className="flex-1 overflow-hidden">
-          <LyricStudioV2 />
+          {tool('lyric-studio', <LyricStudioV2 />)}
         </DiscoPulseWrapper>
       );
     }
@@ -939,7 +1078,7 @@ const AppContent: React.FC = () => {
     if (activeView === 'cover-studio') {
       return (
         <DiscoPulseWrapper hue={DISCO.activity} className="flex-1 overflow-hidden">
-          <CoverStudio coverSource={coverSource} />
+          {tool('cover-studio', <CoverStudio coverSource={coverSource} />)}
         </DiscoPulseWrapper>
       );
     }
@@ -947,7 +1086,7 @@ const AppContent: React.FC = () => {
     if (activeView === 'stem-studio') {
       return (
         <DiscoPulseWrapper hue={DISCO.assistant} className="flex-1 overflow-hidden">
-          <StemStudio />
+          {tool('stem-studio', <StemStudio />)}
         </DiscoPulseWrapper>
       );
     }
@@ -955,7 +1094,7 @@ const AppContent: React.FC = () => {
     if (activeView === 'stem-builder') {
       return (
         <DiscoPulseWrapper hue={DISCO.assistant} className="flex-1 overflow-hidden">
-          <StemBuilder />
+          {tool('stem-builder', <StemBuilder />)}
         </DiscoPulseWrapper>
       );
     }
@@ -963,7 +1102,7 @@ const AppContent: React.FC = () => {
     if (activeView === 'storm') {
       return (
         <DiscoPulseWrapper hue={DISCO.storm} className="flex-1 overflow-hidden">
-          <StormPage onGenerate={handleGenerate} activeJobCount={activeJobCount} />
+          {tool('storm', <StormPage onGenerate={handleGenerate} activeJobCount={activeJobCount} />)}
         </DiscoPulseWrapper>
       );
     }
@@ -971,7 +1110,7 @@ const AppContent: React.FC = () => {
     if (activeView === 'midi-studio') {
       return (
         <DiscoPulseWrapper hue={DISCO.playlist} className="flex-1 overflow-hidden">
-          <MidiStudio />
+          {tool('midi-studio', <MidiStudio />)}
         </DiscoPulseWrapper>
       );
     }
@@ -979,7 +1118,7 @@ const AppContent: React.FC = () => {
     if (activeView === 'training-studio') {
       return (
         <DiscoPulseWrapper hue={DISCO.trainingStudio} className="flex-1 overflow-hidden">
-          <TrainingStudio />
+          {tool('training-studio', <TrainingStudio />)}
         </DiscoPulseWrapper>
       );
     }
@@ -987,7 +1126,7 @@ const AppContent: React.FC = () => {
     if (activeView === 'compare-studio') {
       return (
         <DiscoPulseWrapper hue={DISCO.playlist} className="flex-1 overflow-hidden">
-          <CompareStudio />
+          {tool('compare-studio', <CompareStudio />)}
         </DiscoPulseWrapper>
       );
     }
@@ -995,7 +1134,7 @@ const AppContent: React.FC = () => {
     if (activeView === 'repaint') {
       return (
         <DiscoPulseWrapper hue={DISCO.createPanel} className="flex-1 overflow-hidden">
-          <RepaintStudio />
+          {tool('repaint', <RepaintStudio />)}
         </DiscoPulseWrapper>
       );
     }
@@ -1003,7 +1142,7 @@ const AppContent: React.FC = () => {
     if (activeView === 'song-builder') {
       return (
         <DiscoPulseWrapper hue={DISCO.createPanel} className="flex-1 overflow-hidden">
-          <SongBuilder />
+          {tool('song-builder', <SongBuilder />)}
         </DiscoPulseWrapper>
       );
     }
@@ -1016,11 +1155,11 @@ const AppContent: React.FC = () => {
             className="flex-shrink-0 h-full border-r border-zinc-200 dark:border-white/5"
             style={{ width: createPanelWidth }}
           >
-            <InstaGenPanel
+            {tool('insta-gen', <InstaGenPanel
               onSongCreated={handleSongCreated}
               activeJobCount={activeJobCount}
               onNavigate={navigateTo}
-            />
+            />)}
           </DiscoPulseWrapper>
 
           {/* Left resize handle */}
@@ -1051,7 +1190,7 @@ const AppContent: React.FC = () => {
 
           {/* Song List — "Generations" (filtered to insta-gen only) */}
           <DiscoPulseWrapper hue={DISCO.songGrid} className="flex-1 min-w-0 overflow-y-auto">
-            <SongList
+            {tool('library', <SongList
               songs={songs.filter(s => getSongSource(s) === 'insta-gen')}
               currentSongId={currentSong?.id}
               onPlay={playSong}
@@ -1078,7 +1217,7 @@ const AppContent: React.FC = () => {
                 });
                 showToast(t('app.addedToPlaylist'), 'success');
               }}
-            />
+            />)}
           </DiscoPulseWrapper>
 
 
@@ -1114,7 +1253,7 @@ const AppContent: React.FC = () => {
                 className="flex-shrink-0 h-full bg-zinc-50 dark:bg-suno z-10 border-l border-zinc-200 dark:border-white/5"
                 style={{ width: rightSidebarWidth }}
               >
-                <RightSidebar
+                {tool('details', <RightSidebar
                   song={selectedSong}
                   onClose={() => setShowRightSidebar(false)}
                   onReuse={handleReuse} onSendToCover={handleSendToCover} onEditMetadata={handleEditMetadata}
@@ -1123,7 +1262,7 @@ const AppContent: React.FC = () => {
                   isPlaying={isPlaying && currentTrack?.id === selectedSong?.id}
                   onDownload={handleDownload}
                   onRename={handleRename}
-                />
+                />)}
               </DiscoPulseWrapper>
             </>
           )}
@@ -1135,7 +1274,7 @@ const AppContent: React.FC = () => {
       return (
         <div className="flex flex-1 overflow-hidden">
           <DiscoPulseWrapper hue={DISCO.songGrid} className="flex-1 min-w-0 overflow-y-auto">
-            <SongList
+            {tool('library', <SongList
               songs={songs}
               currentSongId={currentSong?.id}
               onPlay={playSong}
@@ -1179,7 +1318,7 @@ const AppContent: React.FC = () => {
                 });
                 showToast(t('app.addedToPlaylist'), 'success');
               }}
-            />
+            />)}
           </DiscoPulseWrapper>
 
           {/* Right Sidebar — Song detail */}
@@ -1214,7 +1353,7 @@ const AppContent: React.FC = () => {
                 className="flex-shrink-0 h-full bg-zinc-50 dark:bg-suno z-10 border-l border-zinc-200 dark:border-white/5"
                 style={{ width: rightSidebarWidth }}
               >
-                <RightSidebar
+                {tool('details', <RightSidebar
                   song={selectedSong}
                   onClose={() => setShowRightSidebar(false)}
                   onReuse={handleReuse} onSendToCover={handleSendToCover} onEditMetadata={handleEditMetadata}
@@ -1223,7 +1362,7 @@ const AppContent: React.FC = () => {
                   isPlaying={isPlaying && currentTrack?.id === selectedSong?.id}
                   onDownload={handleDownload}
                   onRename={handleRename}
-                />
+                />)}
               </DiscoPulseWrapper>
             </>
           )}
@@ -1250,11 +1389,11 @@ const AppContent: React.FC = () => {
             portrait-wide:!w-full portrait-wide:border-b portrait-wide:border-r-0 portrait-wide:h-auto"
           style={{ width: createPanelWidth }}
         >
-          <CreatePanel
+          {tool('create', <CreatePanel
             onGenerate={handleGenerate}
             activeJobCount={activeJobCount}
             reuseData={reuseData}
-          />
+          />)}
         </DiscoPulseWrapper>
 
         {/* Left resize handle — hidden on narrow and portrait */}
@@ -1287,7 +1426,7 @@ const AppContent: React.FC = () => {
 
         {/* Song List + Queue (filtered to create/custom-gen only) */}
         <DiscoPulseWrapper hue={DISCO.songGrid} className="flex-1 min-w-0 overflow-y-auto">
-          <SongList
+          {tool('library', <SongList
             songs={[
               // The live render first: it is the newest thing here, and it is
               // playable before its file exists. Dropped automatically once the
@@ -1320,7 +1459,7 @@ const AppContent: React.FC = () => {
               });
               showToast(t('app.addedToPlaylist'), 'success');
             }}
-          />
+          />)}
         </DiscoPulseWrapper>
 
 
@@ -1358,7 +1497,7 @@ const AppContent: React.FC = () => {
                 max-[1023px]:hidden portrait-wide:hidden"
               style={{ width: rightSidebarWidth }}
             >
-              <RightSidebar
+              {tool('details', <RightSidebar
                 song={selectedSong}
                 onClose={() => setShowRightSidebar(false)}
                 onReuse={handleReuse} onSendToCover={handleSendToCover} onEditMetadata={handleEditMetadata}
@@ -1367,7 +1506,7 @@ const AppContent: React.FC = () => {
                 isPlaying={isPlaying && currentTrack?.id === selectedSong?.id}
                 onDownload={handleDownload}
                 onRename={handleRename}
-              />
+              />)}
             </DiscoPulseWrapper>
           </>
         )}
@@ -1382,7 +1521,8 @@ const AppContent: React.FC = () => {
           GlobalParamBar so both desktop and mobile bars share the same
           backdrop and z-level. */}
       <JobProgressWatcher />
-      <GlobalParamBar onOpenMobileNav={() => setMobileNavOpen(true)} />
+      {!ws.enabled && <GlobalParamBar onOpenMobileNav={() => setMobileNavOpen(true)} />}
+      {ws.eligible && !ws.enabled && <div className="ws-classic-entry"><button onClick={() => ws.setEnabled(true)}>새 Workspace 사용</button></div>}
 
       {/* Asks before running a generation queue restored from a previous
           session, rather than starting it unattended (issue #100). Renders
@@ -1392,7 +1532,7 @@ const AppContent: React.FC = () => {
       <AudioQueueMigrationBanner />
 
       <div className="flex-1 min-h-0 flex overflow-clip">
-        <DiscoPulseWrapper hue={DISCO.sidebar}>
+        {!ws.enabled && <DiscoPulseWrapper hue={DISCO.sidebar}>
         <Sidebar
           activeView={activeView}
           onViewChange={navigateTo}
@@ -1429,7 +1569,7 @@ const AppContent: React.FC = () => {
           showAssistant={showAssistant}
           onToggleAssistant={() => setShowAssistant(prev => !prev)}
         />
-        </DiscoPulseWrapper>
+        </DiscoPulseWrapper>}
 
         {/* Left stack — everything the activity column does NOT cover. The
             player lives in here rather than spanning the window, so the
@@ -1437,7 +1577,7 @@ const AppContent: React.FC = () => {
         <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-clip">
         <main className="flex-1 min-w-0 min-h-0 flex min-[1024px]:overflow-clip max-[1023px]:overflow-y-auto portrait-wide:overflow-y-auto relative">
           <ErrorBoundary resetKey={activeView}>
-            {renderContent()}
+            {ws.enabled ? <WorkspaceDesktop theme={theme} onToggleTheme={toggleTheme} onActive={setActiveView} initialView={activeView} /> : renderContent()}
           </ErrorBoundary>
         </main>
 
@@ -1552,6 +1692,7 @@ const AppContent: React.FC = () => {
         {/* Activity column — Playlist/Recent + Queue + Terminal. One instance for
             every view, so the queue and the engine log are never more than a
             glance away regardless of which studio is open. */}
+        {!ws.enabled && <>
         <div
           className="flex-shrink-0 w-1.5 h-full cursor-col-resize group z-20 flex items-center hover:bg-pink-500/20 active:bg-pink-500/30 transition-colors max-[1023px]:hidden portrait-wide:hidden"
           onMouseDown={(e) => {
@@ -1587,8 +1728,10 @@ const AppContent: React.FC = () => {
           />
         </DiscoPulseWrapper>
 
+        </>}
+
         {/* Assistant Panel — right of the activity column, resizable */}
-        {showAssistant && (
+        {!ws.enabled && showAssistant && (
           <>
             <div
               className="flex-shrink-0 w-1.5 h-full cursor-col-resize group z-20 flex items-center hover:bg-violet-500/20 active:bg-violet-500/30 transition-colors"
@@ -1618,13 +1761,14 @@ const AppContent: React.FC = () => {
               className="flex-shrink-0 h-full border-l border-zinc-200 dark:border-white/5"
               style={{ width: assistantWidth }}
             >
-              <AssistantPanel onClose={() => setShowAssistant(false)} activeView={activeView} />
+              {tool('assistant', <AssistantPanel onClose={() => setShowAssistant(false)} activeView={activeView} />)}
             </DiscoPulseWrapper>
           </>
         )}
 
       </div>
 
+      {ws.eligible && <WorkspacePortals render={renderTool} />}
       {/* Modals */}
       {showHotkeyHelp && <HotkeyHelpModal onClose={closeHotkeyHelp} />}
       {showPalette && (
@@ -1664,6 +1808,7 @@ const AppContent: React.FC = () => {
 
       {/* Per-track cover art prompt modal (#67) — single instance, driven by window events */}
       <CoverArtPromptModal />
+      {ws.eligible && <ImageDialogs theme={theme} onTheme={chooseTheme} />}
 
       {/* "Upload into Library" — single instance, opened from the Library header */}
       <ImportTracksModal />
@@ -1683,7 +1828,7 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => (
   <GlobalParamsProvider>
     <DisguiseModeProvider>
-      <AppContent />
+      <WorkspaceProvider><PersonalizationProvider><WorkspaceServices><AppContent /></WorkspaceServices></PersonalizationProvider></WorkspaceProvider>
     </DisguiseModeProvider>
   </GlobalParamsProvider>
 );

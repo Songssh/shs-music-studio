@@ -13,6 +13,7 @@ import { randomInt } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../../config.js';
 import { getDb } from '../../db/database.js';
+import { registerSongCover } from '../images/library.js';
 import { buildCoverArtPrompt, type CoverArtPromptOpts } from './promptBuilder.js';
 import { resolveCoverScene } from './sceneLlm.js';
 
@@ -209,6 +210,10 @@ export function linkCoverToSong(coverUrl: string, songId: string): void {
     getDb().prepare('UPDATE songs SET cover_url = ? WHERE id = ?')
       .run(coverUrl, songId);
     console.log(`[CoverArt] Linked cover to song ${songId}: ${coverUrl}`);
+    const owner = getDb().prepare('SELECT user_id FROM songs WHERE id=?').get(songId) as {user_id:string}|undefined;
+    if (owner) void registerSongCover(songId, owner.user_id, 'generated').catch(() => {
+      console.warn('[CoverArt] Image library registration deferred; song and cover retained.');
+    });
   } catch (dbErr: any) {
     console.error(`[CoverArt] DB update failed for ${songId}: ${dbErr.message}`);
   }

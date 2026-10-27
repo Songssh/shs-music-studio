@@ -19,9 +19,12 @@ import { initDb, closeDb, getDb } from './db/database.js';
 import { createIdentityService } from './auth/service.js';
 import { installIdentityHTTP, requireAdministrator } from './auth/http.js';
 import { assets } from './auth/ownership.js';
+import { serverTransport } from './transport.js';
 import { roleBoundary, personalInputBoundary } from './auth/boundary.js';
 // lireekDb is now part of the unified hotstep.db — no separate init needed
 import authRoutes from './routes/auth.js';
+import imageRoutes from './routes/images.js';
+import desktopRoutes from './routes/desktop.js';
 import songRoutes from './routes/songs.js';
 import generateRoutes from './routes/generate.js';
 import modelRoutes from './routes/models.js';
@@ -93,6 +96,7 @@ initDb();
 
 // Create Express app
 const app = express();
+const createServer = serverTransport(process.env, config.server.host);
 
 // Middleware
 const identity = await createIdentityService({ db: getDb(), dataDir: config.data.dir,
@@ -119,6 +123,8 @@ app.use('/api', roleBoundary, personalInputBoundary);
 
 // API routes
 app.use('/api/auth', authRoutes);
+app.use('/api/images', imageRoutes);
+app.use('/api/desktop', desktopRoutes);
 app.use('/api/songs', songRoutes);
 app.use('/api/generate', generateRoutes);
 app.use('/api/models', modelRoutes);
@@ -485,14 +491,14 @@ async function warmEngineOnStartup(): Promise<void> {
 }
 
 // Start Express server
-const server = app.listen(config.server.port, config.server.host, () => {
+const server = createServer(app).listen(config.server.port, config.server.host, () => {
   console.log(`[Server] HOT-Step CPP v${APP_VERSION}`);
-  console.log(`[Server] Listening on http://localhost:${config.server.port}`);
+  console.log(`[Server] Listening at ${identity.origin}`);
   console.log(`[Server] ace-server URL: ${config.aceServer.url}`);
   if (DATA_ROOT) console.log(`[Server] Data folder: ${DATA_ROOT}`);
   console.log(`[Server] Data directory: ${config.data.dir}`);
   console.log('');
-  console.log(`  🎵 Open http://localhost:${config.server.port} in your browser`);
+  console.log(`  🎵 Open ${identity.origin} in your browser`);
   console.log('');
   // Durable audio queue: surface items a previous process left mid-submit,
   // then start submitting pending ones.

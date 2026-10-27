@@ -1,3 +1,4 @@
+import { useWorkspaceTool } from '../../workspace/WorkspaceContext';
 import { userStorage } from '../../auth/userStorage';
 // CreatePanel.tsx — The composition panel (Content + Metadata only)
 //
@@ -68,6 +69,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, activeJobC
   // ── AI Generate modal ──
   const [aiModalOpen, setAiModalOpen] = useState(false);
 
+  const workspace = useWorkspaceTool()?.workspace;
   // ── Content (per-song) ──
   const [caption, setCaption] = usePersistedState('hs-caption', '');
   const [lyrics, setLyrics] = usePersistedState('hs-lyrics', '');
@@ -322,6 +324,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, activeJobC
     writePersistedState(YUE2_CAPTION_DATASET_KEY, value);
   }, []);
 
+  const consumedReuse = useRef<number | null>(null);
   // Global params context — for reuse data
   const gp = useGlobalParams();
 
@@ -375,7 +378,8 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, activeJobC
 
   // ── Reuse data (Edit) — restores ALL generation params for full reproducibility ──
   useEffect(() => {
-    if (!reuseData) return;
+    if (!reuseData || consumedReuse.current === reuseData.timestamp) return;
+    consumedReuse.current = reuseData.timestamp;
     const gpData = reuseData.song.generationParams;
     if (!gpData) return;
 
@@ -708,14 +712,21 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, activeJobC
           </div>
         )}
 
-        <MetadataSection
+        {workspace ? <Fold title="음악 매개변수" storageKey="hs-workspace-fold-music">        <MetadataSection
           bpm={bpm} onBpmChange={setBpm}
           keyScale={keyScale} onKeyScaleChange={setKeyScale}
           timeSignature={timeSignature} onTimeSignatureChange={setTimeSignature}
           duration={duration} onDurationChange={setDuration}
           vocalLanguage={vocalLanguage} onVocalLanguageChange={setVocalLanguage}
           vocalGender={vocalGender} onVocalGenderChange={setVocalGender}
-        />
+        /></Fold> :         <MetadataSection
+          bpm={bpm} onBpmChange={setBpm}
+          keyScale={keyScale} onKeyScaleChange={setKeyScale}
+          timeSignature={timeSignature} onTimeSignatureChange={setTimeSignature}
+          duration={duration} onDurationChange={setDuration}
+          vocalLanguage={vocalLanguage} onVocalLanguageChange={setVocalLanguage}
+          vocalGender={vocalGender} onVocalGenderChange={setVocalGender}
+        />}
 
         {/* Latent import — only ACE-Step reads a source latent */}
         {activeBackendId === 'ace' && <LatentImport
@@ -761,6 +772,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, activeJobC
         </Fold>
       </div>
 
+      {workspace && <p className="text-[10px] text-zinc-500 px-4 pb-2">입력은 이 기기에 자동 저장됩니다.</p>}
       {/* AI Generate Modal */}
       <AiGenerateModal
         isOpen={aiModalOpen}

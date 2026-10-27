@@ -1,3 +1,4 @@
+import { useWorkspaceTool } from '../../workspace/WorkspaceContext';
 /**
  * InlineAudioQueue.tsx — Inline audio generation queue display.
  * Shows active, pending, and completed audio generation jobs from the audioGenQueueStore.
@@ -55,6 +56,7 @@ function useSendToPlaylist(): [boolean, (v: boolean) => void] {
 }
 
 export const InlineAudioQueue: React.FC = () => {
+  const workspace = useWorkspaceTool()?.workspace;
   const { items } = useAudioGenQueue();
   const { t } = useTranslation();
   const currentSongId = usePlaybackSelector(s => s.currentTrack?.id ?? null);
@@ -180,12 +182,9 @@ export const InlineAudioQueue: React.FC = () => {
         </>
       )}
 
-      {finished.length > 0 && (
-        <>
-          <GroupLabel label="Completed" color="text-green-400" />
-          <QueueRows rows={groupBatches(finished)} isPlaying={isPlaying} onPlay={handlePlay} onDownload={handleDownload} />
-        </>
-      )}
+      {finished.length > 0 && (workspace ? <details><summary className="cursor-pointer py-2 text-xs text-zinc-500">완료 기록 ({finished.length})</summary>
+        <QueueRows rows={groupBatches(finished)} isPlaying={isPlaying} onPlay={handlePlay} onDownload={handleDownload} />
+      </details> : <><GroupLabel label="Completed" color="text-green-400" /><QueueRows rows={groupBatches(finished)} isPlaying={isPlaying} onPlay={handlePlay} onDownload={handleDownload} /></>)}
 
     </div>
   );

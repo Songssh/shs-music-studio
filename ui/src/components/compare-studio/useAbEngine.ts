@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { dbToLinear, levelMatchGainsDb } from './levelMatch';
+import { useWorkspacePlaybackLease } from '../../workspace/WorkspaceContext';
 import { pauseGlobalPlayback, registerExternalPlayer } from '../../stores/playbackStore';
 
 export interface AbTake {
@@ -104,6 +105,9 @@ export function useAbEngine(takes: AbTake[]): AbEngine {
   const [levelMatch, setLevelMatchState] = useState(false);
   const [decoded, setDecoded] = useState<string[]>([]);
   const [loading, setLoading] = useState<string[]>([]);
+  const visible = useWorkspacePlaybackLease(isPlaying || loading.length > 0);
+  const visibleRef = useRef(visible); visibleRef.current = visible;
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [duration, setDuration] = useState(0);
 
@@ -145,7 +149,7 @@ export function useAbEngine(takes: AbTake[]): AbEngine {
   }, [getCurrentTime]);
 
   const tick = useCallback(() => {
-    emitTime();
+    if (visibleRef.current) emitTime();
     const ctx = ctxRef.current;
     // Stop at end when not looping.
     if (playingRef.current && ctx && !loopRef.current) {
@@ -159,7 +163,8 @@ export function useAbEngine(takes: AbTake[]): AbEngine {
         emitTime();
       }
     }
-    rafRef.current = playingRef.current ? requestAnimationFrame(tick) : null;
+    if (playingRef.current && !visibleRef.current) idleTimer.current = setTimeout(tick, 250);
+    else rafRef.current = playingRef.current ? requestAnimationFrame(tick) : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [emitTime, getCurrentTime]);
 
@@ -437,6 +442,7 @@ export function useAbEngine(takes: AbTake[]): AbEngine {
 
   // Cleanup on unmount.
   useEffect(() => () => {
+    clearTimeout(idleTimer.current);
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
     playingRef.current = false;

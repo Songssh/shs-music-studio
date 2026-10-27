@@ -6,16 +6,19 @@ import { togglePlay, seek, getPlaybackState } from '../stores/playbackStore';
 export const HOTKEY_EVENT = 'hs-hotkey';
 
 function isModalOpen(): boolean {
-  return !!document.querySelector('[role="dialog"], [aria-modal="true"], [data-hotkeys-block]');
+  return !!document.querySelector('[role="dialog"]:not([aria-modal="false"]), [aria-modal="true"], [data-hotkeys-block], dialog[open]');
 }
 
 /** Install the desktop global hotkeys. onHelp opens the cheat sheet. */
 export function useGlobalHotkeys(onHelp: () => void, onPalette?: () => void): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return;
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
       const action: HotkeyAction | null = mapKey(e);
       if (!action) return;
+      const tool = document.querySelector<HTMLElement>('[data-workspace-active]')?.dataset?.workspaceActive;
+      if (tool && LIBRARY_ACTIONS.has(action) && tool !== 'library') return;
+      if (tool && ['compare-studio', 'stem-studio', 'storm', 'midi-studio', 'song-builder', 'stem-builder'].includes(tool) && ['togglePlay', 'seekBack', 'seekForward'].includes(action)) return;
       // Ctrl/Cmd+K works while typing too; only an open dialog blocks it.
       if (action === 'openPalette') {
         if (!onPalette || isModalOpen()) return;
@@ -23,7 +26,7 @@ export function useGlobalHotkeys(onHelp: () => void, onPalette?: () => void): vo
         onPalette();
         return;
       }
-      if (shouldIgnore({ target: e.target as HTMLElement | null, modalOpen: isModalOpen(), pathname: window.location.pathname })) return;
+      if (shouldIgnore({ target: e.target as HTMLElement | null, modalOpen: isModalOpen(), pathname: tool ? (tool === 'compare-studio' ? '/compare' : '/library') : window.location.pathname })) return;
       // Let focused buttons and links keep their native Space/Enter behaviour.
       const tag = (e.target as HTMLElement | null)?.tagName;
       if ((action === 'togglePlay' && e.key === ' ' || action === 'playFocused') && (tag === 'BUTTON' || tag === 'A')) return;

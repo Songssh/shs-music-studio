@@ -16,6 +16,7 @@ import {
   getMidiStreamUrl, channelLabel,
 } from '../../services/midiStudioApi';
 import { MidiSynth, type PlayNote } from './midiSynth';
+import { useWorkspacePlaybackLease } from '../../workspace/WorkspaceContext';
 
 const PPS = 40;          // px per second
 const ROLL_H = 230;
@@ -45,6 +46,7 @@ export const MidiPlayer: React.FC<Props> = ({ jobId, sourceAudioUrl, live }) => 
   const [noteCount, setNoteCount] = useState(0);      // mirrors notesRef length -> redraw
   const [redraw, setRedraw] = useState(0);            // bump from event handlers
   const [isPlaying, setIsPlaying] = useState(false);
+  const visible = useWorkspacePlaybackLease(isPlaying);
   const [crossfade, setCrossfade] = useState(50);
   const [duration, setDuration] = useState(0);
   const [curTime, setCurTime] = useState(0);
@@ -268,15 +270,17 @@ export const MidiPlayer: React.FC<Props> = ({ jobId, sourceAudioUrl, live }) => 
 
   // resize canvas to content and redraw on data changes
   useEffect(() => {
+    if (!visible) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const wantW = Math.max(600, Math.ceil(Math.max(duration, frontier ?? 0, 10) * PPS) + 40);
     if (canvas.width !== wantW) { canvas.width = wantW; canvas.height = ROLL_H; }
     draw();
-  }, [noteCount, redraw, duration, frontier, draw]);
+  }, [noteCount, redraw, duration, frontier, draw, visible]);
 
   // animation loop while playing: playhead + auto-follow
   useEffect(() => {
+    if (!visible) return;
     if (!isPlaying) { draw(); return; }
     const loop = () => {
       const tNow = synthRef.current?.currentTime ?? 0;
@@ -291,7 +295,7 @@ export const MidiPlayer: React.FC<Props> = ({ jobId, sourceAudioUrl, live }) => 
     };
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [isPlaying, draw]);
+  }, [isPlaying, draw, visible]);
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 

@@ -16,8 +16,10 @@ on:
   workflow_call:
   workflow_dispatch:
 
+# SHS preview: upstream automation stays disabled in forks until separately adapted.
 jobs:
   linux:
+    if: github.repository == 'scragnog/HOT-Step-CPP'
     runs-on: ubuntu-22.04   # same glibc floor as build-linux
     steps:
       - name: Checkout
@@ -52,6 +54,7 @@ jobs:
           if-no-files-found: error
 
   macos:
+    if: github.repository == 'scragnog/HOT-Step-CPP'
     runs-on: macos-15
     steps:
       - name: Checkout

@@ -5,7 +5,7 @@ import { userStorage } from '../auth/userStorage';
 // Also listens for external storage writes (e.g. from queue stores)
 // so the top bar stays in sync with Lyric Studio's adapter changes.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export function usePersistedState<T>(key: string, defaultValue: T): [T, (value: T | ((prev: T) => T)) => void] {
   const [state, setState] = useState<T>(() => {
@@ -17,26 +17,34 @@ export function usePersistedState<T>(key: string, defaultValue: T): [T, (value: 
     }
   });
 
-  useEffect(() => {
-    try {
-      userStorage.setItem(key, JSON.stringify(state));
-    } catch {
-      // Storage full or unavailable
-    }
-  }, [key, state]);
+  const current = useRef(state);
+  current.current = state;
+  // Commit at the input boundary, before an Activity can hide its effects.
+  // A later reveal must also see Auto→Custom / Assistant writes made while hidden.
+  const persist = useCallback((value: T | ((prev: T) => T)) => {
+    const next = typeof value === 'function' ? (value as (prev: T) => T)(current.current) : value;
+    current.current = next;
+    try { userStorage.setItem(key, JSON.stringify(next)); } catch { /* Storage unavailable */ }
+    setState(next);
+  }, [key]);
 
   // Listen for writes from other tabs or from non-React code (queue stores)
   useEffect(() => {
+    try {
+      const value = userStorage.getItem(key);
+      if (value !== null) { current.current = JSON.parse(value); setState(current.current); }
+      else userStorage.setItem(key, JSON.stringify(current.current));
+    } catch { /* Storage unavailable */ }
     const handler = (e: StorageEvent) => {
       if (e.key === key && e.newValue !== null) {
-        try { setState(JSON.parse(e.newValue)); } catch { /* ignore */ }
+        try { current.current = JSON.parse(e.newValue); setState(current.current); } catch { /* ignore */ }
       }
     };
     window.addEventListener('storage', handler);
     return () => window.removeEventListener('storage', handler);
   }, [key]);
 
-  return [state, setState];
+  return [state, persist];
 }
 
 /** Write a value to userStorage AND dispatch a StorageEvent so

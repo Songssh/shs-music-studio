@@ -1,3 +1,4 @@
+import { workspaceOwnsKeyboard, editorOwnsKeyboard } from '../../workspace/keyboard';
 /**
  * LyricStudioV2.tsx — Main container for the Lyric Studio interface.
  *
@@ -509,6 +510,7 @@ export const LyricStudioV2: React.FC = () => {
   // ── Keyboard shortcuts ──
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (!workspaceOwnsKeyboard('lyric-studio') || editorOwnsKeyboard(e)) return;
       if (e.key === 'Escape') {
         if (fetchModalOpen) setFetchModalOpen(false);
         else if (nav.level === 'album-detail') handleBackToAlbums();

@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { prepareImageSchema } from '../services/images/schema.js';
 
 /** Additive and repeatable: keep legacy IDs and file references intact. */
 export function prepareIdentitySchema(db: Database.Database): void {
@@ -35,4 +36,5 @@ export function prepareIdentitySchema(db: Database.Database): void {
       VALUES(1,'open',?,?)`).run(legacy?.id ?? null, Date.now());
     db.prepare('INSERT OR IGNORE INTO auth_migrations VALUES(1,?)').run(new Date().toISOString());
   })();
+  prepareImageSchema(db);
 }

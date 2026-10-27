@@ -1,3 +1,5 @@
+import { usePersonalization } from '../workspace/Personalization';
+import { useWorkspace } from '../workspace/WorkspaceContext';
 import { userStorage } from '../auth/userStorage';
 // useTheme.ts — theme state hook with userStorage persistence
 //
@@ -31,7 +33,8 @@ function applyTheme(theme: Theme): void {
   }
 }
 
-export function useTheme(): { theme: Theme; toggleTheme: () => void } {
+export function useTheme(): { theme: Theme; toggleTheme: () => void; chooseTheme: (value:Theme)=>void } {
+  const personal=usePersonalization();const ws=useWorkspace();
   const [theme, setTheme] = useState<Theme>(() => {
     try {
       const stored = userStorage.getItem(STORAGE_KEY);
@@ -45,15 +48,8 @@ export function useTheme(): { theme: Theme; toggleTheme: () => void } {
     applyTheme(theme);
   }, [theme]);
 
-  const toggleTheme = useCallback(() => {
-    setTheme(prev => {
-      const next: Theme = prev === 'dark' ? 'light' : 'dark';
-      try {
-        userStorage.setItem(STORAGE_KEY, next);
-      } catch { /* ignore */ }
-      return next;
-    });
-  }, []);
-
-  return { theme, toggleTheme };
+  useEffect(()=>{if(ws.eligible&&personal.ready&&personal.prefs.theme)setTheme(personal.prefs.theme);},[ws.eligible,personal.ready,personal.prefs.theme]);
+  const chooseTheme=useCallback((value:Theme)=>{setTheme(value);userStorage.setItem(STORAGE_KEY,value);if(ws.eligible)void personal.save({theme:value}).catch(()=>{});},[ws.eligible,personal.save]);
+  const toggleTheme=useCallback(()=>chooseTheme(theme==='dark'?'light':'dark'),[theme,chooseTheme]);
+  return { theme, toggleTheme, chooseTheme };
 }
