@@ -28,6 +28,14 @@ export function checkReleaseLayout(root) {
       if (!new RegExp(`(?:^|["\\s])${binary}(?:\\.exe)?(?:$|["\\s,])`).test(binaryList)) errors.push(`${name}: missing engine binary ${binary}`);
     }
   }
+  for (const [name, src] of [
+    ...assemblers.filter(([name]) => name === 'release.yml windows' || name === 'release/build-release.ps1'),
+    ['tools/publication/package-preview.py', read('tools/publication/package-preview.py')],
+  ]) {
+    for (const file of ['Configure-LAN.bat', 'Configure-LAN.ps1']) {
+      if (!src.includes(file)) errors.push(`${name}: missing LAN configuration helper ${file}`);
+    }
+  }
   const template = read('release/.env.example');
   for (const line of template.split(/\r?\n/)) {
     if (/^(DATA_DIR|ACESTEPCPP_MODELS|ACESTEPCPP_ADAPTERS|TRAINING_DIR|LYRICS_EXPORT_DIR|MUSCRIPTOR_MODELS_DIR|WHISPER_EXE|WHISPER_MODELS_DIR|TENSORRT_LIBS)=.+/.test(line)) errors.push(`release template pins a managed path: ${line.split('=')[0]}`);

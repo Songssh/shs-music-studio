@@ -649,7 +649,7 @@ jobs:
           Copy-Item "release/HOT-Step.bat" "$dist/HOT-Step.bat"
           Copy-Item "open-browser-if-needed.mjs" "$dist/open-browser-if-needed.mjs"
           Copy-Item "release/README.txt" "$dist/README.txt"
-          foreach ($file in @('portable.mjs','Setup.bat','create-certificate.ps1','verify-portable.mjs','Verify.bat')) {
+          foreach ($file in @('portable.mjs','Setup.bat','Configure-LAN.bat','Configure-LAN.ps1','create-certificate.ps1','verify-portable.mjs','Verify.bat')) {
             Copy-Item "release/$file" "$dist/$file"
           }
 

@@ -56,7 +56,8 @@ if __name__=='__main__':
     shutil.copytree(fresh,stage/'server',dirs_exist_ok=True)
     shutil.copytree(ROOT/'ui/dist',stage/'ui/dist')
     for n in ['.env.example','portable.mjs','profile-path.mjs','create-certificate.ps1','HOT-Step.bat',
-              'SHS-Music-Studio.bat','Setup.bat','Verify.bat','verify-portable.mjs','README.txt']:
+              'SHS-Music-Studio.bat','Setup.bat','Configure-LAN.bat','Configure-LAN.ps1',
+              'Verify.bat','verify-portable.mjs','README.txt']:
         shutil.copy2(ROOT/'release'/n,stage/n)
     for n in ['LICENSE','THIRD_PARTY.md']:
         shutil.copy2(ROOT/n,stage/n)

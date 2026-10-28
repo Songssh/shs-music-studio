@@ -328,7 +328,7 @@ Copy-Item (Join-Path $ReleaseDir "HOT-Step.bat") (Join-Path $dist "HOT-Step.bat"
 Copy-Item (Join-Path $ReleaseDir "README.txt") (Join-Path $dist "README.txt")
 Copy-Item (Join-Path $ProjectRoot "open-browser-if-needed.mjs") (Join-Path $dist "open-browser-if-needed.mjs")
 
-foreach ($file in @('portable.mjs','Setup.bat','create-certificate.ps1','verify-portable.mjs','Verify.bat','SHS-Music-Studio.bat')) {
+foreach ($file in @('portable.mjs','Setup.bat','Configure-LAN.bat','Configure-LAN.ps1','create-certificate.ps1','verify-portable.mjs','Verify.bat','SHS-Music-Studio.bat')) {
     Copy-Item -LiteralPath (Join-Path $ReleaseDir $file) -Destination $dist
 }
 Copy-Item -LiteralPath (Join-Path $ProjectRoot 'LICENSE') -Destination $dist

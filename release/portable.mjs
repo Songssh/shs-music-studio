@@ -35,7 +35,7 @@ function protect(directory) {
   if(r.status!==0)throw Error(`Cannot protect private directory: ${r.stderr||r.stdout}`);
 }
 async function setup() {
-  if(fs.existsSync(configFile)){console.log('Already configured. Edit portable.json to change the data folder or address; existing data is preserved.');return;}
+  if(fs.existsSync(configFile)){console.log('Already configured. To enable LAN access with the default self-signed certificate, stop the app and run Configure-LAN.bat in the app folder. Existing data is preserved. For other changes, edit portable.json and update the matching TLS configuration.');return;}
   const unattended=args.includes('--yes');
   const rl=unattended?null:createInterface({input:process.stdin,output:process.stdout});
   const ask=async(label,value)=>unattended?value:(await rl.question(`${label} [${value}]: `)).trim()||value;
