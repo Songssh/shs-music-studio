@@ -8,7 +8,7 @@ import hashlib
 import json
 import pathlib
 import shutil
-import subprocess
+import datetime
 import zipfile
 import audit
 
@@ -79,6 +79,7 @@ if __name__=='__main__':
     (stage/'VERSION').write_text(VERSION,encoding='ascii')
     manifest=json.loads((stage/'release-manifest.json').read_text(encoding='utf-8'))
     manifest.update({'product':'SHS Music Studio','version':VERSION,'baseArchive':base.name,
+                     'createdAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),
                      'baseArchiveSha256':sha(base),'publicationStatus':'LOCAL REVIEW CANDIDATE — binary licensing/provenance gates pending',
                      'sourceHead':audit.git('rev-parse','HEAD').decode().strip(),
                      'sourceTree':audit.git('rev-parse','HEAD^{tree}').decode().strip(),
