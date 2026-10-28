@@ -1,6 +1,6 @@
 import { useWindowRegistry } from './useWindowRegistry';
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { createDockview, themeDark, themeLight, type DockviewApi, type IDockviewPanel, type SerializedDockview, type DockviewGroupPanel } from 'dockview';
+import { DockviewComponent, themeDark, themeLight, type DockviewApi, type DockviewGroupPanel } from 'dockview';
 import 'dockview/dist/styles/dockview.css';
 import './workspace.css';
 import { useWorkspace } from './WorkspaceContext';
@@ -11,15 +11,22 @@ import { BackgroundLayer, usePersonalization, openPersonalization } from './Pers
 import { AppLauncher, ContextMenu, type MenuItem } from './DesktopMenus';
 import { useAudioGenQueueSelector } from '../stores/audioGenQueueStore';
 import { StreamActivityContext } from './StreamControllers';
+import { dockviewWindowActions, type Placement } from './dockviewWindows';
+import { constrainFloatingBox, recoverLayout } from './floatingBounds';
+import { dockviewSnap, type SnapController } from './dockviewSnap';
+import { SnapLayoutControls } from './SnapLayoutControls';
+import { SNAP_LAYOUTS, type SnapLayoutId } from './snapLayouts';
+import { useTranslation } from 'react-i18next';
 
-type Placement = { x: number; y: number; width: number; height: number; floating: boolean; sibling?: string; neighbor?: string; direction?: 'left' | 'right' | 'above' | 'below' };
-type Layout = { version: 1; layout: SerializedDockview; minimized: string[]; placements: Record<string, Placement> };
-type Actions = { open: (id: WindowId) => void; close: (id: WindowId) => void; minimize: (id: WindowId) => void; reset: () => void; save: () => void; restore: () => void; float: () => void; dock: () => void; tab: (id: string) => void };
+import { migrateWorkspaceOrigin, type WorkspaceLayout as Layout } from './workspaceLayout';
+type Actions = { open: (id: WindowId) => void; close: (id: WindowId) => void; minimize: (id: WindowId) => void; reset: () => void; save: () => void; restore: () => void; float: () => void; dock: () => void; tab: (id: string) => void; arrange: (layout?: SnapLayoutId) => void; undo: () => void };
 
 export function WorkspaceDesktop({ theme, onToggleTheme, onActive, initialView }: {
   theme: 'dark' | 'light'; onToggleTheme: () => void; onActive: (id: string) => void; initialView: string;
 }) {
   const ws = useWorkspace(); const { user } = useAuth(); const menu = useWindowRegistry();
+  const { t } = useTranslation();
+  const [snapController, setSnapController] = useState<SnapController | null>(null);
   const {prefs,ready,save,error}=usePersonalization();
   const [launcher,setLauncher]=useState(false),[context,setContext]=useState<{x:number;y:number;id?:WindowId}|null>(null);
   const closeMenu=useCallback(()=>setContext(null),[]);
@@ -46,9 +53,8 @@ export function WorkspaceDesktop({ theme, onToggleTheme, onActive, initialView }
 
   useEffect(() => {
     const element = root.current!;
-    let api: DockviewApi; let restoring = false; let disposed = false;
+    let restoring = false; let disposed = false;
     let minimizedIds = new Set<string>(); let placements: Record<string, Placement> = {};
-    let beforeMax: SerializedDockview | null = null;
     const raiseGrid = () => {
       if(disposed)return;
       element.querySelectorAll('.ws-front-grid,.ws-front-grid-content').forEach(node=>node.classList.remove('ws-front-grid','ws-front-grid-content'));
@@ -59,28 +65,17 @@ export function WorkspaceDesktop({ theme, onToggleTheme, onActive, initialView }
       panel.group.element.classList.add('ws-front-grid');
       element.querySelector(`[data-workspace-tool="${panel.id}"]`)?.closest('.dv-render-overlay')?.classList.add('ws-front-grid-content');
     };
-    const snapshot = (): Layout => ({ version: 1, layout: beforeMax ?? api.toJSON(), minimized: [...minimizedIds], placements });
+    const snapshot = (): Layout => ({ version: 2, canvasInset: 0, layout: windows.normalLayout(), minimized: [...minimizedIds], placements, minimizedWindows: windows.minimized(), snap: snap.state() });
     const write = (key = LAYOUT_KEY) => { try { userStorage.setItem(key, JSON.stringify(snapshot())); } catch { setNotice('배치를 저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.'); } };
     const refresh = () => {
       if (restoring || disposed) return;
+      windows.sync();
+      snap.sync();
+      minimizedIds = new Set([...minimizedIds].filter(id => !api.getPanel(id) && !windows.minimizedIds().includes(id)).concat(windows.minimizedIds()));
       setOpenIds(api.panels.map(p => p.id)); setMinimized([...minimizedIds]);
       const id = api.activePanel?.id ?? ''; setActive(id); ws.setActive(id);
       requestAnimationFrame(raiseGrid);
       write();
-    };
-    const remember = (panel: IDockviewPanel): Placement => {
-      const parent = element.getBoundingClientRect(); const box = panel.group.element.getBoundingClientRect();
-      const neighbor = api.panels.find(p => p.group.id !== panel.group.id && p.api.location.type === 'grid');
-      const other = neighbor?.group.element.getBoundingClientRect();
-      const direction = other && Math.abs(box.x-other.x) < 40 ? (box.y < other.y ? 'above' : 'below') : (other && box.x < other.x ? 'left' : 'right');
-      return { neighbor: neighbor?.id, direction, x: box.left - parent.left, y: box.top - parent.top, width: Math.max(320, box.width), height: Math.max(240, box.height),
-        floating: panel.api.location.type === 'floating', sibling: panel.group.panels.find(p => p.id !== panel.id)?.id };
-    };
-    const unmaximize = () => {
-      if (!beforeMax) return;
-      const saved = beforeMax; beforeMax = null;
-      restoring = true; api.fromJSON(saved, { reuseExistingPanels: true }); restoring = false;
-      api.updateOptions({ disableDnd: false }); refresh();
     };
     const add = (id: WindowId, float = true) => {
       const previous = placements[id];
@@ -88,43 +83,46 @@ export function WorkspaceDesktop({ theme, onToggleTheme, onActive, initialView }
       const floatWidth = Math.min(previous?.width ?? width, element.clientWidth - 24);
       const floatHeight = Math.min(previous?.height ?? 650, element.clientHeight - 24);
       const sibling = previous?.sibling && api.getPanel(previous.sibling);
+      const box = constrainFloatingBox({ left: previous?.x ?? 45 + api.panels.length * 18, top: previous?.y ?? 30 + api.panels.length * 14, width: floatWidth, height: floatHeight }, { width: element.clientWidth, height: element.clientHeight });
       const panel = api.addPanel({ id, component: 'tool', title: windowTitle(id), minimumWidth: 300, minimumHeight: 220,
         ...(sibling ? { position: { referencePanel: sibling.id, direction: 'within' as const } }
-          : float ? { floating: { x: Math.max(0, Math.min(previous?.x ?? 45 + api.panels.length * 18, element.clientWidth - floatWidth)), y: Math.max(0, Math.min(previous?.y ?? 30 + api.panels.length * 14, element.clientHeight - floatHeight)),
+          : float ? { floating: { x: box.left, y: box.top,
             width: floatWidth, height: floatHeight } } : { position: previous?.neighbor && api.getPanel(previous.neighbor) ? { referencePanel: previous.neighbor, direction: previous.direction ?? 'left' } : { direction: 'left' }, initialWidth: previous?.width }) });
       return panel;
     };
     const open = (id: WindowId) => {
       if (!allowedRef.current(id)) return;
-      unmaximize(); minimizedIds.delete(id);
-      const panel = api.getPanel(id) ?? add(id, placements[id]?.floating ?? true);
-      panel.api.setActive(); refresh(); onActiveRef.current(id);
-      requestAnimationFrame(()=>{const host=element.querySelector<HTMLElement>(`[data-workspace-tool="${id}"]`);if(host){host.tabIndex=-1;host.focus({preventScroll:true});}});
+      restoring = true;
+      let restored;
+      try { restored = windows.restore(id); } finally { restoring = false; }
+      minimizedIds.delete(id);
+      const panel = restored ?? api.getPanel(id) ?? add(id, placements[id]?.floating ?? true);
+      if (!panel.api.isActive) panel.api.setActive();
+      refresh(); onActiveRef.current(panel.id);
+      requestAnimationFrame(()=>{const host=element.querySelector<HTMLElement>(`[data-workspace-tool="${panel.id}"]`);if(host){host.tabIndex=-1;host.focus({preventScroll:true});}});
     };
     const close = (id: WindowId, minimize = false) => {
-      unmaximize(); const panel = api.getPanel(id); if (!panel) { if (!minimize) { minimizedIds.delete(id); refresh(); } return; }
-      placements[id] = remember(panel);
-      if (minimize) minimizedIds.add(id); else minimizedIds.delete(id);
-      api.removePanel(panel); refresh();
-    };
-    const maximize = (id: string) => {
-      if (beforeMax) { unmaximize(); return; }
-      const panel = api.getPanel(id); if (!panel) return;
-      beforeMax = api.toJSON();
-      if (panel.api.location.type === 'floating') panel.group.api.moveTo({ position: 'right' });
-      panel.api.maximize(); api.updateOptions({ disableDnd: true }); refresh();
+      // One transaction: do not persist the half-removed tab list.
+      const hidden = windows.minimized().find(w => id in w.panels);
+      if (!minimize && hidden) Object.keys(hidden.panels).forEach(key => minimizedIds.delete(key));
+      if (!minimize) minimizedIds.delete(id);
+      restoring = true;
+      try { windows.close(id, minimize); } finally { restoring = false; }
+      refresh();
     };
     const float = (id = api.activePanel?.id) => {
-      unmaximize(); const panel = id && api.getPanel(id); if (!panel) return;
-      const box = remember(panel);
+      const panel = id && api.getPanel(id); if (!panel) return;
+      windows.restoreSize(panel.group);
+      const box = windows.remember(panel.group);
       api.addFloatingGroup(panel, { x: 36, y: 30, width: Math.min(Math.max(box.width, 360), element.clientWidth - 30), height: Math.min(650, element.clientHeight - 30) }); refresh();
     };
     const dock = (id = api.activePanel?.id) => {
-      unmaximize(); const panel = id && api.getPanel(id); if (!panel) return;
+      const panel = id && api.getPanel(id); if (!panel) return;
+      windows.restoreSize(panel.group);
       panel.api.moveTo({ position: 'right' }); refresh();
     };
     const defaults = () => {
-      beforeMax = null; restoring = true; minimizedIds.clear(); placements = {}; api.clear();
+      restoring = true; windows.clear(); snap.load(); minimizedIds.clear(); placements = {}; api.clear();
       const left = add('create', false);
       api.addPanel({ id: 'library', component: 'tool', title: windowTitle('library'), minimumWidth: 300, minimumHeight: 220,
         position: { referencePanel: left.id, direction: 'right' } });
@@ -135,22 +133,15 @@ export function WorkspaceDesktop({ theme, onToggleTheme, onActive, initialView }
       const text = userStorage.getItem(key); if (!text) return false;
       try {
         const data = JSON.parse(text) as Layout;
-        if (data.version !== 1 || !data.layout?.grid || !data.layout.panels || data.layout.popoutGroups?.length) throw new Error('Invalid layout');
+        if (![1, 2].includes(data.version) || !data.layout?.grid || !data.layout.panels || data.layout.popoutGroups?.length) throw new Error('Invalid layout');
         if (Object.keys(data.layout.panels).some(id => !isWindowId(id))) throw new Error('Unknown window');
-        // Preserve the layout while making old coordinates reachable in the new shell.
-        for (const floating of data.layout.floatingGroups ?? []) {
-          const box=floating.position;
-          box.width=Math.max(300,Math.min(box.width,element.clientWidth));
-          box.height=Math.max(220,Math.min(box.height,element.clientHeight));
-          if('left' in box)box.left=Math.max(0,Math.min(box.left,element.clientWidth-box.width));
-          if('top' in box)box.top=Math.max(0,Math.min(box.top,element.clientHeight-box.height));
-          if('right' in box)box.right=Math.max(0,Math.min(box.right,element.clientWidth-box.width));
-          if('bottom' in box)box.bottom=Math.max(0,Math.min(box.bottom,element.clientHeight-box.height));
-        }
-        beforeMax = null; restoring = true;
-        api.fromJSON(data.layout, { reuseExistingPanels: true });
+        migrateWorkspaceOrigin(data);
+        restoring = true; windows.clear();
+        windows.restoreLayout(recoverLayout(data.layout, { width: element.clientWidth, height: element.clientHeight }));
         for (const panel of [...api.panels]) if (!allowedRef.current(panel.id)) api.removePanel(panel);
         minimizedIds = new Set((data.minimized ?? []).filter(id => allowedRef.current(id) && !api.getPanel(id)));
+        windows.setMinimized((data.minimizedWindows ?? []).filter(w => Object.keys(w.panels).every(id => allowedRef.current(id) && !api.getPanel(id))));
+        snap.load(data.snap);
         placements = data.placements ?? {}; api.updateOptions({ disableDnd: false });
         restoring = false; refresh(); return true;
       } catch { restoring = false; setNotice('저장 배치를 읽지 못해 기본 배치로 복구했습니다. 초안과 작업은 유지됩니다.'); return false; }
@@ -159,24 +150,35 @@ export function WorkspaceDesktop({ theme, onToggleTheme, onActive, initialView }
       const node = document.createElement('div'); node.className = 'ws-window-actions';
       const button = (label: string, symbol: string, run: () => void) => {
         const b = document.createElement('button'); b.type = 'button'; b.title = label; b.setAttribute('aria-label', label); b.textContent = symbol;
-        b.onpointerdown = e => e.stopPropagation(); b.onclick = e => { e.stopPropagation(); run(); }; node.append(b);
+        b.onpointerdown = e => e.stopPropagation(); b.onclick = e => { e.stopPropagation(); run(); }; node.append(b); return b;
       };
       const tabs=document.createElement('select'); tabs.className='ws-tab-combine'; tabs.title='다른 창과 탭 결합'; tabs.setAttribute('aria-label','다른 창과 탭 결합');
       const options=()=>{tabs.replaceChildren();const hint=document.createElement('option');hint.value='';hint.textContent='⋯';tabs.append(hint);for(const p of api.panels){if(p.id===group.activePanel?.id)continue;const option=document.createElement('option');option.value=p.id;option.textContent='탭 결합 · '+windowTitle(p.id);tabs.append(option);}};
       tabs.onpointerdown=e=>{e.stopPropagation();options();};tabs.onfocus=options;tabs.onchange=()=>{const p=group.activePanel,target=api.getPanel(tabs.value);if(p&&target){p.api.moveTo({group:target.group,position:'center'});refresh();}tabs.value='';};options();node.append(tabs);
-      button('도킹 / 창으로 분리' , '↗', () => { const p = group.activePanel; if (p) group.api.location.type === 'floating' ? dock(p.id) : float(p.id); });
+      button('도킹 / 창으로 분리' , '↗', () => { const p = group.activePanel; if (p) { if (group.api.location.type === 'floating') dock(p.id); else float(p.id); } });
+      const snapButton = button(t('workspace.snap.title', 'Snap layouts'), '▦', () => snap.openPicker(group, snapButton.getBoundingClientRect(), true));
+      snapButton.classList.add('ws-snap-trigger');
       button('최소화', '—', () => { const id = group.activePanel?.id; if (id && isWindowId(id)) close(id, true); });
-      button('최대화 / 원래 크기', '□', () => { const id = group.activePanel?.id; if (id) maximize(id); });
+      const maximize = button('최대화 / 원래 크기', '□', () => { snap.closeMenu(); const id = group.activePanel?.id; if (id) windows.maximize(id); });
+      maximize.classList.add('ws-snap-trigger');
+      const unbindSnap = snap.bindMaximize(maximize, group);
       button('창 닫기', '×', () => { const id = group.activePanel?.id; if (id && isWindowId(id)) close(id); });
-      return { element: node, init() {}, dispose() { node.replaceChildren(); } };
+      return { element: node, init() {}, dispose() { unbindSnap(); node.replaceChildren(); } };
     };
-    api = createDockview(element, {
+    const component = new DockviewComponent(element, {
       theme: theme === 'dark' ? themeDark : themeLight,
-      floatingGroupBounds: 'boundedWithinViewport', floatingGroupDragHandle: 'tabbar',
+      floatingGroupBounds: { minimumWidthWithinViewport: 160, minimumHeightWithinViewport: 40 }, floatingGroupDragHandle: 'tabbar',
+      transformFloatingGroupDrag: context => snap.transform(context),
       defaultRenderer: 'always', defaultTabComponent: 'workspace-tab', createRightHeaderActionComponent: header,
       createTabComponent: ({ id }) => {
-        const node = document.createElement('div'); node.className = 'ws-tab-title'; node.textContent = windowTitle(id);
-        return { element: node, init() {} };
+        const node = document.createElement('div'); node.className = 'ws-tab-title';
+        const title = document.createElement('span'); title.textContent = windowTitle(id); node.append(title);
+        const closeTab = document.createElement('button'); closeTab.type = 'button'; closeTab.className = 'ws-tab-close'; closeTab.textContent = '×';
+        closeTab.title = `${windowTitle(id)} 탭 닫기`; closeTab.setAttribute('aria-label', closeTab.title);
+        closeTab.onpointerdown = e => e.stopPropagation();
+        closeTab.onclick = e => { e.stopPropagation(); const panel = api.getPanel(id); if (panel) api.removePanel(panel); refresh(); };
+        node.append(closeTab);
+        return { element: node, init() {}, dispose() { node.replaceChildren(); } };
       },
       createComponent: ({ id }) => {
         const node = document.createElement('div'); node.className = 'ws-slot'; let off: { dispose(): void } | undefined;
@@ -184,11 +186,19 @@ export function WorkspaceDesktop({ theme, onToggleTheme, onActive, initialView }
           if (!isWindowId(id)) return;
           ws.hosts.attach(id, node, params.api.isVisible);
           off = params.api.onDidVisibilityChange(e => ws.hosts.visibility(id, node, e.isVisible));
-          node.onpointerdown = () => { params.api.setActive(); onActiveRef.current(id); };
-          node.addEventListener('focusin', () => { params.api.setActive(); onActiveRef.current(id); });
+          node.onpointerdown = () => { if (!params.api.isActive) params.api.setActive(); onActiveRef.current(id); };
+          node.addEventListener('focusin', () => { if (!params.api.isActive) params.api.setActive(); onActiveRef.current(id); });
         }, dispose() { off?.dispose(); if (isWindowId(id)) ws.hosts.detach(id, node); } };
       },
     });
+    const api = component.api;
+    const windows = dockviewWindowActions(component, element, refresh);
+    const snap = dockviewSnap(component, element, windows, run => {
+      const wasRestoring = restoring; restoring = true;
+      try { run(); } finally { restoring = wasRestoring; }
+      refresh();
+    });
+    setSnapController(snap);
     apiRef.current = api;
     // ResizeObserver runs later; restore against the actual desktop now so
     // floating coordinates are not scaled against Dockview's initial 100px grid.
@@ -198,18 +208,19 @@ export function WorkspaceDesktop({ theme, onToggleTheme, onActive, initialView }
       requestAnimationFrame(raiseGrid);
       if (e.panel && !restoring) { setActive(e.panel.id); ws.setActive(e.panel.id); onActiveRef.current(e.panel.id); }
     });
-    actions.current = { open, close, minimize:id=>close(id,true), reset: defaults, save: () => { write(SAVED_LAYOUT_KEY); setNotice('현재 배치를 저장했습니다.'); },
+    actions.current = { open, close, minimize:id=>close(id,true), reset: defaults, arrange: snap.openArrange, undo: snap.undo, save: () => { write(SAVED_LAYOUT_KEY); setNotice('현재 배치를 저장했습니다.'); },
       restore: () => { if (!load(SAVED_LAYOUT_KEY)) setNotice('저장된 배치가 없습니다. 먼저 배치 저장을 눌러 주세요.'); },
       float: () => float(), dock: () => dock(), tab: id => {
-        const current = api.activePanel?.id; unmaximize();
+        const current = api.activePanel?.id;
         const panel = current && api.getPanel(current); const target = api.getPanel(id);
         if (panel && target && panel.id !== id) { panel.api.moveTo({ group: target.group, position: 'center' }); refresh(); }
       } };
-    ws.commands.current = { open, close, save:actions.current.save, restore:actions.current.restore, reset:defaults };
+    ws.commands.current = { open, close, save:actions.current.save, restore:actions.current.restore, reset:defaults, arrange: () => snap.openArrange(), undo: snap.undo };
     if (!load(LAYOUT_KEY)) defaults();
     if (isWindowId(initialView) && !['create', 'library'].includes(initialView)) open(initialView);
     return () => {
-      write(); disposed = true; layoutSubscription.dispose(); activeSubscription.dispose(); api.dispose();
+      write(); disposed = true; snap.dispose(); windows.dispose(); layoutSubscription.dispose(); activeSubscription.dispose(); api.dispose();
+      setSnapController(null);
       apiRef.current = null; ws.commands.current = null; actions.current = null;
     };
     // The imperative layout owns its lifetime. React prop changes must not rebuild its panels.
@@ -224,6 +235,7 @@ export function WorkspaceDesktop({ theme, onToggleTheme, onActive, initialView }
   const pin=(id:string)=>void save({pinned:prefs.pinned.includes(id)?prefs.pinned.filter(x=>x!==id):[...prefs.pinned,id]}).catch(()=>{});
   const desktopItems:MenuItem[]=[
     {label:'창 열기',children:[...new Set(menu.map(w=>w[3]))].map(category=>({label:category,children:menu.filter(w=>w[3]===category).map(w=>({label:`${w[2]} ${w[1]}`,run:()=>open(w[0])}))}))},
+    {label:t('workspace.snap.arrange','Arrange windows'),children:[...SNAP_LAYOUTS.map(layout=>({label:t(`workspace.snap.layout.${layout.id}`,layout.label),run:()=>actions.current?.arrange(layout.id)})),{label:t('workspace.snap.save','Save current arrangement'),run:()=>actions.current?.save()},{label:t('workspace.snap.undo','Restore previous arrangement'),run:()=>actions.current?.undo()}]},
     {label:'작업 공간',children:[{label:'현재 배치 저장',run:()=>actions.current?.save()},{label:'저장 배치 불러오기',run:()=>actions.current?.restore()},{label:'기본 배치 복원',run:()=>actions.current?.reset()}]},
     {label:'배경 변경',run:openPersonalization},{label:'테마',children:[{label:'☀ 밝은 테마',run:()=>{if(theme!=='light')onToggleTheme();}},{label:'☾ 어두운 테마',run:()=>{if(theme!=='dark')onToggleTheme();}}]},
     {label:'내 계정',run:()=>open('account')}
@@ -266,5 +278,6 @@ export function WorkspaceDesktop({ theme, onToggleTheme, onActive, initialView }
     </div>
     {launcher&&<AppLauncher open={open} onClose={()=>setLauncher(false)}/>}
     {context&&<ContextMenu x={context.x} y={context.y} items={contextItems()} onClose={closeMenu}/>}
+    {snapController&&<SnapLayoutControls controller={snapController}/>}
   </section>;
 }

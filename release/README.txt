@@ -1,4 +1,4 @@
-SHS Music Studio v0.1.0-preview - Windows Portable (x64)
+SHS Music Studio v0.1.1-preview - Windows Portable (x64)
 Based on HOT-Step CPP v1.4.2; upstream copyrights and licenses are preserved.
 Repository and full guide: https://github.com/Songssh/shs-music-studio
 

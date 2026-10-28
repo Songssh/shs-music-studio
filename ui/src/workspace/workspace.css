@@ -22,6 +22,9 @@
    this override the content receives pointer events over the resize handles. */
 .workspace .dv-resize-container,.workspace .dv-render-overlay { --dv-overlay-z-index:999; }
 .workspace .dv-resize-container { min-width:320px; min-height:240px; }
+.workspace .dv-resize-container.ws-snapped { border:0;border-radius:0;box-shadow:none; }
+.workspace .ws-snapped .dv-groupview { border:0;border-radius:0; }
+.workspace .dv-resize-container.ws-snapped::after { content:'';position:absolute;inset:0;pointer-events:none;border-right:1px solid var(--ws-line);border-bottom:1px solid var(--ws-line); }
 .ws-desktop { isolation:isolate; }
 .ws-classic-entry { position:relative; z-index:45; flex-shrink:0; }
 html:not(.dark) .workspace textarea,html:not(.dark) .workspace input:not([type=range]):not([type=checkbox]) { background-color:#fff; color:#272833; }
@@ -52,7 +55,7 @@ html:not(.dark) .workspace .assistant-header,html:not(.dark) .workspace .assista
 .ws-rail .ws-profile-button { background:color-mix(in srgb,var(--ws-accent) 13%,var(--ws-panel));color:var(--ws-accent);font-size:17px;font-weight:700;border:1px solid var(--ws-line); }
 .ws-theme-button { font-size:19px!important; }
 .ws-center { flex:1;min-width:0;min-height:0;position:relative;display:flex;overflow:hidden; }
-.ws-desktop { flex:1;margin:10px;z-index:1;min-height:0;min-width:0;position:relative; }
+.ws-desktop { flex:1;margin:0;z-index:1;min-height:0;min-width:0;position:relative; }
 .workspace .dv-dockview { background:transparent;--dv-background-color:transparent; }
 .workspace .dv-grid-view,.workspace .dv-split-view { background:transparent; }
 .ws-wallpaper { position:absolute;inset:0;overflow:hidden;pointer-events:none; }
@@ -64,6 +67,11 @@ html:not(.dark) .workspace .assistant-header,html:not(.dark) .workspace .assista
 .ws-notice { position:absolute;bottom:16px;left:50%;transform:translateX(-50%);padding:10px 16px;border-radius:8px;background:var(--ws-panel);border:1px solid var(--ws-line);font-size:12px;z-index:2000;max-width:90%;box-shadow:0 8px 28px #0003; }
 .ws-tab-combine { max-width:35px;border:0;background:transparent;color:var(--ws-muted);font-size:15px!important; }
 .ws-tab-combine option { color:var(--ws-text);background:var(--ws-panel); }
+.ws-tab-title { display:flex;align-items:center;gap:8px; }
+.ws-tab-title>span { overflow:hidden;text-overflow:ellipsis; }
+.ws-tab-close { flex-shrink:0;width:18px;height:18px;line-height:16px;border-radius:3px;color:var(--ws-muted); }
+.ws-tab-close:hover { color:var(--ws-text);background:var(--ws-line); }
+.ws-maximized>[class^="dv-resize-handle-"] { pointer-events:none; }
 .ws-context-menu { position:fixed;z-index:10010;display:flex;gap:4px;max-width:calc(100vw - 16px);align-items:flex-start;color:var(--ws-text);font-size:12px;filter:drop-shadow(0 12px 24px #0004); }
 .ws-context-column { width:235px;max-width:calc(50vw - 12px);max-height:calc(100dvh - 24px);overflow:auto;background:var(--ws-panel);padding:6px;border:1px solid var(--ws-line);border-radius:10px; }
 .ws-context-menu button { display:flex;text-align:left;justify-content:space-between;align-items:center;width:100%;padding:10px;border-radius:5px; }.ws-context-menu button:hover,.ws-context-menu button:focus { background:var(--ws-bar);outline:1px solid var(--ws-line); }
@@ -90,3 +98,34 @@ html:not(.dark) .workspace .assistant-header,html:not(.dark) .workspace .assista
 .ws-images>.ws-page-heading { flex-shrink:0; }
 .ws-images-body { flex:1;min-height:0; }
 .ws-image-browser,.ws-image-detail { overflow:auto; }
+
+/* Snap UI is portalled into the browser top layer; geometry stays in Dockview. */
+.ws-snap-popover { --snap-panel:#fff;--snap-bar:#f7f8fb;--snap-line:#d8dce6;--snap-text:#252733;--snap-muted:#707586;--snap-accent:#b73980; position:fixed;inset:auto;margin:0;padding:16px;border:1px solid var(--snap-line);border-radius:14px;color:var(--snap-text);background:var(--snap-panel);box-shadow:0 18px 70px #0005;overflow:auto;font-size:12px; }
+.dark .ws-snap-popover { --snap-panel:#1c1d24;--snap-bar:#23242d;--snap-line:#454651;--snap-text:#e4e4eb;--snap-muted:#a5a5b1;--snap-accent:#e780b9; }
+.ws-snap-popover::backdrop { background:transparent;pointer-events:none; }
+.ws-snap-popover header { display:flex;align-items:center;gap:8px; }.ws-snap-popover header strong { flex:1;font-size:13px; }.ws-snap-popover header>button { padding:4px;border-radius:5px; }
+.ws-snap-popover p { color:var(--snap-muted);font-size:11px;line-height:1.6;margin:10px 0 14px; }
+.ws-snap-popover button:focus-visible { outline:2px solid var(--snap-accent);outline-offset:2px; }.ws-snap-popover button:disabled { opacity:.3;cursor:not-allowed; }
+.ws-snap-layouts { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 12px; }.ws-snap-layout { min-width:0; }.ws-snap-diagram { position:relative;width:100%;height:61px; }.ws-snap-diagram button { position:absolute;padding:3px;border:2px solid var(--snap-panel);border-radius:5px;background:var(--snap-bar);box-shadow:inset 0 0 0 1px var(--snap-line);display:flex;align-items:center;justify-content:center;color:var(--snap-muted);font-size:9px; }
+.ws-snap-diagram button:not(:disabled):hover,.ws-snap-diagram button:focus-visible,.ws-snap-diagram button[aria-pressed=true] { background:color-mix(in srgb,var(--snap-accent) 24%,var(--snap-panel));color:var(--snap-accent);box-shadow:inset 0 0 0 1px var(--snap-accent); }
+.ws-snap-layout-label { display:block;line-height:1.4;margin-top:5px;font-size:10px;color:var(--snap-muted); }.ws-snap-popover footer { display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid var(--snap-line);margin-top:16px;padding-top:12px; }.ws-snap-popover footer>span { margin-right:auto;color:var(--snap-muted); }.ws-snap-popover footer button { padding:7px 9px;border:1px solid var(--snap-line);border-radius:7px;font-size:11px; }.ws-snap-popover footer .primary { background:var(--snap-accent);color:var(--snap-panel);border-color:var(--snap-accent); }
+.ws-snap-choices { display:flex;flex-direction:column;gap:6px;max-height:230px;overflow:auto;margin-top:16px; }.ws-snap-choice { display:flex;align-items:center;text-align:left;gap:10px;width:100%;padding:10px;border:1px solid var(--snap-line);border-radius:8px; }.ws-snap-choice:hover,.ws-snap-choice[aria-pressed=true] { background:var(--snap-bar);border-color:var(--snap-accent); }.ws-snap-choice i { font-style:normal;font-size:22px;color:var(--snap-accent);width:28px;text-align:center;flex-shrink:0; }.ws-snap-choice>span { flex:1;min-width:0; }.ws-snap-choice strong,.ws-snap-choice small { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.ws-snap-choice strong { font-size:12px;font-weight:550; }.ws-snap-choice small { font-size:10px;color:var(--snap-muted);margin-top:3px; }
+.ws-snap-order { display:flex;flex-direction:column;gap:4px;margin-bottom:8px; }.ws-snap-order>div { display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--snap-bar); }.ws-snap-order b { color:var(--snap-accent); }.ws-snap-order span { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }.ws-snap-order button { padding:4px; }
+.ws-snap-preview { position:fixed;z-index:10020;pointer-events:none;box-sizing:border-box;border:1px solid #e780b9;border-radius:0;background:#b7398030;box-shadow:inset 0 0 24px #b7398018; }
+.ws-snap-divider { position:fixed;z-index:10000;border-radius:5px;touch-action:none; }.ws-snap-divider.x { cursor:col-resize; }.ws-snap-divider.y { cursor:row-resize; }.ws-snap-divider:hover,.ws-snap-divider:focus-visible { background:#b7398077;outline:1px solid #e780b9; }
+@media(max-width:440px) { .ws-snap-layouts { gap:10px 7px; }.ws-snap-popover { padding:12px; }.ws-snap-diagram { height:54px; } }
+
+/* This top-layer affordance never owns pointer input. Dockview keeps the drag. */
+.ws-snap-popover.ws-snap-bar { padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible;transform:translateX(-50%);animation:ws-snap-bar-enter 140ms ease-out; }
+.ws-snap-bar,.ws-snap-bar * { pointer-events:none!important; }
+.ws-snap-bar-handle { width:112px;height:24px;margin:0 auto;display:flex;align-items:center;justify-content:center;background:var(--snap-panel);border:1px solid var(--snap-line);border-top:0;border-radius:0 0 10px 10px;box-shadow:0 2px 6px #0001;transition:background-color 140ms,border-color 140ms; }
+.ws-snap-bar-handle span { width:28px;height:4px;border-radius:4px;background:var(--snap-muted);transition:background-color 140ms; }
+.ws-snap-bar[data-expanded=true] .ws-snap-bar-handle { border-color:var(--snap-accent);background:color-mix(in srgb,var(--snap-accent) 12%,var(--snap-panel));border-radius:0; }
+.ws-snap-bar[data-expanded=true] .ws-snap-bar-handle span { background:var(--snap-accent); }
+.ws-snap-bar-reveal { display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows 140ms ease-out,opacity 100ms ease-out; }
+.ws-snap-bar[data-expanded=true] .ws-snap-bar-reveal { grid-template-rows:1fr;opacity:1; }
+.ws-snap-bar-clip { min-height:0;overflow:hidden; }
+.ws-snap-bar-content { padding:16px;background:var(--snap-panel);border:1px solid var(--snap-line);border-radius:12px;box-shadow:0 3px 10px #0001; }
+.ws-snap-bar [data-drag-target=true] { background:color-mix(in srgb,var(--snap-accent) 32%,var(--snap-panel));color:var(--snap-accent);box-shadow:inset 0 0 0 2px var(--snap-accent); }
+@keyframes ws-snap-bar-enter { from { opacity:0;transform:translate(-50%,-24px); } to { opacity:1;transform:translate(-50%,0); } }
+@media(prefers-reduced-motion:reduce) { .ws-snap-popover.ws-snap-bar { animation:none; }.ws-snap-bar-reveal,.ws-snap-bar-handle,.ws-snap-bar-handle span { transition:none; } }

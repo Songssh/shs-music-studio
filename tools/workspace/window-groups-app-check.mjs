@@ -1,0 +1,128 @@
+// Uses a fresh Edge profile and existing development test credentials. Does not
+// change account preferences, delete audio, or send stop/cancel to existing jobs.
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const output = path.join(root, 'docs/implementation/workspace-window-checks');
+fs.mkdirSync(output, { recursive: true });
+if (!process.env.WORKSPACE_TEST_CREDENTIALS) throw new Error('Set WORKSPACE_TEST_CREDENTIALS to a private disposable test account JSON file');
+const privateDir = path.dirname(path.resolve(process.env.WORKSPACE_TEST_CREDENTIALS));
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : 'playwright');
+const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
+const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+const origin = process.env.WORKSPACE_TEST_ORIGIN || 'http://127.0.0.1:4301';
+const credentials = JSON.parse(fs.readFileSync(process.env.WORKSPACE_TEST_CREDENTIALS, 'utf8'));
+const login = await context.request.post(origin + '/api/auth/sign-in/email', { data: { email: credentials.email, password: credentials.password }, headers: { Origin: origin } });
+assert.equal(login.status(), 200);
+const read = async route => { const r = await context.request.get(origin + route); assert.equal(r.status(), 200, route); return r.json(); };
+const me = await read('/api/account/me');
+const preferencesBefore = await read('/api/desktop/preferences');
+const songs = (await read('/api/songs')).songs;
+const song = songs.find(s => Number(s.duration) > 90) ?? songs[0];
+assert.ok(song, 'An existing audio track is needed for playback verification');
+const title = 'Workspace window groups QA ' + new Date().toISOString();
+await context.addInitScript(({ id, title, song }) => {
+  if (!localStorage.getItem('window-groups-initialized')) {
+    const values = { 'hs-caption': 'A gentle acoustic piano melody, instrumental, warm room', 'hs-duration': 10, 'hs-instrumental': false, 'hs-title': title, 'hs-skipLm': true, 'hs-inferenceSteps': 8, 'hs-batchSize': 1, 'hs-postProcessingEnabled': false, 'hs-autoTrimEnabled': false, 'hs-coverArtEnabled': false, 'hs-stem-sourceUrl': song.audio_url, 'hs-stem-sourceFile': 'workspace-group-source.wav' };
+    for (const [key, value] of Object.entries(values)) localStorage.setItem(`hotstep:user:${encodeURIComponent(id)}:${key}`, JSON.stringify(value));
+    localStorage.setItem('window-groups-initialized', '1');
+  }
+  window.__groupMedia = []; const play = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function (...args) { if (!window.__groupMedia.includes(this)) window.__groupMedia.push(this); return play.apply(this, args); };
+}, { id: me.user.id, title, song });
+const page = await context.newPage();
+const result = { checks: [], errors: [], cancellations: [], generated: null };
+page.on('pageerror', e => result.errors.push(e.message));
+page.on('request', r => { if (['POST', 'DELETE'].includes(r.method()) && /\/(?:stop|cancel|abort)(?:[/?]|$)/.test(r.url())) result.cancellations.push(new URL(r.url()).pathname); });
+const record = (name, detail) => { result.checks.push({ name, passed: true, detail }); console.log('PASS ' + name); };
+const tool = id => page.locator(`[data-workspace-tool="${id}"]`);
+const active = () => page.locator('.dv-active-group');
+const button = name => active().locator('.ws-window-actions').getByRole('button', { name, exact: true });
+const until = async (fn, timeout = 30000) => { const end = Date.now() + timeout; while (Date.now() < end) { const value = await fn(); if (value) return value; await page.waitForTimeout(250); } throw Error('Timed out waiting for condition'); };
+const launch = async id => { await page.getByRole('button', { name: '앱 실행기', exact: true }).click(); await page.getByRole('textbox', { name: '앱 검색' }).fill(id); await page.locator('.ws-app-open').first().click(); await tool(id).waitFor(); };
+const task = id => page.locator(`.ws-rail [data-tool="${id}"]`);
+const state = () => page.evaluate(id => JSON.parse(localStorage.getItem(`hotstep:user:${encodeURIComponent(id)}:hs-workspace-windows-v1`)), me.user.id);
+const groupOf = (layout, id) => layout.floatingGroups?.find(f => f.data?.views.includes(id))?.data;
+const combine = async (id, into) => { await launch(id); await active().locator('.ws-tab-combine').focus(); await active().locator('.ws-tab-combine').selectOption(into); await page.waitForTimeout(200); };
+const equalBox = (a, b) => { for (const key of ['x', 'y', 'width', 'height']) assert.ok(Math.abs(a[key] - b[key]) < 2, `${key}: ${a[key]} != ${b[key]}`); };
+let assistantPosts = 0, extractionPosts = 0, separated = false;
+await page.route('**/api/assistant/providers', r => r.fulfill({ json: [{ id: 'group-fixture', name: 'Group lifecycle fixture', available: true, models: ['test'], default_model: 'test' }] }));
+await page.route('**/api/assistant/chat', async r => { assistantPosts++; await new Promise(resolve => setTimeout(resolve, 2000)); await r.fulfill({ contentType: 'text/event-stream', body: 'event: chunk\ndata: {"text":"Group response completed"}\n\nevent: complete\ndata: {"text":"Group response completed"}\n\n' }).catch(() => {}); });
+await page.route('**/api/stem-studio/supersep', r => { extractionPosts++; return r.fulfill({ json: { id: 'group-extraction-fixture' } }); });
+await page.route('**/api/stem-studio/group-extraction-fixture/progress', r => r.fulfill({ json: { status: separated ? 'done' : 'separating', progress: separated ? 100 : 40, currentTrack: 'vocals', completedStems: separated ? ['vocals'] : [], totalTracks: 1 } }));
+await page.route('**/api/stem-studio/group-extraction-fixture/result', r => r.fulfill({ json: { id: 'group-extraction-fixture', stems: [{ trackName: 'vocals', audioUrl: song.audio_url, durationSec: song.duration, index: 0 }] } }));
+try {
+  await page.goto(origin); await page.locator('.workspace').waitFor(); await page.waitForTimeout(500);
+  await launch('library');
+  await tool('library').locator(`[data-sel-id="${song.id}"] button`).first().click();
+  await until(() => page.evaluate(() => window.__groupMedia.some(a => !a.paused && a.currentTime > .2)));
+  const mediaBefore = await page.evaluate(() => { const a = window.__groupMedia.find(a => !a.paused); window.__playingGroupAudio = a; return a.currentTime; });
+  await launch('parameters'); await combine('queue', 'parameters'); await combine('create', 'parameters');
+  await task('queue').click(); await page.waitForTimeout(250);
+  const before = await state(), ids = groupOf(before.layout, 'queue').views, bounds = await active().boundingBox();
+  assert.equal(ids.length, 3); assert.equal(groupOf(before.layout, 'queue').activeView, 'queue');
+  await page.screenshot({ path: path.join(output, 'app-three-tabs.png') });
+  await button('최소화').click();
+  for (const id of ids) assert.match(await task(id).getAttribute('class'), /minimized/);
+  await task('create').click(); await page.waitForTimeout(250);
+  const restored = await state(); assert.deepEqual(groupOf(restored.layout, 'queue').views, ids); assert.equal(groupOf(restored.layout, 'queue').activeView, 'queue'); equalBox(await active().boundingBox(), bounds);
+  record('actual app: taskbar restores all tabs, original active tab, order and geometry');
+  await button('최대화 / 원래 크기').click(); await page.waitForTimeout(200); assert.ok((await active().boundingBox()).width > bounds.width);
+  await button('최대화 / 원래 크기').click(); await page.waitForTimeout(200); equalBox(await active().boundingBox(), bounds);
+  record('actual app: title-bar maximize/restore keeps grouped tabs');
+  await active().getByRole('button', { name: '작업 큐 · Queue 탭 닫기', exact: true }).click(); await page.waitForTimeout(200);
+  assert.equal((await state()).layout.panels.queue, undefined); assert.ok((await state()).layout.panels.create); assert.ok((await state()).layout.panels.parameters);
+  record('actual app: individual tab X closes only that tab');
+  await combine('queue', 'parameters');
+  await button('창 닫기').click(); await page.waitForTimeout(200);
+  for (const id of ids) assert.equal((await state()).layout.panels[id], undefined);
+  assert.ok((await state()).layout.panels.library); record('actual app: whole-window close leaves other windows intact');
+  assert.ok(await page.evaluate(t => !window.__playingGroupAudio.paused && window.__playingGroupAudio.currentTime > t, mediaBefore));
+  record('actual audio: same global media element continues playing through group operations');
+  await launch('assistant'); await tool('assistant').locator('textarea').fill('Window group lifecycle check');
+  await tool('assistant').getByTitle('Send message', { exact: true }).click(); await page.waitForTimeout(100);
+  await combine('queue', 'assistant'); await button('창 닫기').click(); await page.waitForTimeout(2200);
+  await launch('assistant'); await tool('assistant').getByText('Group response completed', { exact: true }).waitFor(); assert.equal(assistantPosts, 1);
+  record('Assistant SSE fixture completes once after its entire window closes');
+  await launch('stem-studio'); await tool('stem-studio').getByRole('button', { name: '▶ Separate Audio', exact: true }).click(); await page.waitForTimeout(300);
+  await combine('queue', 'stem-studio'); await button('최소화').click(); separated = true; await page.waitForTimeout(2200); await task('queue').click();
+  // Restore must retain Queue as the active tab; activate the separator explicitly.
+  await task('stem-studio').click(); await tool('stem-studio').getByRole('button', { name: '▶ Preview', exact: true }).waitFor(); assert.equal(extractionPosts, 1);
+  record('separation job fixture survives group minimize/restore, same job and one submission');
+  await button('창 닫기').click();
+  await launch('training-studio'); await combine('queue', 'training-studio'); await button('최소화').click(); await task('training-studio').click(); await button('창 닫기').click();
+  record('Training window group close/minimize sends no job-control request');
+  if (process.env.RUN_LIVE_GENERATION === '1') {
+    await launch('create'); await tool('create').locator('textarea[placeholder^="[Verse"]').fill('');
+    await tool('create').getByRole('switch').first().click();
+    await combine('queue', 'create'); await task('create').click();
+    await tool('create').getByRole('button', { name: '생성하기', exact: true }).click();
+    await until(async () => (await read('/api/audio-queue/items')).items.some(i => ['pending', 'submitting', 'submitted'].includes(i.status)));
+    await button('창 닫기').click();
+    const generated = await until(async () => (await read('/api/songs')).songs.find(s => s.title === title), 600000);
+    result.generated = { id: generated.id, duration: generated.duration, title };
+    assert.equal((await read('/api/songs')).songs.filter(s => s.title === title).length, 1);
+    record('installed-model generation completes after grouped Create/Queue window closes', result.generated);
+  }
+  assert.deepEqual(result.cancellations, []); record('zero Stop/Cancel/Abort requests during all window operations');
+  await task('library').click({ button: 'right' });
+  await page.locator('.ws-context-menu').waitFor(); await page.keyboard.press('Escape');
+  assert.deepEqual(await read('/api/desktop/preferences'), preferencesBefore);
+  record('taskbar context menu, pinned preferences and per-user background are preserved');
+  const otherCredentials = JSON.parse(fs.readFileSync(path.join(privateDir, 'second-development-account.json'), 'utf8'));
+  const other = await browser.newContext();
+  assert.equal((await other.request.post(origin + '/api/auth/sign-in/email', { data: { email: otherCredentials.email, password: otherCredentials.password }, headers: { Origin: origin } })).status(), 200);
+  assert.ok([403, 404].includes((await other.request.get(origin + '/api/songs/' + song.id)).status())); await other.close();
+  record('login and cross-account song access isolation remain enforced');
+  await page.getByRole('button', { name: '앱 실행기', exact: true }).click();
+  await page.getByRole('button', { name: '기존 UI로 전환', exact: true }).click();
+  await until(async () => await page.locator('.workspace').count() === 0); record('classic UI transition remains available');
+  const mobile = await browser.newContext({ storageState: await context.storageState(), viewport: { width: 412, height: 915 }, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36' });
+  const phone = await mobile.newPage(); await phone.goto(origin); await phone.getByRole('button', { name: '생성하기', exact: true }).waitFor();
+  assert.equal(await phone.locator('.workspace,.ws-rail,.ws-tab-close').count(), 0); await phone.screenshot({ path: path.join(output, 'android-classic.png') }); await mobile.close();
+  record('Android UA/touch viewport keeps the original UI without Workspace controls');
+  assert.deepEqual(result.errors, []);
+} catch (error) { result.failure = error.stack; process.exitCode = 1; console.error(error); await page.screenshot({ path: path.join(output, 'app-failure.png') }); }
+finally { fs.writeFileSync(path.join(output, process.env.RUN_LIVE_GENERATION === '1' ? 'application-live.json' : 'application.json'), JSON.stringify(result, null, 2)); await browser.close(); }

@@ -43,7 +43,7 @@ export class ToolHosts {
 }
 interface WorkspaceState {
   eligible: boolean; enabled: boolean; setEnabled: (enabled: boolean) => void;
-  hosts: ToolHosts; commands: React.RefObject<{ open: (id: WindowId) => void; close: (id: WindowId) => void; save: () => void; restore: () => void; reset: () => void } | null>;
+  hosts: ToolHosts; commands: React.RefObject<{ open: (id: WindowId) => void; close: (id: WindowId) => void; save: () => void; restore: () => void; reset: () => void; arrange: () => void; undo: () => void } | null>;
   active: string; setActive: (id: string) => void;
 }
 const WorkspaceContext = createContext<WorkspaceState>(null!);

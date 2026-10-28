@@ -6,8 +6,9 @@ import { backendsOptions } from '../../queries/global-models/options';
 // Lists registered engine backends (GET /api/backends) and switches the
 // active one via backendStore.switchBackend(). Deliberately large and bold:
 // it is where the engine is changed, and the sidebar's studio list follows it.
-// The option list is portaled to document.body because the sidebar scrolls
-// (overflow-y-auto would clip an absolute dropdown).
+// The option list is portaled out of scrolling containers. In the workspace
+// launcher it must stay inside the open dialog: a body portal would sit behind
+// showModal()'s top layer and become inert. The sidebar uses document.body.
 //
 // CRITICAL: renders null while only one backend is registered — see
 // docs/plans/multi-backend-architecture.md §4.5.
@@ -25,7 +26,7 @@ export const BackendToggle: React.FC<{ collapsed?: boolean }> = ({ collapsed = f
   const activeBackendId = useBackendStore(s => s.activeBackendId);
   const switchBackend = useBackendStore(s => s.switchBackend);
   const { capabilities } = useCapabilities();
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; host: Element } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -54,8 +55,13 @@ export const BackendToggle: React.FC<{ collapsed?: boolean }> = ({ collapsed = f
 
   const toggle = () => {
     if (pos) { setPos(null); return; }
-    const r = buttonRef.current?.getBoundingClientRect();
-    if (r) setPos(collapsed ? { top: r.top, left: r.right + 6 } : { top: r.bottom + 4, left: r.left });
+    const button = buttonRef.current;
+    if (!button) return;
+    const r = button.getBoundingClientRect();
+    setPos({
+      ...(collapsed ? { top: r.top, left: r.right + 6 } : { top: r.bottom + 4, left: r.left }),
+      host: button.closest('dialog[open]') ?? document.body,
+    });
   };
 
   return (
@@ -115,7 +121,7 @@ export const BackendToggle: React.FC<{ collapsed?: boolean }> = ({ collapsed = f
             </button>
           ))}
         </div>,
-        document.body,
+        pos.host,
       )}
     </>
   );

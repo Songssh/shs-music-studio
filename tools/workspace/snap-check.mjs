@@ -1,0 +1,111 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const output = path.join(root, 'docs/implementation/workspace-snap-checks'); fs.mkdirSync(output, { recursive: true });
+const require = createRequire(path.join(root, 'server/package.json'));
+await require('esbuild').build({ entryPoints: [path.join(root, 'tools/workspace/snap-harness.tsx')], outfile: path.join(output, 'snap-harness.js'), bundle: true, platform: 'browser', format: 'iife', jsx: 'automatic', nodePaths: [path.join(root, 'ui/node_modules')] });
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : 'playwright');
+const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+const origin = process.env.WORKSPACE_TEST_ORIGIN || 'http://127.0.0.1:4301';
+await context.route('**/__snap_fixture/**', route => {
+  const name = new URL(route.request().url()).pathname.split('/').at(-1);
+  if (name === 'snap-harness.js' || name === 'snap-harness.css') return route.fulfill({ path: path.join(output, name), contentType: name.endsWith('js') ? 'text/javascript' : 'text/css' });
+  return route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta charset="UTF-8"><link rel="stylesheet" href="snap-harness.css"><style>*{box-sizing:border-box}body{margin:0;font-family:Arial}button{font-family:inherit;cursor:pointer}#dock{position:relative;width:calc(100vw - 80px);height:calc(100vh - 80px);margin:40px}.workspace{height:100vh}#arrange{position:absolute;top:5px;left:40px}.dv-resize-container{min-width:320px;min-height:240px}</style><div class="workspace"><div id="dock"></div></div><button id="arrange">Arrange</button><div id="controls"></div><script src="snap-harness.js"></script>' });
+});
+const page = await context.newPage();
+const result = { browser: await browser.version(), checks: [], errors: [] };
+page.on('pageerror', e => { result.errors.push(e.message); console.error('PAGE', e.message); });
+const pass = name => { result.checks.push({ name, passed: true }); console.log('PASS ' + name); };
+const settle = () => page.waitForTimeout(180);
+const box = id => page.evaluate(id => qa.box(id), id);
+const state = () => page.evaluate(() => qa.state());
+const equal = (a, b) => { for (const k of ['left', 'top', 'width', 'height']) assert.ok(Math.abs(a[k] - b[k]) < 2, `${k}: ${a[k]} != ${b[k]}`); };
+const action = async (id, action) => { await page.evaluate(({ id, action }) => qa.api.getPanel(id).group.element.querySelector(`[data-action="${action}"]`).click(), { id, action }); await settle(); };
+const key = id => page.evaluate(id => qa.key(id), id);
+const reset = async (count = 4) => { await page.evaluate(count => { qa.reset(); for (let i=1;i<=count;i++) qa.add('w'+i, 80+i*34, 60+i*32, 540, 420); qa.api.getPanel('w1').api.setActive(); qa.save(); }, count); await settle(); };
+const pick = async (id, layout, slot=0) => { await action(id, 'layout'); await page.locator(`[data-snap-layout="${layout}"][data-snap-slot="${slot}"]`).click(); await settle(); };
+const close = async () => { await page.evaluate(() => qa.snap.closeMenu()); await settle(); };
+const arrange = async (layout, ids) => { await page.evaluate(({ layout, ids }) => { qa.snap.openArrange(layout); for (const k of [...qa.snap.getSnapshot().menu.selected]) qa.snap.selectWindow(k); for (const id of ids) qa.snap.selectWindow(qa.key(id)); }, { layout, ids }); await page.locator('.ws-snap-popover footer .primary').click(); await settle(); assert.equal(await page.locator('.ws-snap-divider').count(),await page.evaluate(()=>qa.snap.getSnapshot().dividers.length),'no stale separator DOM after changing arrangements'); };
+const startDrag = async id => {
+  const r = await page.evaluate(id => { const r=qa.api.getPanel(id).group.element.querySelector('.dv-void-container').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2,width:r.width}; }, id);
+  assert.ok(r.width > 4); await page.mouse.move(r.x,r.y);await page.mouse.down();await page.mouse.move(r.x+7,r.y+3,{steps:3});return r;
+};
+try {
+  await page.goto(origin+'/__snap_fixture/index.html'); await page.waitForFunction(() => !!window.qa); await reset();
+  assert.equal(await page.locator('.ws-snap-bar').count(),0);const ordinary=await box('w1');await startDrag('w1');await settle();
+  const bar=page.locator('.ws-snap-bar');assert.equal(await bar.getAttribute('data-expanded'),'false');assert.equal(await bar.evaluate(n=>n.matches(':popover-open')),true);
+  const grip=await page.locator('.ws-snap-bar-handle').boundingBox();assert.equal(Math.round(grip.width),112);assert.equal(Math.round(grip.height),24);assert.equal(Math.round(grip.x+grip.width/2),960);assert.equal(Math.round(grip.y),40);
+  pass('Snap Bar is absent at rest and shows a 112×24 top-layer handle only on floating title drag');
+  await page.mouse.move(960,48,{steps:12});await page.waitForFunction(()=>qa.snap.getSnapshot().bar?.expanded);await settle();assert.equal(await bar.locator('.ws-snap-layout').count(),7);
+  assert.equal(await bar.evaluate(n=>getComputedStyle(n).pointerEvents),'none');assert.equal(await bar.locator('button').first().evaluate(n=>getComputedStyle(n).pointerEvents),'none');
+  const area=await page.locator('[data-snap-layout=thirds][data-snap-slot="1"]').boundingBox();await page.mouse.move(area.x+area.width/2,area.y+area.height/2,{steps:10});await settle();assert.equal(await page.locator('[data-drag-target=true]').count(),1);
+  assert.equal(await page.evaluate(({x,y})=>!!document.elementFromPoint(x,y)?.closest('.ws-snap-bar'),{x:area.x+area.width/2,y:area.y+area.height/2}),false);
+  assert.equal(await page.locator('.dv-drop-target').count(),0);pass('expanded bar reuses seven layouts with coordinate highlight and never intercepts pointer input');
+  const tray=await bar.boundingBox();for(let i=0;i<12;i++)await page.mouse.move(tray.x-10+(i%2)*8,tray.y+120);assert.equal(await bar.getAttribute('data-expanded'),'true');
+  await page.mouse.move(1400,650,{steps:5});await settle();assert.equal(await bar.getAttribute('data-expanded'),'false');await page.mouse.move(1420,670);assert.notDeepEqual(await box('w1'),ordinary);await page.mouse.up();await settle();assert.equal(await bar.count(),0);pass('exit margin prevents boundary flicker; leaving collapses to handle and free movement continues');
+  for(const cancel of ['Escape','pointercancel','blur']){
+    await reset();const before=await box('w1');await page.evaluate(()=>window.addEventListener('pointerdown',e=>window.qaPointer=e.pointerId,{once:true}));await startDrag('w1');await page.mouse.move(960,45);await settle();
+    if(cancel==='Escape')await page.keyboard.press('Escape');else await page.evaluate(cancel=>window.dispatchEvent(cancel==='blur'?new Event('blur'):new PointerEvent('pointercancel',{pointerId:window.qaPointer,bubbles:true})),cancel);
+    await page.mouse.up();await settle();assert.equal(await bar.count(),0);equal(await box('w1'),before);
+  }pass('Escape, pointer cancellation and lost window focus remove the entire bar and restore pre-drag geometry');
+  await reset();await startDrag('w1');await settle();await bar.evaluate(node=>window.qaBar=node);
+  for(let i=0;i<5;i++){
+    await page.mouse.move(960,45);assert.equal(await page.evaluate(()=>qa.snap.getSnapshot().bar.expanded),true);
+    await page.mouse.move(840,130);assert.equal(await page.evaluate(()=>qa.snap.getSnapshot().bar.expanded),true);
+    await page.mouse.move(1080,200);assert.equal(await page.evaluate(()=>qa.snap.getSnapshot().bar.expanded),true);
+    await page.mouse.move(1400,700);assert.equal(await page.evaluate(()=>qa.snap.getSnapshot().bar.expanded),false);
+  }
+  assert.equal(await bar.evaluate(node=>node===window.qaBar),true);await page.mouse.up();await settle();assert.equal(await bar.count(),0);pass('rapid entry, traversal and exit reuse one bar element without interrupting the native drag');
+  await page.emulateMedia({reducedMotion:'reduce'});await reset();await startDrag('w1');await settle();assert.equal(await bar.evaluate(node=>getComputedStyle(node).animationName),'none');await page.keyboard.press('Escape');await page.mouse.up();await page.emulateMedia({reducedMotion:'no-preference'});pass('reduced-motion preference disables Snap Bar animation');
+  await reset();await page.evaluate(()=>qa.component.getFloatingWindowForGroup(qa.api.getPanel('w2').group).position({left:900,top:80,width:540,height:420}));await settle();await page.locator('.dv-tab').filter({hasText:/^w2$/}).dragTo(page.locator('.dv-tab').filter({hasText:/^w1$/}));await settle();assert.equal(await bar.count(),0);assert.equal(await key('w1'),await key('w2'));pass('native tab drag still combines groups without opening Snap Bar');
+  await reset();
+  const max = await page.evaluate(() => {const r=qa.api.getPanel('w1').group.element.querySelector('[data-action=maximize]').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};});
+  await page.mouse.move(max.x,max.y);await page.locator('.ws-snap-popover:popover-open').waitFor();
+  assert.equal(await page.locator('.ws-snap-layout').count(),7);pass('maximize hover shows all seven layout previews in the browser top layer');await close();
+  await page.locator('[data-action=maximize]').first().focus();await page.keyboard.press('ArrowDown');await page.locator('.ws-snap-popover:popover-open').waitFor();await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');await settle();assert.equal((await state()).snap.records[0].slot,1);await close();pass('keyboard opens the maximize picker, navigates a region and applies it');
+  for (const layout of ['halves','wide-left','wide-right','thirds','quarters','main-side','rows']) {
+    await reset();const before=await box('w1');await pick('w1',layout);await close();assert.equal((await state()).snap.records.length,1);
+    await page.evaluate(() => qa.snap.unsnap(qa.key('w1')));await settle();equal(await box('w1'),before);
+  } pass('every basic layout applies and unsnaps to the original position and size');
+  await reset();await action('w2','minimize');await pick('w1','halves');
+  await page.locator('[data-snap-window="w2"]').click();await settle();assert.equal((await state()).minimized.length,0);assert.equal((await state()).snap.records.length,2);pass('Snap Assist explicitly restores a selected minimized window only');
+  await reset();await pick('w1','halves');await close();await pick('w2','halves',1);await close();assert.equal((await state()).snap.sessions.length,1);assert.equal(await page.locator('.ws-snap-divider.x').count(),1);pass('independently snapped adjacent windows share their resize boundary');
+  await reset();await action('w4','minimize');await arrange('thirds',['w3','w1','w2']);
+  assert.equal((await state()).minimized.length,1);assert.ok((await box('w3')).left<(await box('w1')).left);assert.ok((await box('w1')).left<(await box('w2')).left);pass('automatic arrangement respects explicit order and leaves unselected minimized windows hidden');
+  for (const layout of ['quarters','main-side','rows']) { await reset();await arrange(layout,layout==='quarters'?['w1','w2','w3','w4']:layout==='main-side'?['w1','w2','w3']:['w1','w2']);assert.equal((await state()).snap.sessions[0].layout,layout); }pass('four-window, large-plus-two and vertical automatic arrangements');
+  await reset();await page.evaluate(() => {qa.tab('w2','w1');qa.tab('w3','w1');qa.api.getPanel('w2').api.setActive();qa.save();});
+  await pick('w1','halves');await close();assert.deepEqual((await state()).layout.floatingGroups.find(f=>f.data?.views.includes('w1')).data.views,['w1','w2','w3']);assert.equal((await state()).active,'w2');
+  await action('w1','minimize');await page.reload();await page.waitForFunction(()=>!!window.qa);await page.evaluate(()=>qa.windows.restore('w3'));await settle();
+  assert.equal((await state()).active,'w2');assert.equal((await state()).snap.records.length,1);pass('three-tab window snaps and survives minimized reload with active tab and order preserved');
+  await action('w1','maximize');await action('w1','maximize');assert.equal((await state()).snap.records.length,1);pass('maximize and restore retain the snapped window placement');
+  await reset();await page.evaluate(()=>qa.tab('w2','w1','right'));await pick('w1','halves');await close();assert.ok((await state()).layout.floatingGroups.some(f=>f.grid));assert.equal((await state()).snap.records[0].key,await key('w2'));pass('a floating container with multiple Dockview groups snaps as one window');
+  await reset();const original=await box('w1');await pick('w1','halves');await close();
+  const r=await startDrag('w1');await page.mouse.move(r.x+180,r.y+170,{steps:12});await page.mouse.up();await settle();assert.equal((await state()).snap.records.length,0);assert.equal(Math.round((await box('w1')).width),Math.round(original.width));pass('free title-bar drag leaves Snap and restores the normal floating size');
+  for(const [name,x,y,slot,layout] of [['left',41,540,0,'halves'],['right',1879,540,1,'halves'],['top-left',41,41,0,'quarters'],['top-right',1879,41,1,'quarters'],['bottom-left',41,1039,2,'quarters'],['bottom-right',1879,1039,3,'quarters']]) {
+    await reset();await startDrag('w1');await page.mouse.move(x,y,{steps:25});await settle();assert.ok(await page.locator('[data-testid=snap-preview]').count(),name);await page.mouse.up();await settle();assert.equal((await state()).snap.records[0]?.slot,slot,name);assert.equal((await state()).snap.sessions[0]?.layout,layout,name);await close();
+  }pass('native title-bar drag snaps at both side edges and all four corners');
+  await reset();const beforeCancel=await box('w1');await startDrag('w1');await page.mouse.move(41,540,{steps:20});await page.keyboard.press('Escape');await page.mouse.up();await settle();equal(await box('w1'),beforeCancel);assert.equal((await state()).snap.records.length,0);pass('Escape removes the preview and restores the drag-start geometry');
+  await reset();const beforePointerCancel=await box('w1');await page.evaluate(()=>window.addEventListener('pointerdown',e=>window.qaPointer=e.pointerId,{once:true}));await startDrag('w1');await page.mouse.move(41,540,{steps:20});await page.evaluate(()=>window.dispatchEvent(new PointerEvent('pointercancel',{pointerId:window.qaPointer,bubbles:true})));await page.mouse.up();await settle();equal(await box('w1'),beforePointerCancel);assert.equal((await state()).snap.records.length,0);pass('pointer cancellation restores the pre-drag window without committing Snap');
+  await reset();await startDrag('w1');await page.mouse.move(960,42,{steps:20});await page.locator('.ws-snap-bar[data-expanded=true]').waitFor();await settle();const region=await page.locator('[data-snap-layout=thirds][data-snap-slot="1"]').boundingBox();await page.mouse.move(region.x+region.width/2,region.y+region.height/2,{steps:10});await page.mouse.up();await settle();assert.equal((await state()).snap.sessions[0]?.layout,'thirds');assert.equal(await page.locator('.ws-snap-bar').count(),0);pass('top-center drag tray selects a layout region on pointer release');await close();
+  await reset();await arrange('halves',['w1','w2']);await page.evaluate(()=>{qa.api.getPanel('w1').api.setActive();qa.snap.sync();});await settle();
+  const divider=page.locator('.ws-snap-divider').first();assert.ok(await divider.getAttribute('aria-label'));await divider.focus();await page.keyboard.press('ArrowRight');await settle();assert.ok((await box('w1')).width>(await box('w2')).width);
+  const d=await divider.boundingBox();await page.mouse.move(d.x+d.width/2,d.y+100);await page.mouse.down();await page.mouse.move(1800,d.y+100,{steps:25});await page.mouse.up();await settle();assert.ok((await box('w2')).width>=320);assert.ok((await box('w2')).left+(await box('w2')).width<=1840);pass('linked separator supports keyboard and pointer resize, respecting minimums and viewport bounds');
+  const resized=await box('w1');await page.reload();await page.waitForFunction(()=>!!window.qa);await settle();equal(await box('w1'),resized);pass('resized Snap proportions persist through browser reload');
+  await reset();await arrange('quarters',['w1','w2','w3','w4']);const hiddenBefore=await box('w4');await action('w4','minimize');await page.evaluate(()=>{qa.api.getPanel('w1').api.setActive();qa.snap.sync();});await settle();
+  const hiddenDivider=await page.locator('.ws-snap-divider.x').first().boundingBox();await page.mouse.move(hiddenDivider.x+4,hiddenDivider.y+100);await page.mouse.down();await page.mouse.move(hiddenDivider.x+100,hiddenDivider.y+100,{steps:8});assert.equal((await state()).minimized.length,1);await page.keyboard.press('Escape');await page.mouse.up();await page.evaluate(()=>qa.windows.restore('w4'));await settle();equal(await box('w4'),hiddenBefore);pass('cancelling linked resize preserves minimized neighbors without restoring them during resize');
+  await reset();const undo1=await box('w1'),undo2=await box('w2');await arrange('halves',['w1','w2']);await page.evaluate(()=>qa.snap.undo());await settle();equal(await box('w1'),undo1);equal(await box('w2'),undo2);pass('previous arrangement restores the original window geometry');
+  await reset();await page.evaluate(()=>qa.api.getPanel('w1').group.api.moveTo({position:'left'}));await pick('w1','halves');await close();await page.evaluate(()=>qa.snap.unsnap(qa.key('w1')));await settle();assert.equal(await page.evaluate(()=>qa.api.getPanel('w1').api.location.type),'grid');pass('snapping a docked group floats it intact and unsnap returns it to Dockview docking');
+  await reset();await arrange('halves',['w1','w2']);const nativeBefore=await box('w1');await page.evaluate(()=>{qa.api.getPanel('w3').api.setActive();qa.snap.sync();});await settle();
+  const nativeHandle=await page.evaluate(()=>{const r=qa.component.getFloatingWindowForGroup(qa.api.getPanel('w1').group).overlay.element.querySelector('.dv-resize-handle-right').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};});await page.mouse.move(nativeHandle.x,nativeHandle.y);await page.mouse.down();await page.mouse.move(nativeHandle.x+80,nativeHandle.y,{steps:12});await page.mouse.up();await settle();assert.ok((await box('w1')).width>nativeBefore.width);assert.ok((await box('w2')).width<nativeBefore.width);pass('existing Dockview resize handles also resize adjacent snapped windows together');
+  await reset();await pick('w1','halves');await close();await page.evaluate(()=>qa.tab('w1','w2'));await page.evaluate(()=>qa.snap.undo());await settle();assert.equal((await state()).snap.records.length,0);assert.equal(await key('w1'),await key('w2'));pass('undo and Snap metadata never follow stale membership into a different tab group');
+  await reset();await startDrag('w1');await page.mouse.move(5,300,{steps:20});await page.mouse.up();await settle();assert.ok((await box('w1')).left<0);assert.equal((await state()).snap.records.length,0);pass('passing beyond the narrow snap zone still permits partial offscreen placement');
+  await page.setViewportSize({width:1366,height:768});await reset();await action('w1','layout');assert.equal(await page.locator('[data-snap-layout=thirds]:disabled').count(),0);await close();
+  await page.setViewportSize({width:750,height:600});await reset();await action('w1','layout');assert.equal(await page.locator('[data-snap-layout=thirds]:disabled').count(),3);await close();pass('1366px and narrow Windows viewports offer only layouts that meet minimum sizes');
+  await startDrag('w1');await settle();const narrowGrip=await page.locator('.ws-snap-bar-handle').boundingBox();assert.equal(Math.round(narrowGrip.x+narrowGrip.width/2),375);await page.mouse.move(375,45);await settle();const narrowBar=await bar.boundingBox();assert.equal(Math.round(narrowBar.x+narrowBar.width/2),375);await page.keyboard.press('Escape');await page.mouse.up();pass('handle and expanded tray stay centered on the resized Workspace');
+  assert.deepEqual(result.errors,[]);
+} catch(error) { result.failure=error.stack;process.exitCode=1;console.error(error);console.error(await page.evaluate(()=>({view:qa.snap.getSnapshot(),events:qa.events})));await page.screenshot({path:path.join(output,'snap-integration-failure.png')}); }
+finally {const barOutput=path.join(root,'docs/implementation/workspace-snap-bar-checks');fs.mkdirSync(barOutput,{recursive:true});for(const folder of [output,barOutput])fs.writeFileSync(path.join(folder,'integration.json'),JSON.stringify(result,null,2));await browser.close();}

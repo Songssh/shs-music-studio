@@ -8,11 +8,11 @@ import hashlib
 import json
 import pathlib
 import shutil
+import subprocess
 import zipfile
 import audit
 
 ROOT=audit.ROOT
-VERSION='0.1.0-preview'
 
 def sha(file):
     h=hashlib.sha256()
@@ -25,12 +25,18 @@ if __name__=='__main__':
     ap.add_argument('--base',required=True)
     ap.add_argument('--base-sha256',required=True)
     ap.add_argument('--stage',required=True,help='A new, empty output directory inside release/out')
+    ap.add_argument('--version', required=True)
+    ap.add_argument('--fresh', required=True, help='Fresh server build staging directory')
     args=ap.parse_args()
+    VERSION=args.version
+    if not all(c.isalnum() or c in '.-' for c in VERSION):raise SystemExit('Invalid version')
+    if audit.git('status','--porcelain','--untracked-files=no').strip():
+        raise SystemExit('Commit the reviewed source before packaging')
     base=pathlib.Path(args.base).resolve();stage=pathlib.Path(args.stage).resolve()
     allowed=(ROOT/'release/out').resolve()
     if allowed not in stage.parents or stage.exists():raise SystemExit('Stage must be a NEW directory under release/out')
     if sha(base)!=args.base_sha256.lower():raise SystemExit('Audited base ZIP checksum mismatch')
-    fresh=ROOT/'.publish-audit/fresh-stage/server'
+    fresh=pathlib.Path(args.fresh).resolve()/'server'
     if not (fresh/'server.mjs').is_file() or not (ROOT/'ui/dist/index.html').is_file():
         raise SystemExit('Build server into .publish-audit/fresh-stage and build ui first')
     stage.mkdir(parents=True)
@@ -49,12 +55,14 @@ if __name__=='__main__':
             if n.startswith('server/data/'):
                 if z.read(item)!=(ROOT/'server/src/data'/n[len('server/data/'):]).read_bytes():
                     raise SystemExit('Base static asset differs from source: '+n)
-            if n.startswith(('ui/','server/chunks/')) or n=='server/server.mjs':continue
+            if n.startswith(('ui/','server/chunks/')) or n in ('server/server.mjs','FILE-MANIFEST.json'):continue
             destination=stage/n
             destination.parent.mkdir(parents=True,exist_ok=True)
             with z.open(item) as source,destination.open('wb') as target:shutil.copyfileobj(source,target)
     shutil.copytree(fresh,stage/'server',dirs_exist_ok=True)
     shutil.copytree(ROOT/'ui/dist',stage/'ui/dist')
+    for name in ['package.json','package-lock.json']:
+        shutil.copy2(ROOT/'server'/name,stage/'server'/name)
     for n in ['.env.example','portable.mjs','profile-path.mjs','create-certificate.ps1','HOT-Step.bat',
               'SHS-Music-Studio.bat','Setup.bat','Configure-LAN.bat','Configure-LAN.ps1',
               'Verify.bat','verify-portable.mjs','README.txt']:
@@ -66,14 +74,18 @@ if __name__=='__main__':
     for n,p in [('cpp-httplib-LICENSE.txt','engine/vendor/cpp-httplib/LICENSE'),
                 ('AdamW8bit-CUDA-LICENSE.txt','engine/src/train/adamw8bit_cuda_LICENSE.txt')]:
         shutil.copy2(ROOT/p,stage/'licenses'/n)
-    shutil.copy2(ROOT/'docs/publication/v0.1.0-preview.md',stage/'RELEASE-NOTES.md')
+    shutil.copy2(ROOT/f'docs/publication/v{VERSION}.md',stage/'RELEASE-NOTES.md')
+    shutil.copy2(ROOT/'docs/publication/BINARY-REDISTRIBUTION.md',stage/'licenses/BINARY-REDISTRIBUTION.md')
     (stage/'VERSION').write_text(VERSION,encoding='ascii')
     manifest=json.loads((stage/'release-manifest.json').read_text(encoding='utf-8'))
     manifest.update({'product':'SHS Music Studio','version':VERSION,'baseArchive':base.name,
                      'baseArchiveSha256':sha(base),'publicationStatus':'LOCAL REVIEW CANDIDATE — binary licensing/provenance gates pending',
                      'sourceHead':audit.git('rev-parse','HEAD').decode().strip(),
-                     'sourceTree':json.loads((ROOT/'.publish-audit/prepared-tree.json').read_text(encoding='utf-8'))['tree'],
+                     'sourceTree':audit.git('rev-parse','HEAD^{tree}').decode().strip(),
                      'engineRebuilt':False,'serverAndUiRebuilt':True})
+    manifest['engine']['correspondingSourceVerified']=False
+    manifest['engine']['files']=[{'path':p.relative_to(stage).as_posix(),'sha256':sha(p)} for p in sorted((stage/'engine').rglob('*')) if p.suffix.lower() in ('.exe','.dll')]
+    manifest['applicationArtifacts']=[{'path':p.relative_to(stage).as_posix(),'sha256':sha(p)} for folder in [stage/'server',stage/'ui/dist'] for p in sorted(folder.rglob('*')) if p.is_file() and 'node_modules' not in p.parts]
     (stage/'release-manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     inventory=[]
     for p in sorted(stage.rglob('*')):

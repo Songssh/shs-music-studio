@@ -5,14 +5,16 @@ import { type WindowId } from './registry';
 import { usePersonalization, openPersonalization } from './Personalization';
 import { useWorkspace } from './WorkspaceContext';
 import { BackendToggle } from '../components/global-bar/BackendToggle';
+import { useTranslation } from 'react-i18next';
 
 export function AppLauncher({open,onClose}:{open:(id:WindowId)=>void;onClose:()=>void}) {
+  const {t}=useTranslation();
   const registry=useWindowRegistry(),{prefs,ready,save,error}=usePersonalization(),ws=useWorkspace();const [query,setQuery]=useState('');
   const matches=registry.filter(w=>`${w[0]} ${w[1]} ${w[3]} ${w[4]}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const categories=[...new Set(matches.map(w=>w[3]))];
   const act=(fn:()=>void)=>{onClose();fn();};
   return <WorkspaceDialog title="앱 실행기" wide onClose={onClose}><div className="ws-launcher"><div className="ws-launcher-top"><input autoFocus aria-label="앱 검색" placeholder="도구 검색 · 이름 또는 English name" value={query} onChange={e=>setQuery(e.target.value)}/><div className="ws-launcher-engine"><BackendToggle/></div></div>{categories.map(category=><section key={category}><h3>{category}</h3><div className="ws-app-grid">{matches.filter(w=>w[3]===category).map(([id,title,icon,,description])=><div className="ws-app" key={id}><button className="ws-app-open" onClick={()=>act(()=>open(id))}><i>{icon}</i><span><strong>{title}</strong><small>{description}</small></span></button><button className="ws-pin" disabled={!ready} aria-label={`${title} ${prefs.pinned.includes(id)?'고정 해제':'고정'}`} aria-pressed={prefs.pinned.includes(id)} title={prefs.pinned.includes(id)?'고정 해제':'작업표시줄에 고정'} onClick={()=>void save({pinned:prefs.pinned.includes(id)?prefs.pinned.filter(x=>x!==id):[...prefs.pinned,id]}).catch(()=>{})}>{prefs.pinned.includes(id)?'◆':'◇'}</button></div>)}</div></section>)}{!matches.length&&<p className="ws-hint">검색된 도구가 없습니다.</p>}
-    <footer><button onClick={()=>act(()=>ws.commands.current?.save())}>배치 저장</button><button onClick={()=>act(()=>ws.commands.current?.restore())}>저장 배치 불러오기</button><button onClick={()=>act(()=>ws.commands.current?.reset())}>기본 배치 복원</button><button onClick={()=>act(openPersonalization)}>개인화</button><button onClick={()=>act(()=>ws.setEnabled(false))}>기존 UI로 전환</button></footer>{error&&<p role="alert" className="ws-error">{error}</p>}</div></WorkspaceDialog>;
+    <footer><button onClick={()=>act(()=>ws.commands.current?.arrange())}>{t('workspace.snap.arrange','Arrange windows')}</button><button onClick={()=>act(()=>ws.commands.current?.undo())}>{t('workspace.snap.undo','Restore previous arrangement')}</button><button onClick={()=>act(()=>ws.commands.current?.save())}>배치 저장</button><button onClick={()=>act(()=>ws.commands.current?.restore())}>저장 배치 불러오기</button><button onClick={()=>act(()=>ws.commands.current?.reset())}>기본 배치 복원</button><button onClick={()=>act(openPersonalization)}>개인화</button><button onClick={()=>act(()=>ws.setEnabled(false))}>기존 UI로 전환</button></footer>{error&&<p role="alert" className="ws-error">{error}</p>}</div></WorkspaceDialog>;
 }
 export type MenuItem={label:string;run?:()=>void;children?:MenuItem[];disabled?:boolean};
 export function ContextMenu({x,y,items,onClose}:{x:number;y:number;items:MenuItem[];onClose:()=>void}) {

@@ -4,7 +4,7 @@
 
 [Repository](https://github.com/Songssh/shs-music-studio) · [Issues](https://github.com/Songssh/shs-music-studio/issues) · [Releases](https://github.com/Songssh/shs-music-studio/releases)
 
-**Version: v0.1.0-preview.** This repository contains the source and Windows Portable packaging tools. Portable builds have been checked locally; binary publication is subject to the outstanding provenance and redistribution items in [THIRD_PARTY.md](THIRD_PARTY.md). See Releases for available downloads. GitHub's source ZIP does not include a ready-to-run application, dependencies, or model weights.
+**Source preview: v0.1.1-preview.** This repository contains the source and Windows Portable packaging tools. Portable builds have been checked locally; binary publication is subject to the outstanding provenance and redistribution items in [THIRD_PARTY.md](THIRD_PARTY.md). See Releases for available downloads. GitHub's source ZIP does not include a ready-to-run application, dependencies, or model weights.
 
 SHS Music Studio is an independent modification of [HOT-Step CPP](https://github.com/scragnog/HOT-Step-CPP) **v1.4.2**. Original copyrights and licenses are preserved. Discord, donation, and download links in the archived [upstream README](README-UPSTREAM.md) belong to HOT-Step, not SHS.
 
@@ -53,7 +53,8 @@ The second command changes the current Windows user's trusted root store. Androi
 
 | Feature | Scope |
 |---|---|
-| **Windows Workspace** | Docked, tabbed, and detached tool windows; window activation and keyboard controls; per-user layout, theme, and background. |
+| **Windows Workspace** | Docked, tabbed, floating tool windows; group minimize/maximize/close and restore; partly off-screen movement; per-user taskbar, layout, theme, and background. |
+| **Snap** | Seven layouts, Snap Assist, top Snap Bar handle, edge-to-edge placement with zero outer/inter-window gaps, shared-boundary resize and saved arrangement restoration. |
 | **Multi-user accounts** | Better Auth sign-in, one-time administrator setup, administrator/user roles, open/invite/closed registration, invitations, bans, administrator password resets, and personal DAW keys. |
 | **Personal work data** | Ownership checks for music, images, training data, jobs, and drafts, with browser state separated by account. |
 | **Shared models and GPU** | Shared installed models and compute, separate model-management permissions, and a common generation/training queue. |
@@ -91,7 +92,7 @@ Use a writable folder on Windows 10/11 x64. The locally checked CUDA candidate t
 1. Obtain the SHS Portable ZIP and its matching checksum file. Compare the SHA-256 before extracting:
 
    ```powershell
-   Get-FileHash .\SHS-Music-Studio-v0.1.0-preview-win-x64-cuda.zip -Algorithm SHA256
+   Get-FileHash .\SHS-Music-Studio-v0.1.1-preview-win-x64-cuda.zip -Algorithm SHA256
    ```
 
 2. Extract the ZIP completely and run `Setup.bat`. Choose a separate data folder and HTTPS address. Defaults: `SHS-Music-Studio-Data` beside the app folder, and `https://localhost:3443` for access from that PC only.
