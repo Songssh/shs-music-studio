@@ -15,7 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { profileApi, type ParamProfile } from '../../services/api';
 import { validateProfileImport } from '../../services/exportImportApi';
 import { useAuth } from '../../context/AuthContext';
-import { applyProfileData, collectProfileData, describeProfileGroups, summarizeProfile } from '../../utils/paramProfiles';
+import { applyProfileData, checkProfileBackend, collectProfileData, describeProfileGroups, summarizeProfile } from '../../utils/paramProfiles';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { Toggle } from '../shared/Toggle';
 import { useBackendStore } from '../../stores/backendStore';
@@ -25,13 +25,17 @@ interface ProfilesModalProps {
   onClose: () => void;
 }
 
-export const ProfilesModal: React.FC<ProfilesModalProps> = ({ onClose, embedded = false }) => {
+export const ProfilesModal: React.FC<ProfilesModalProps> = props => {
+  const backend = useBackendStore(s => s.activeBackendId) || 'ace';
+  return <BackendProfiles key={backend} backend={backend} {...props} />;
+};
+
+const BackendProfiles: React.FC<ProfilesModalProps & { backend: string }> = ({ backend, onClose, embedded = false }) => {
   const { t } = useTranslation();
   const { token } = useAuth();
   const client = useQueryClient();
   // Profiles belong to the engine they were saved on; this lists, saves and
   // edits the active engine's only.
-  const backend = useBackendStore(s => s.activeBackendId) || 'ace';
   const engineName = useBackendStore(s => s.backends.find(b => b.id === backend)?.displayName) || backend;
   const options = localOptions<{ profiles: ParamProfile[] }>('profiles', `/profiles?backend=${encodeURIComponent(backend)}`, { backend });
   const query = useQuery(options);
@@ -50,10 +54,12 @@ export const ProfilesModal: React.FC<ProfilesModalProps> = ({ onClose, embedded 
   const refresh = useCallback(() => { void queryManager.keys(client, options.queryKey); }, [client, backend]);
   useEffect(() => { if (query.error) setError(query.error.message); }, [query.error]);
 
-  const saveAs = useCallback((name: string) => {
-    profileApi.save(backend, name, collectProfileData(includeContent, backend === 'ace'))
-      .then(() => { setNewName(''); refresh(); })
-      .catch(e => setError(e.message));
+  const saveAs = useCallback(async (name: string) => {
+    try {
+      const data = await collectProfileData(includeContent, backend);
+      await profileApi.save(backend, name, data);
+      setNewName(''); refresh();
+    } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
   }, [refresh, includeContent, backend]);
 
   const handleSaveNew = useCallback(() => {
@@ -66,10 +72,13 @@ export const ProfilesModal: React.FC<ProfilesModalProps> = ({ onClose, embedded 
     }
   }, [newName, profiles, saveAs]);
 
-  const handleApply = useCallback((p: ParamProfile) => {
-    applyProfileData(p.data);
-    setAppliedName(p.name);
-  }, []);
+  const handleApply = useCallback(async (p: ParamProfile) => {
+    try {
+      checkProfileBackend(backend, p.backend);
+      await applyProfileData(p.data, backend);
+      setAppliedName(p.name);
+    } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
+  }, [backend]);
 
   const handleDelete = useCallback((name: string) => {
     profileApi.remove(backend, name)
@@ -104,14 +113,16 @@ export const ProfilesModal: React.FC<ProfilesModalProps> = ({ onClose, embedded 
   // ── JSON export/import (same preset format as saved profiles) ──
 
   const handleExportProfile = useCallback((p: ParamProfile) => {
-    const blob = new Blob([JSON.stringify(p.data, null, 2)], { type: 'application/json' });
+    // Older data has no source tag; the enclosing server profile still knows it.
+    const data = { ...p.data, _backend: p.data._backend ?? p.data.backend ?? p.backend ?? backend };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `${p.name.replace(/[^a-zA-Z0-9 _-]/g, '_')}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, []);
+  }, [backend]);
 
   const importAs = useCallback((name: string, data: Record<string, unknown>) => {
     profileApi.save(backend, name, data)
@@ -132,18 +143,20 @@ export const ProfilesModal: React.FC<ProfilesModalProps> = ({ onClose, embedded 
         }
         // The server unwraps a full profile wrapper ({ name, saved_at, data }) and checks the shape
         const { name, data } = await validateProfileImport(file.name, parsed);
+        checkProfileBackend(backend, parsed.backend);
+        checkProfileBackend(backend, data._backend ?? data.backend);
         if (profiles.some(p => p.name.toLowerCase() === name.toLowerCase())) {
           setConfirmAction({ kind: 'import', name, data });
         } else {
           importAs(name, data);
         }
-      } catch {
-        setError(t('profiles.importInvalid'));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t('profiles.importInvalid'));
       }
     };
     reader.readAsText(file);
     e.target.value = '';
-  }, [profiles, importAs, t, token]);
+  }, [backend, profiles, importAs, t, token]);
 
   // Portal to body: the global bar's backdrop-filter makes it the containing
   // block for fixed descendants, which would pin this overlay to the bar.

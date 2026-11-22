@@ -1,4 +1,6 @@
 import { useReferences } from '../../queries/global-models/hooks';
+import { useCapabilities } from '../../hooks/useCapabilities';
+import { batchMaximum, effectiveCount } from '../../utils/generationLimits';
 // GenerationDropdown.tsx — DiT generation settings for the global param bar
 //
 // Adapted from the DiT section of create/GenerationSettings.tsx.
@@ -41,6 +43,8 @@ const accordionHeader = (open: boolean, toggle: () => void) => ({
 });
 
 export const GenerationDropdown: React.FC = () => {
+  const { capabilities } = useCapabilities();
+  const batchMax = batchMaximum(capabilities);
   const gp = useGlobalParams();
   const { t } = useTranslation();
   const { registry, findSolver, findScheduler, findGuidance } = usePluginRegistry();
@@ -843,11 +847,11 @@ export const GenerationDropdown: React.FC = () => {
       <SeedControl inputClasses={inputClasses} />
 
       {/* Batch */}
-      <Slider label="Batch Size" value={gp.batchSize}
-        onChange={gp.setBatchSize} min={1} max={9} step={1}
+      {batchMax !== undefined && <Slider label="Batch Size" value={effectiveCount(gp.batchSize, batchMax)}
+        onChange={gp.setBatchSize} min={1} max={batchMax} step={1} disabled={batchMax <= 1}
         defaultValue={GLOBAL_PARAM_DEFAULTS.batchSize}
-        infoMeta="default 1 · range 1-9"
-        info="How many takes to render from one request. The LM plans that many variations, then the DiT renders each in turn as its own song. With the LM off, or for cover and repaint tasks, extra takes reuse the same plan with a different random seed each." />
+        infoMeta={`default 1 · range 1-${batchMax}`}
+        info="How many takes to render from one request. The LM plans that many variations, then the DiT renders each in turn as its own song. With the LM off, or for cover and repaint tasks, extra takes reuse the same plan with a different random seed each." />}
     </div>
   );
 };

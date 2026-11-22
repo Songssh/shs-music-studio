@@ -20,6 +20,8 @@ interface SliderProps {
   max: number;
   step: number;
   suffix?: string;
+  valueText?: string;
+  disabled?: boolean;
   showInput?: boolean;
   /** The value to restore when the reset icon is clicked. Set this to show the
    *  icon while `value` differs from it. */
@@ -43,7 +45,7 @@ interface SliderProps {
 
 export const Slider: React.FC<SliderProps> = ({
   label, value, onChange, min, max, step, suffix = '', showInput = false, headerRight,
-  info, infoMeta, defaultValue, onReset, onCommit, controlClassName,
+  info, infoMeta, defaultValue, onReset, onCommit, controlClassName, valueText, disabled,
 }) => {
   return (
     <div>
@@ -53,12 +55,14 @@ export const Slider: React.FC<SliderProps> = ({
           info={info}
           meta={infoMeta}
           className="text-xs font-medium text-zinc-500 uppercase tracking-wider"
-          onReset={defaultValue !== undefined && value !== defaultValue ? () => { (onReset ?? (() => onChange(defaultValue)))(); onCommit?.(); } : undefined}
+          onReset={!disabled && defaultValue !== undefined && value !== defaultValue ? () => { (onReset ?? (() => onChange(defaultValue)))(); onCommit?.(); } : undefined}
         />
         <div className="flex items-center gap-1.5">
         {showInput ? (
           <input
             type="number"
+            aria-label={label}
+            disabled={disabled}
             className="w-16 px-2 py-0.5 text-xs text-right text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-white/10 rounded-lg outline-none focus:border-pink-500/50"
             value={value}
             onChange={e => onChange(parseFloat(e.target.value) || min)}
@@ -69,7 +73,7 @@ export const Slider: React.FC<SliderProps> = ({
             step={step}
           />
         ) : (
-          <span className="text-xs text-zinc-600 dark:text-zinc-400 font-mono">{value}{suffix}</span>
+          <span className="text-xs text-zinc-600 dark:text-zinc-400 font-mono">{valueText ?? value}{suffix}</span>
         )}
         {headerRight}
         </div>
@@ -77,6 +81,9 @@ export const Slider: React.FC<SliderProps> = ({
       <div className={controlClassName}>
         <input
           type="range"
+          aria-label={label}
+          aria-valuetext={valueText}
+          disabled={disabled}
           value={value}
           onChange={e => onChange(parseFloat(e.target.value))}
           onPointerUp={onCommit}
@@ -84,7 +91,7 @@ export const Slider: React.FC<SliderProps> = ({
           min={min}
           max={max}
           step={step}
-          className="w-full"
+          className="w-full disabled:opacity-50"
         />
       </div>
     </div>

@@ -16,6 +16,8 @@ import { ChevronDown } from 'lucide-react';
 import { useGlobalParams } from '../../context/GlobalParamsContext';
 import { useCapabilities } from '../../hooks/useCapabilities';
 import { Slider } from '../shared/Slider';
+import { BackendTemperatureSlider } from './BackendTemperatureSlider';
+import { batchMaximum, effectiveCount } from '../../utils/generationLimits';
 import { ParamLabel } from '../shared/ParamLabel';
 import { StyledSelect } from '../shared/StyledSelect';
 import { ToggleSwitch } from './BarSection';
@@ -73,15 +75,21 @@ export const BackendExtensionControls: React.FC<{
         const showReset = p.default !== undefined && value !== p.default;
         const resetParam = () => gp.setBackendParam?.(p.key, p.default);
         if (p.type === 'slider') {
+          if (p.key === 'yue2SemTemperature' || p.key === 'mm3LmTemperature') {
+            return <BackendTemperatureSlider key={p.key} param={p} />;
+          }
+          const count = p.key === 'yue2BatchSize' || p.key === 'yue2Variations';
+          const maximum = p.key === 'yue2BatchSize' ? batchMaximum(capabilities) : p.max;
           return (
             <div key={p.key}>
               <Slider
                 label={p.label}
                 info={p.hint}
-                value={typeof value === 'number' ? value : Number(p.default ?? 0)}
+                value={count ? effectiveCount(value, maximum) : typeof value === 'number' ? value : Number(p.default ?? 0)}
                 onChange={(v: number) => gp.setBackendParam?.(p.key, v)}
                 min={p.min ?? 0}
-                max={p.max ?? 1}
+                max={maximum ?? 1}
+                disabled={count && maximum === 1}
                 step={p.step ?? 0.1}
                 defaultValue={typeof p.default === 'number' ? p.default : undefined}
               />

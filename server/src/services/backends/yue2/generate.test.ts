@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { jobCover, mapYue2Params, planYue2Jobs, yue2PlanMode, type Yue2PreparedJob } from './generate.js';
-import { yue2Seed, yue2SeedPlus } from './client.js';
+import { yue2Props, yue2Seed, yue2SeedPlus } from './client.js';
+import { resolveCreateIntent } from '../../generation/resolve/resolveIntent.js';
 import type { GenerationJob } from '../../generation/jobTypes.js';
 import type { Yue2PersistedSelection } from './index.js';
 
@@ -321,5 +322,27 @@ test('yue2CaptionBpmKey: on and absent keep the tail, off leaves it out', async 
     assert.equal(mapYue2Params({ ...base, yue2CaptionBpmKey: false }, pick).req.style, 'sludgy riffs doom');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('direct and resolved Create requests preserve YuE2 songs and noise variations', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ max_lm_batch: 4, max_synth_batch: 9 }));
+  assert.equal((await yue2Props()).stale, false);
+
+  for (const [batch, variations, songs, noise] of [
+    [undefined, 1, 4, 1], // Legacy API caller with only the common batchSize.
+    [1, 1, 1, 1],
+    [4, 1, 4, 1],
+    [2, 2, 2, 2],
+    [1, 4, 1, 4],
+    [6, 12, 4, 9], // Persisted settings above the current engine limits.
+  ] as const) {
+    const params = { caption: 'folk', batchSize: 4, yue2Variations: variations,
+      ...(batch === undefined ? {} : { yue2BatchSize: batch }) };
+    const resolved = resolveCreateIntent({ kind: 'create', params }, 'yue2').request;
+    for (const request of [params, resolved]) {
+      const { req } = mapYue2Params(request, pick);
+      assert.deepEqual([req.lm_batch_size ?? 1, req.synth_batch_size ?? 1], [songs, noise]);
+    }
   }
 });

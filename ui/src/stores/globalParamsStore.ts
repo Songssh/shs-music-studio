@@ -11,6 +11,7 @@ import { create } from 'zustand';
 import type { GenerationParams, LmRepMode, StableStepBackend, StableStepBlendMode } from '../types';
 import { DEFAULT_SETTINGS, type AppSettings } from '../components/settings/SettingsPanel';
 import { useBackendStore } from './backendStore';
+import { batchMaximum, effectiveCount, variationMaximum } from '../utils/generationLimits';
 
 // -- Types --
 
@@ -583,7 +584,9 @@ export const useGlobalParamsStore = create<any>()((set, get) => ({
   setGuidanceMode: (v: any) => { set({ guidanceMode: v }); writeKey(scopedKey("hs-guidanceMode"), v); },
   setSeed: (v: any) => { set({ seed: v }); writeKey("hs-seed", v); },
   setBackendParam: (key: string, v: any) => {
-    const next = { ...(get().backendParams || {}), [key]: v };
+    const next = { ...(get().backendParams || {}) };
+    if (v === undefined) delete next[key];
+    else next[key] = v;
     set({ backendParams: next });
     writeKey(scopedKey("hs-backendParams"), next);
   },
@@ -729,6 +732,9 @@ export const useGlobalParamsStore = create<any>()((set, get) => ({
   // up by both paths automatically.
   getGlobalParams: (overrides?: Record<string, any>): Partial<GenerationParams> => {
     const s = overrides ? { ...get(), ...overrides } : get();
+    const backend = activeBackendId();
+    const caps = useBackendStore.getState().capabilities[backend];
+    const maxBatch = batchMaximum(caps);
     const settings: AppSettings = readKey('ace-settings', DEFAULT_SETTINGS);
 
     // Effective adapter stack: the multi-adapter list when in Advanced mode,
@@ -800,11 +806,12 @@ export const useGlobalParamsStore = create<any>()((set, get) => ({
       // object literal, so a backend can never shadow a core field by picking a
       // colliding key.
       ...(s.backendParams || {}),
-      // Multi-backend: which engine backend this request targets. Read directly
-      // from backendStore (not a globalParamsStore field) so it's always the
-      // live active id; defaults to 'ace' for installs with no second backend
-      // registered (docs/plans/multi-backend-architecture.md §4.5).
-      backend: useBackendStore.getState().activeBackendId || 'ace',
+      // Send the panel's default for an untouched YuE2 batch. Omitting it
+      // would select the server's legacy API fallback to the ACE batch size.
+      ...(backend === 'yue2' ? { yue2BatchSize: effectiveCount(s.backendParams?.yue2BatchSize, maxBatch) } : {}),
+      ...(backend === 'yue2' && s.backendParams?.yue2Variations != null
+        ? { yue2Variations: effectiveCount(s.backendParams.yue2Variations, variationMaximum(caps)) } : {}),
+      backend,
       ditModel: s.ditModel, lmModel: s.lmModel, vaeModel: s.vaeModel, embeddingModel: s.embeddingModel,
       // Planner-LM adapter (runtime LoRA on the 5Hz LM) — aceReq fields, so
       // they survive the LM-echo synth rebuild by construction.
@@ -859,7 +866,7 @@ export const useGlobalParamsStore = create<any>()((set, get) => ({
       inferMethod: s.inferMethod, scheduler: s.scheduler, guidanceMode: s.guidanceMode,
       seed: s.seed, randomSeed: s.randomSeed,
       lmSeed: s.lmSeed, lmSeedFollowsDit: s.lmSeedFollowsDit,
-      batchSize: s.batchSize,
+      batchSize: backend === 'yue2' ? s.batchSize : effectiveCount(s.batchSize, maxBatch),
       storkSubsteps: (s.inferMethod === 'stork2' || s.inferMethod === 'stork4') ? s.storkSubsteps : undefined,
       beatStability: s.inferMethod === 'jkass_fast' ? s.beatStability : undefined,
       frequencyDamping: s.inferMethod === 'jkass_fast' ? s.frequencyDamping : undefined,

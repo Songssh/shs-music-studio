@@ -13,6 +13,7 @@ import { StyledSelect } from '../shared/StyledSelect';
 import { Toggle } from '../shared/Toggle';
 import { SeedManagerDrawer } from './SeedManagerDrawer';
 import { GLOBAL_PARAM_DEFAULTS } from '../../stores/globalParamsStore';
+import { ACE_LM_TEMPERATURE_RANGE } from '../../utils/generationLimits';
 import type { LmRepMode } from '../../types';
 
 /** One line each on what the mode costs you, since the audible trade-off is
@@ -69,7 +70,7 @@ export const LmThinkingDropdown: React.FC = () => {
       </div>
 
       <Slider label="Temperature" value={gp.lmTemperature}
-        onChange={gp.setLmTemperature} min={0} max={2} step={0.01} showInput
+        onChange={gp.setLmTemperature} {...ACE_LM_TEMPERATURE_RANGE} showInput
         defaultValue={GLOBAL_PARAM_DEFAULTS.lmTemperature}
         infoMeta="default 0.8 · range 0-2"
         info="How varied the LM's audio-code choices are. Higher makes each generation more different from the last; lower makes it more predictable and closer to the LM's single most likely output." />

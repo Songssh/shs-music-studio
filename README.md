@@ -4,7 +4,7 @@
 
 [Repository](https://github.com/Songssh/shs-music-studio) · [Issues](https://github.com/Songssh/shs-music-studio/issues) · [Releases](https://github.com/Songssh/shs-music-studio/releases)
 
-**Source preview: v0.1.1-preview.** This repository contains the source and Windows Portable packaging tools. Portable builds have been checked locally; binary publication is subject to the outstanding provenance and redistribution items in [THIRD_PARTY.md](THIRD_PARTY.md). See Releases for available downloads. GitHub's source ZIP does not include a ready-to-run application, dependencies, or model weights.
+**v0.1.2-preview** adds quick generation settings to Custom-Gen and fixes model-specific batch counts, profiles and model labels. Windows users can apply the UI update to the [v0.1.1-preview Portable](https://github.com/Songssh/shs-music-studio/releases/tag/v0.1.1-preview). The [release notes and installation instructions](docs/publication/v0.1.2-preview.md) explain how to update or roll back. Source users can build the tagged checkout.
 
 SHS Music Studio is an independent modification of [HOT-Step CPP](https://github.com/scragnog/HOT-Step-CPP) **v1.4.2**. Original copyrights and licenses are preserved. Discord, donation, and download links in the archived [upstream README](README-UPSTREAM.md) belong to HOT-Step, not SHS.
 
@@ -157,4 +157,4 @@ The Portable build baseline is Node 24.18.0. C++ builds require Visual Studio C+
 
 The upstream MIT [LICENSE](LICENSE), [engine license](engine/LICENSE), vendored-code notices, and dependency licenses are preserved. The SHS name does not replace upstream copyrights or third-party license obligations.
 
-[THIRD_PARTY.md](THIRD_PARTY.md) records outstanding Essentia, FFmpeg/Sharp, CUDA/MSVC, engine provenance, and corresponding-source items. Resolve applicable redistribution requirements before publishing binary releases. The [preview release notes](docs/publication/v0.1.0-preview.md) describe the prepared candidate.
+[THIRD_PARTY.md](THIRD_PARTY.md) records outstanding Essentia, FFmpeg/Sharp, CUDA/MSVC, engine provenance, and corresponding-source items. The [v0.1.2-preview release notes](docs/publication/v0.1.2-preview.md) describe the frontend update for the existing Portable.

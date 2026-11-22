@@ -16,6 +16,7 @@ import { useAuth } from '../../context/AuthContext';
 import { generateApi } from '../../services/api';
 import { Yue2ScorePreviewModal, type Yue2ScorePreviewData } from './Yue2ScorePreviewModal';
 import { ContentSection } from './ContentSection';
+import { QuickGenerationSettings } from './QuickGenerationSettings';
 import { Fold } from '../shared/Fold';
 import { MetadataSection } from './MetadataSection';
 import { LatentImport } from '../shared/LatentImport';
@@ -336,6 +337,10 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, activeJobC
   const { token } = useAuth();
   // The form and its caption choices, mirrored into this browser's server draft.
   const activeBackendId = useBackendStore(s => s.activeBackendId);
+  const hasLimits = useBackendStore(s => s.capabilities[s.activeBackendId]?.core.batch?.max !== undefined);
+  const needsBatchLimits = useGlobalParamsStore(s => activeBackendId === 'yue2'
+    ? s.backendParams?.yue2BatchSize > 1 || s.backendParams?.yue2Variations > 1
+    : activeBackendId === 'ace' && s.batchSize > 1);
   const draft = useStudioDraftMirror('create', token, {
     'hs-caption': caption, 'hs-lyrics': lyrics, 'hs-negative-prompt': negativePrompt, 'hs-instrumental': instrumental,
     'hs-lora-trigger': loraTrigger, 'hs-beat-intro': beatIntro, 'hs-intro-bars': introBars,
@@ -743,6 +748,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, activeJobC
 
         {/* Cover Art prompt override (only when enabled) */}
         <CoverArtSubjectSection />
+        <QuickGenerationSettings key={activeBackendId} />
       </div>
 
       {/* Generate button */}
@@ -750,7 +756,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, activeJobC
         <button
           className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 hover:shadow-lg hover:shadow-pink-500/20 text-white"
           onClick={handleGenerate}
-          disabled={!caption.trim() && !lyrics.trim() && !instrumental}
+          disabled={(!hasLimits && needsBatchLimits) || (!caption.trim() && !lyrics.trim() && !instrumental)}
         >
           {activeJobCount > 0 ? (
             <>

@@ -315,7 +315,7 @@ export const useBackendStore = create<BackendState>((set, get) => ({
       // a different quant if the requested file vanished.
       await writeAndInvalidate(queryClient,
         () => apiClient.post('/backends/models', { backend: backendId, selection }),
-        keysPlan(backendModelsOptions(backendId).queryKey));
+        keysPlan(backendModelsOptions(backendId).queryKey, capabilitiesOptions(backendId).queryKey));
       await get().fetchModels(backendId);
       return true;
     } catch {

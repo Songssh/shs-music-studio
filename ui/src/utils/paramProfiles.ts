@@ -15,6 +15,9 @@ import { userStorage } from '../auth/userStorage';
 // accepted via a small reverse-mapping in applyProfileData().
 
 import { useGlobalParamsStore, scopedKey, normalizeModelSelection } from '../stores/globalParamsStore';
+import { useBackendStore } from '../stores/backendStore';
+import { queryClient } from '../queries/client';
+import { capabilitiesOptions } from '../queries/global-models/options';
 import { writePersistedState } from '../hooks/usePersistedState';
 import { mergeProfileField } from './profileMerge';
 
@@ -35,45 +38,61 @@ const CONTENT_KEYS: Record<string, string> = {
   introBars: 'hs-intro-bars',
 };
 
+function contentFields(backend: string) {
+  // Custom-Gen hides trigger and beat-intro controls for YuE2.
+  return Object.entries(CONTENT_KEYS).filter(([key]) =>
+    backend !== 'yue2' || !['loraTrigger', 'beatIntro', 'introBars'].includes(key));
+}
+
 // ── Store fields captured in a profile, grouped by domain ──
 // Everything that affects generation. Deliberately excluded: adaptersOpen
 // (accordion UI state) and adapterFolder (browse location preference).
 // userStorage key is `hs-<field>` unless overridden in FIELD_KEY_OVERRIDES.
 // This grouping is the single source of truth for collect/apply AND the
 // profile inspector, so a field added here shows up in every path at once.
-// `ace`: the group is ACE-Step's own (its DiT, adapters and LM), so a profile
-// saved on another engine leaves it out.
-export const PARAM_GROUPS: { title: string; fields: string[]; ace?: true }[] = [
+// Groups without a backend list keep the existing shared settings policy.
+export const PARAM_GROUPS: { title: string; fields: string[]; backends?: string[] }[] = [
   {
     title: 'Models',
-    ace: true,
+    backends: ['ace'],
     fields: ['ditModel', 'lmModel', 'vaeModel', 'embeddingModel'],
   },
   {
-    title: 'Seed & Batch',
-    fields: ['seed', 'randomSeed', 'batchSize'],
+    title: 'Seed',
+    fields: ['seed', 'randomSeed'],
   },
   {
     title: 'Adapters',
-    ace: true,
+    backends: ['ace'],
     fields: [
       'adapter', 'adapterScale', 'adapterStack', 'adapterStackMode', 'adapterStackBudget',
       'adapterSectionAlignAt', 'adapterSectionIsolation', 'adapterMode', 'adapterRuntimeQuant',
       'adapterMergeLowVram', 'adapterGroupScales', 'rebaseSource', 'rebaseBeta', 'advancedAdapters',
+      'adapterRuntimeDora', 'noAdapterRender', 'lmAdapter', 'lmAdapterScale',
     ],
   },
   {
     title: 'DiT Sampling',
-    ace: true,
+    backends: ['ace'],
     fields: [
       'inferenceSteps', 'guidanceScale', 'cfgCutoffRatio', 'lmCfgCutoffRatio', 'cacheRatio',
-      'shift', 'inferMethod', 'scheduler', 'guidanceMode', 'storkSubsteps', 'beatStability', 'frequencyDamping', 'temporalSmoothing',
+      'batchSize', 'shift', 'storkSubsteps', 'beatStability', 'frequencyDamping', 'temporalSmoothing',
       'apgMomentum', 'apgNormThreshold', 'dcwEnabled', 'dcwMode', 'dcwLowScaler', 'dcwHighScaler',
       'latentShift', 'latentRescale', 'customTimesteps',
       'denoiseStrength', 'denoiseSmoothing', 'denoiseMix',
       'lssStrength', 'lssVarThresh', 'lssDcRemove',
-      'pluginParams',
+      'timbreReference', 'timbreAudioPath', 'autoTrimEnabled', 'durationBuffer', 'autoTrimFadeMs',
     ],
+  },
+  {
+    title: 'Sampler',
+    backends: ['ace', 'minimax-m3', 'sa3'],
+    fields: ['inferMethod', 'scheduler', 'guidanceMode'],
+  },
+  {
+    title: 'Plugin Parameters',
+    backends: ['ace', 'yue2', 'minimax-m3', 'sa3'],
+    fields: ['pluginParams'],
   },
   {
     // Backend-declared knobs (capabilities().extensions), e.g. the YuE2 NAR
@@ -85,22 +104,35 @@ export const PARAM_GROUPS: { title: string; fields: string[]; ace?: true }[] = [
   },
   {
     title: 'LM / Thinking',
-    ace: true,
+    backends: ['ace'],
     fields: [
-      'lmSeed', 'lmSeedFollowsDit', 'skipLm', 'skipLrc', 'useCotCaption',
+      'lmSeed', 'lmSeedFollowsDit', 'skipLm', 'useCotCaption',
       'lmTemperature', 'lmCfgScale', 'lmTopK', 'lmTopP', 'lmNegativePrompt', 'lmCodesStrength',
-      'lmCodesMode', 'lmCodesSteps',
+      'lmCodesMode', 'lmCodesSteps', 'lmRepPenalty', 'lmRepWindow', 'lmRepMode', 'lmDryBase', 'lmDryMinLen',
     ],
   },
+  { title: 'Lyric Timestamps', backends: ['ace', 'minimax-m3'], fields: ['skipLrc'] },
   {
     title: 'Post-Processing',
     fields: [
-      'postProcessingEnabled', 'spectralLifterEnabled', 'slDenoiseStrength', 'slNoiseFloor',
-      'slHfMix', 'slTransientBoost', 'slShimmerReduction',
-      'masteringEnabled', 'masteringReference', 'timbreReference', 'timbreAudioPath',
+      'postProcessingEnabled', 'masteringEnabled', 'masteringReference',
       'vocalNaturalizerEnabled', 'gainOffsetDb', 'naturalizeAmount', 'natVibratoRate',
       'natVibratoDepth', 'natFormantStrength', 'natMetallicReduction', 'natQuantizationMask',
-      'natTransitionSmooth', 'ppVaeReencode', 'ppVaeBlend',
+      'natTransitionSmooth', 'lufsEnabled', 'lufsPreset', 'lufsTarget', 'lufsCeilingDb',
+    ],
+  },
+  {
+    title: 'ACE VAE',
+    backends: ['ace'],
+    fields: [
+      'spectralLifterEnabled', 'slDenoiseStrength', 'slNoiseFloor', 'slHfMix', 'slTransientBoost',
+      'slShimmerReduction', 'ppVaeReencode', 'ppVaeBlend', 'postprocessEnabled', 'postprocessPlugin',
+    ],
+  },
+  {
+    title: 'StableStep',
+    backends: ['ace', 'minimax-m3', 'yue2'],
+    fields: [
       'stableStepOn', 'stableStepStrength', 'stableStepBackend',
       'stableStepAdapters', 'stableStepPreserveDynamics', 'stableStepVocalPpVae',
       'stableStepVocalTrimDb',
@@ -108,9 +140,6 @@ export const PARAM_GROUPS: { title: string; fields: string[]; ace?: true }[] = [
       'stableStepSeed', 'stableStepSeedFollowsDit',
       'stableStepSteps', 'stableStepSolver', 'stableStepScheduler',
       'stableStepGuidanceMode', 'stableStepGuidanceScale',
-      'postprocessEnabled', 'postprocessPlugin',
-      'lufsEnabled', 'lufsPreset', 'lufsTarget', 'lufsCeilingDb',
-      'autoTrimEnabled', 'durationBuffer', 'autoTrimFadeMs',
     ],
   },
   {
@@ -118,12 +147,14 @@ export const PARAM_GROUPS: { title: string; fields: string[]; ace?: true }[] = [
     fields: [
       'coverArtEnabled', 'coverArtSubject', 'qualityEvalEnabled', 'qualityEvalTarget',
       'whisperLyricsEnabled', 'whisperModel', 'whisperLanguage', 'whisperBeamSize', 'whisperIsolateVocals',
-      'yue2AlignLyrics',
     ],
   },
+  { title: 'YuE2', backends: ['yue2'], fields: ['yue2AlignLyrics'] },
 ];
 
-const PROFILE_FIELDS: string[] = PARAM_GROUPS.flatMap(g => g.fields);
+function profileFields(backend: string): string[] {
+  return PARAM_GROUPS.filter(g => !g.backends || g.backends.includes(backend)).flatMap(g => g.fields);
+}
 
 // Store fields whose userStorage key is not simply `hs-<field>`
 const FIELD_KEY_OVERRIDES: Record<string, string> = {
@@ -143,6 +174,29 @@ function fieldStorageKey(field: string): string {
 
 export type ProfileData = Record<string, unknown>;
 
+// MiniMax also keeps these Models/Adapters controls in the extension map.
+const MM3_PICKER_KEYS = ['mm3DitBackend', 'mm3LmAdapter', 'mm3LmAdapterMode', 'mm3LmMergeGpu',
+  'mm3LmAdapterScale', 'mm3LmAdapterScaleAttn', 'mm3LmAdapterScaleMlp', 'mm3LmAdapterScaleEarly',
+  'mm3LmAdapterScaleMid', 'mm3LmAdapterScaleLate', 'mm3LmAdapterTrigger'];
+
+async function profileKnobKeys(backend: string): Promise<Set<string>> {
+  const cached = useBackendStore.getState().capabilities[backend];
+  const manifest = cached ?? (backend === 'ace' ? undefined : await queryClient.query(capabilitiesOptions(backend)));
+  // A failed capabilities probe returns HTTP 200 with an empty schema. Saving
+  // against it would silently discard every explicit knob in an overwrite.
+  if (backend !== 'ace' && manifest && !manifest.up && !manifest.extensions.length) {
+    throw new Error(`Parameter definitions for ${backend} are unavailable. Retry after the backend reconnects.`);
+  }
+  return new Set([...(manifest?.extensions.map(p => p.key) ?? []),
+    ...(backend === 'minimax-m3' ? MM3_PICKER_KEYS : [])]);
+}
+
+export function checkProfileBackend(backend: string, source: unknown): void {
+  if (typeof source === 'string' && source !== backend) {
+    throw new Error(`Profile belongs to ${source}. Switch to that backend to use it.`);
+  }
+}
+
 function readLS<T>(key: string, fallback: T): T {
   try {
     const v = userStorage.getItem(key);
@@ -152,27 +206,24 @@ function readLS<T>(key: string, fallback: T): T {
 
 // ── Collect ──────────────────────────────────────────────────────────────
 
-/**
- * Snapshot every generation parameter + content field, exactly as set.
- * Pass includeContent=false to omit the CONTENT_KEYS group entirely (issue
- * #77 — caption/lyrics opt-out). applyProfileData() already leaves a field
- * untouched when it's absent from the data, so an old profile (which always
- * has these keys) still applies exactly as before.
- */
-export function collectProfileData(includeContent = true, ace = true): ProfileData {
+/** Snapshot the selected engine's Parameters and, optionally, its Create content. */
+export async function collectProfileData(includeContent: boolean, backend: string): Promise<ProfileData> {
+  const keys = await profileKnobKeys(backend);
+  checkProfileBackend(useBackendStore.getState().activeBackendId, backend);
   const s = useGlobalParamsStore.getState();
-  const out: ProfileData = { _format: 'hot-step-preset', _version: 2 };
+  const out: ProfileData = { _format: 'hot-step-preset', _version: 2, _backend: backend };
   if (includeContent) {
-    for (const [field, lsKey] of Object.entries(CONTENT_KEYS)) {
+    for (const [field, lsKey] of contentFields(backend)) {
       out[field] = readLS(lsKey, undefined);
     }
   }
-  // Another engine's profile carries no ACE-Step groups, so applying it
-  // leaves ACE's DiT, adapters and LM exactly as they are.
-  for (const g of PARAM_GROUPS) {
-    if (g.ace && !ace) continue;
-    for (const field of g.fields) out[field] = s[field];
-  }
+  for (const field of profileFields(backend)) out[field] = s[field];
+  const knobs = Object.fromEntries(Object.entries(s.backendParams ?? {}).filter(([key]) => keys.has(key)));
+  if (backend === 'yue2') knobs.yue2BatchSize ??= 1;
+  out.backendParams = knobs;
+  // Record intentional automatic/default settings without freezing the current
+  // checkpoint's numbers. Older partial presets have no such instructions.
+  out._unsetBackendParams = [...keys].filter(key => knobs[key] === undefined);
   return out;
 }
 
@@ -211,30 +262,43 @@ function mapV1(p: ProfileData): ProfileData {
  * in one setState plus their hs-* userStorage keys.
  * Unknown keys are ignored, so both v1 and v2 files are safe.
  */
-export function applyProfileData(raw: ProfileData): void {
+export async function applyProfileData(raw: ProfileData, backend: string): Promise<void> {
+  checkProfileBackend(backend, raw._backend ?? raw.backend);
+  const keys = await profileKnobKeys(backend);
+  checkProfileBackend(useBackendStore.getState().activeBackendId, backend);
   const p = raw._version === 2 ? raw : mapV1(raw);
+  const nested = p.backendParams;
+  const entries = nested && typeof nested === 'object' && !Array.isArray(nested) ? Object.entries(nested) : [];
+  // v1 was request-shaped (flat). Explicit entries in the scoped map win.
+  const knobs = Object.fromEntries([...Object.entries(p), ...entries].filter(([key]) => keys.has(key)));
+  const unset = raw._backend === backend && Array.isArray(raw._unsetBackendParams)
+    ? raw._unsetBackendParams.filter((key): key is string => typeof key === 'string' && keys.has(key)) : [];
 
-  for (const [field, lsKey] of Object.entries(CONTENT_KEYS)) {
+  for (const [field, lsKey] of contentFields(backend)) {
     if (p[field] !== undefined) writePersistedState(lsKey, p[field]);
   }
 
   const partial: Record<string, unknown> = {};
   const live = useGlobalParamsStore.getState() as unknown as Record<string, unknown>;
-  for (const field of PROFILE_FIELDS) {
-    if (p[field] !== undefined) {
-      let value: unknown = field === 'vaeModel'
-        ? normalizeModelSelection('vaeModel', p[field])
-        : field === 'stableStepBackend'
-          ? normalizeModelSelection('stableStepBackend', p[field])
-          : p[field];
+  for (const field of profileFields(backend)) {
+    let value = p[field];
+    if (field === 'backendParams') {
+      if (!Object.keys(knobs).length && !unset.length) continue;
+      const merged = { ...useGlobalParamsStore.getState().backendParams, ...knobs };
+      for (const key of unset) if (!Object.hasOwn(knobs, key)) delete merged[key];
+      value = merged;
+    } else {
+      if (value === undefined) continue;
+      if (field === 'vaeModel') value = normalizeModelSelection('vaeModel', value);
+      if (field === 'stableStepBackend') value = normalizeModelSelection('stableStepBackend', value);
       value = mergeProfileField(field, value, live[field], p._mergeMaps === true);
-      partial[field] = value;
-      try { userStorage.setItem(fieldStorageKey(field), JSON.stringify(value)); } catch { /* full */ }
     }
+    partial[field] = value;
+    try { userStorage.setItem(fieldStorageKey(field), JSON.stringify(value)); } catch { /* full */ }
   }
   // Profiles saved before the LM-codes step-count mode existed carry only
   // lmCodesStrength; restore them in ratio mode so they behave as saved.
-  if (p.lmCodesStrength !== undefined && p.lmCodesMode === undefined) {
+  if (backend === 'ace' && p.lmCodesStrength !== undefined && p.lmCodesMode === undefined) {
     partial.lmCodesMode = 'ratio';
     try { userStorage.setItem('hs-lmCodesMode', JSON.stringify('ratio')); } catch { /* full */ }
   }
